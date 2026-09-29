@@ -93,6 +93,7 @@ git push server tavern
 | `location ^~ /` → `127.0.0.1:3000` | SPA 与全部管理接口 |
 | `location ^~ /img/` → `/www/wwwroot/luk-brand` | 「快速开始」页的教程截图 `/img/dsh-custom-provider.png` |
 | `location ~ ^/guide/?$` | 教程页的 SEO 入口 |
+| `location ^~ /tavern`、`^~ /tieba` | 已下线的酒馆页面与旧无鉴权代理，一律返回 410 |
 | `location ^~ /v1/` → `llm_evidence_ingress` | 调用入口（经审计链路） |
 
 改完 nginx 记得 `nginx -t` 再 reload。
