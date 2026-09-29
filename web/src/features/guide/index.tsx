@@ -64,7 +64,7 @@ export function Guide() {
       <PageTransition>
         <div className='mx-auto w-full max-w-3xl px-4 py-8 md:py-12'>
           <header>
-            <h1 className='text-2xl font-bold tracking-tight'>快速开始</h1>
+            <h1 className='text-2xl font-normal tracking-tight'>快速开始</h1>
             <p className='text-muted-foreground mt-2 text-sm'>
               三步接入。下面以 DeepSeek-V4.1-Flash + DSH 客户端为例，其它
               OpenAI 兼容客户端同理。
