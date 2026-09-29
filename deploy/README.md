@@ -103,6 +103,18 @@ git push server tavern
   重新构建即可。
 - 我们的改动尽量是**新增文件**（`features/guide/`、`routes/*`），
   对共用文件只做加法（导航注册项），这样每次 rebase 的冲突面很小。
+- **首页文案不在仓库里。** 首页是 `options` 表里的 `HomePageContent`（约 7KB 的
+  HTML + `<style>`），在后台「首页内容」里编辑。仓库里的
+  `deploy/home-page-content.html` 是它的副本，改完样式要手动写回数据库：
+  ```bash
+  PW=$(docker inspect new-api-mysql --format '{{range .Config.Env}}{{println .}}{{end}}' \
+       | grep '^MYSQL_ROOT_PASSWORD=' | cut -d= -f2-)
+  docker exec -i new-api-mysql mysql -uroot -p"$PW" --default-character-set=utf8mb4 new_api < update.sql
+  ```
+  生成 `update.sql` 时注意两点：值里含单引号/反斜杠要转义；`mysql` 批处理默认会把
+  换行转义成 `\n`，**读取时务必加 `--raw`**，否则写回的内容会被破坏。这段 HTML 能
+  用 `var(--foreground)`、`var(--radius)`、`var(--font-display)` 这类 token，但用不了
+  Tailwind 工具类（构建时扫描不到），所以样式只能靠内联或它自带的 `<style>`。
 
 ## 五、不在仓库里的依赖
 
