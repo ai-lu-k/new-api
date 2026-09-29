@@ -80,7 +80,7 @@ git push server tavern
 - **不要手改 `web/src/routeTree.gen.ts`。** 它是 TanStack Router 在构建时自动
   生成的（文件头写着会被覆盖）。rebase 撞它的时候不要手工 merge，取上游版本后
   重新构建即可。
-- 我们的改动尽量是**新增文件**（`features/tavern/`、`features/guide/`、`routes/*`），
+- 我们的改动尽量是**新增文件**（`features/guide/`、`routes/*`），
   对共用文件只做加法（导航注册项），这样每次 rebase 的冲突面很小。
 
 ## 五、不在仓库里的依赖
@@ -91,13 +91,15 @@ git push server tavern
 | 位置 | 作用 |
 |---|---|
 | `location ^~ /` → `127.0.0.1:3000` | SPA 与全部管理接口 |
-| `location ^~ /tieba/` → `http://120.48.109.42:8000/` | **角色酒馆**的对局上游（无鉴权），同源反代以避免混合内容并隐藏上游 |
 | `location ^~ /img/` → `/www/wwwroot/luk-brand` | 「快速开始」页的教程截图 `/img/dsh-custom-provider.png` |
 | `location ~ ^/guide/?$` | 教程页的 SEO 入口 |
-| `location = /tieba`、`/tieba/`、`/tavern/` | 旧入口 301 到 `/tavern` |
 | `location ^~ /v1/` → `llm_evidence_ingress` | 调用入口（经审计链路） |
 
 改完 nginx 记得 `nginx -t` 再 reload。
+
+**不要加回无鉴权的上游反代。** 任何把浏览器请求直通上游的 location，都等于对全网
+开放那个上游（不需要 API Key、不需要登录）。页面要用上游就走 new-api 的渠道，
+由它做鉴权和计费，不要在 nginx 层直接转发。
 
 ## 六、已知坑
 
