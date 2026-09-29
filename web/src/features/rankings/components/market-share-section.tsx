@@ -57,20 +57,23 @@ const VENDOR_COLOURS: Record<string, string> = {
   Others: '#94a3b8',
 }
 
+/* Vendors absent from the identity map above still need a stable slot. These
+ * are drawn from the brand hues rather than a generic rainbow so an
+ * unrecognised vendor does not pull the chart off-palette. */
 const FALLBACK_PALETTE = [
-  '#0ea5e9',
-  '#22c55e',
-  '#a855f7',
-  '#f97316',
-  '#14b8a6',
-  '#eab308',
-  '#ec4899',
-  '#84cc16',
-  '#6366f1',
-  '#10b981',
-  '#f43f5e',
-  '#0891b2',
-  '#94a3b8',
+  '#1863dc', // action blue
+  '#ff7759', // coral
+  '#003c33', // enterprise green
+  '#4c6ee6', // focus blue
+  '#ffad9b', // soft coral
+  '#17663f', // success green
+  '#071829', // navy
+  '#75758a', // slate
+  '#8aa6ff', // pale blue
+  '#c0492f', // deep coral
+  '#93939f', // muted slate
+  '#0b3f8f', // deep blue
+  '#94a3b8', // matches the `Others` bucket
 ]
 
 function buildVendorColourMap(names: string[]): Record<string, string> {
