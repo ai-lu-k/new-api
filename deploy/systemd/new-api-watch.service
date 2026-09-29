@@ -1,0 +1,9 @@
+[Unit]
+Description=Watch GitHub for new new-api commits and deploy them to staging
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/new-api-src/deploy/watch.sh staging
+TimeoutStartSec=1800
