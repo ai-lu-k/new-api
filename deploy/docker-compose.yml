@@ -1,0 +1,55 @@
+services:
+  new-api:
+    # 实际部署哪个版本由 /www/wwwroot/new-api/.env 的 NEWAPI_TAG 决定；
+    # 不设时退回 :tavern，保持与历史部署行为一致。
+    image: luk/new-api:${NEWAPI_TAG:-tavern}
+    container_name: new-api
+    restart: always
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./data:/data
+    environment:
+      - TZ=Asia/Shanghai
+      - SQL_DSN=${SQL_DSN}
+      - SESSION_SECRET=${SESSION_SECRET}
+      - CRYPTO_SECRET=${CRYPTO_SECRET}
+      - SESSION_COOKIE_SECURE=true
+      - SESSION_COOKIE_TRUSTED_URL=https://ai.lu-k.cn
+      # 登录/刷新等“关键”接口的限流（默认 20 次/20 分钟/IP，太紧：
+      # 前端每次开页都会调 /api/user/auth/refresh，和登录共用同一个计数桶）
+      - CRITICAL_RATE_LIMIT=300
+      - CRITICAL_RATE_LIMIT_DURATION=1200
+    networks:
+      - new-api-net
+
+  mysql:
+    image: mysql:8.4
+    container_name: new-api-mysql
+    restart: always
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_DATABASE=new_api
+      - MYSQL_USER=new_api
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./mysql-data:/var/lib/mysql
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    networks:
+      - new-api-net
+
+networks:
+  new-api-net:
+    driver: bridge
