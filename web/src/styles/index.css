@@ -210,22 +210,101 @@ For commercial licensing, please contact support@quantumnous.com
   padding-inline: 2rem;
 }
 
-/* Oversized headline voice for hero and section declarations. */
+/* Oversized headline voice for hero and section declarations. Pair with a
+ * `text-hero` / `text-display` / `text-display-lg` step, which carry the size,
+ * 1.0 leading and -0.02em tracking. */
 @utility display-type {
   font-family: var(--font-display);
   font-weight: 400;
   letter-spacing: -0.02em;
-  line-height: 1.02;
+  line-height: 1;
 }
 
 /* Uppercase technical marker: category labels, system status, eyebrow copy. */
 @utility mono-label {
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   font-weight: 400;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
   line-height: 1.4;
   text-transform: uppercase;
+}
+
+/* Denser variant of `mono-label` for table headers, chip rows and footer
+ * microcopy, where a 14px uppercase marker would overpower the row. */
+@utility micro-label {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+/* Editorial taxonomy chip: coral outline on a pale fill, inverting to a solid
+ * coral fill when active. The oversized type is deliberate — the taxonomy is a
+ * hero-level control, not a conventional filter tag. */
+@utility coral-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  border-radius: 9999px;
+  border: 1px solid var(--coral-soft);
+  background: color-mix(in oklab, var(--coral) 8%, transparent);
+  padding: 0.375rem 0.875rem;
+  color: var(--foreground);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+@utility coral-chip-active {
+  border-color: var(--coral);
+  background: var(--coral);
+  color: var(--warn-ink, #17171c);
+}
+
+/* Deep full-width product band (`#003c33` enterprise green / `#071829` navy).
+ * Surfaces inside it step up from translucent white rather than introducing a
+ * second palette, and every rule becomes a translucent light hairline. */
+@utility dark-band {
+  background: var(--enterprise);
+  color: #ffffff;
+
+  & :is(h1, h2, h3, h4, h5, h6) {
+    color: #ffffff;
+  }
+}
+
+@utility dark-band-navy {
+  background: var(--navy);
+  color: #ffffff;
+
+  & :is(h1, h2, h3, h4, h5, h6) {
+    color: #ffffff;
+  }
+}
+
+/* Panel inside a `dark-band`: pale-translucent surface, thin light border. */
+@utility band-panel {
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: var(--radius-lg);
+  background: rgb(255 255 255 / 6%);
+}
+
+/* Rule-separated publication row (research-table idiom): tall, white, and
+ * driven by hairlines rather than card boxing. */
+@utility rule-row {
+  border-bottom: 1px solid var(--hairline);
+  transition: background-color 0.15s ease;
+
+  &:hover {
+    background: color-mix(in oklab, var(--foreground) 3%, transparent);
+  }
 }
 
 @utility max-w-container {

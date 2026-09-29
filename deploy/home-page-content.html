@@ -1,177 +1,294 @@
 <style>
-  :host { display:block; width:100%; }
+  /* Custom home page. Rendered into an isolated (shadow) root, so every rule
+   * lives here and the theme's custom properties are inherited from :root.
+   * Layout follows the editorial system: a deep enterprise-green hero band,
+   * then rule-separated rows on a white canvas, then a pale technical block.
+   * No gradients and no drop shadows — depth comes from surface alternation. */
+  :host { display: block; width: 100%; }
+
   .luk-wrap {
-    max-width: 60rem; margin: 0 auto; padding: 3.5rem 1.5rem 5rem;
-    font-family: var(--font-body, inherit);
-    color: var(--foreground, #111);
+    max-width: 64rem;
+    margin: 0 auto;
+    padding: 0 1.5rem;
   }
-  .luk-badge {
-    display:inline-flex; align-items:center; gap:.5rem;
-    padding:.35rem .8rem; border-radius:999px;
-    border:1px solid var(--border, rgba(0,0,0,.1));
-    background: var(--card, rgba(127,127,127,.06));
-    font-size:.75rem; font-weight:500; letter-spacing:.02em;
-    color: var(--muted-foreground, #666);
+
+  /* ── Eyebrow: uppercase mono technical marker ───────────────────────── */
+  .luk-eyebrow {
+    margin: 0;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.875rem;
+    font-weight: 400;
+    line-height: 1.4;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+
+  /* ── Hero band: deep enterprise green, full bleed ───────────────────── */
+  .luk-band {
+    background: var(--enterprise, #003c33);
+    color: #ffffff;
+    padding: 9rem 0 5.5rem;
+  }
+  @media (min-width: 48rem) {
+    .luk-band { padding: 11rem 0 7rem; }
+  }
+
+  .luk-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: rgb(255 255 255 / 62%);
   }
   .luk-dot {
-    width:.45rem; height:.45rem; border-radius:999px; background:var(--success, #17663f);
-    box-shadow:0 0 0 3px color-mix(in oklab, var(--success, #17663f) 18%, transparent);
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: 9999px;
+    background: var(--coral, #ff7759);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--coral, #ff7759) 26%, transparent);
   }
-  .luk-h1 {
-    margin:1.4rem 0 0; font-size:clamp(2rem, 5vw, 3rem); line-height:1.05;
-    font-family: var(--font-display, inherit);
-    font-weight:400; letter-spacing:-.02em;
+
+  .luk-hero {
+    margin: 1.75rem 0 0;
+    max-width: 20ch;
+    font-family: var(--font-display, system-ui);
+    font-size: clamp(2.5rem, 7.5vw, 6rem);
+    font-weight: 400;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    color: #ffffff;
   }
-  .luk-grad { color: var(--foreground, #111); }
-  .luk-sub {
-    margin:1rem 0 0; max-width:38rem; font-size:1rem; line-height:1.7;
-    color: var(--muted-foreground, #666);
+
+  .luk-lede {
+    margin: 1.75rem 0 0;
+    max-width: 34rem;
+    font-size: 1.125rem;
+    line-height: 1.4;
+    color: rgb(255 255 255 / 72%);
   }
-  .luk-cta { display:flex; flex-wrap:wrap; gap:.7rem; margin-top:1.9rem; }
-  .luk-qq {
-    display:inline-flex; align-items:center; gap:.55rem; flex-wrap:wrap;
-    margin-top:1.1rem; padding:.6rem 1.05rem; border-radius:999px;
-    border:1px solid var(--border, rgba(0,0,0,.12));
-    background:var(--card, rgba(127,127,127,.05));
-    font-size:.88rem; color:var(--foreground, #111);
+
+  .luk-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 2.5rem;
   }
-  .luk-qq strong { font-weight:500; letter-spacing:.05em; font-size:.95rem; }
-  .luk-qq-hint { color:var(--muted-foreground, #666); font-size:.8rem; }
+
+  /* Pill CTA. Near-black on light surfaces, white on the dark band. */
   .luk-btn {
-    display:inline-flex; align-items:center; justify-content:center;
-    height:2.6rem; padding:0 1.4rem; border-radius:999px;
-    font-size:.9rem; font-weight:500; text-decoration:none;
-    transition:opacity .15s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 2.75rem;
+    padding: 0 1.5rem;
+    border-radius: 9999px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1.71;
+    text-decoration: none;
+    transition: opacity 0.15s ease, color 0.15s ease;
   }
-  .luk-btn:hover { opacity:.85; }
-  .luk-btn-primary {
-    background:var(--primary, #17171c); color:var(--primary-foreground, #fff);
+  .luk-btn:hover { opacity: 0.88; }
+  .luk-btn-light { background: #ffffff; color: #17171c; }
+  /* Secondary action: a rule-aligned text link rather than a second fill. */
+  .luk-btn-text {
+    height: auto;
+    padding: 0 0.25rem;
+    color: rgb(255 255 255 / 80%);
+    text-decoration: underline;
+    text-underline-offset: 4px;
   }
-  .luk-btn-ghost {
-    border:1px solid var(--input, rgba(0,0,0,.2));
-    background: var(--card, rgba(127,127,127,.05));
-    color: var(--foreground, #111);
+  .luk-btn-text:hover { color: #ffffff; opacity: 1; }
+
+  /* Technical spec list, separated by translucent rules. */
+  .luk-specs {
+    margin: 4.5rem 0 0;
+    padding: 0;
+    border-top: 1px solid rgb(255 255 255 / 14%);
   }
-  .luk-grid {
-    display:grid; grid-template-columns:1fr;
-    gap:.9rem; margin-top:2.6rem;
+  @media (min-width: 48rem) {
+    .luk-specs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
   }
-  @media (min-width: 40rem) {
-    .luk-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .luk-spec {
+    padding: 1.5rem 0;
+    border-bottom: 1px solid rgb(255 255 255 / 14%);
   }
-  .luk-card {
-    border:1px solid var(--card-border, var(--border, rgba(0,0,0,.1)));
-    background: var(--card, rgba(127,127,127,.05));
-    border-radius:var(--radius, .75rem); padding:1.1rem 1.2rem;
+  @media (min-width: 48rem) {
+    .luk-spec { padding-right: 2rem; border-bottom: 0; }
+    .luk-spec + .luk-spec {
+      border-left: 1px solid rgb(255 255 255 / 14%);
+      padding-left: 2rem;
+    }
   }
-  .luk-card h3 {
-    margin:0 0 .45rem; font-size:.72rem; font-weight:400;
+  .luk-spec dt {
     font-family: var(--font-mono, ui-monospace, monospace);
-    letter-spacing:.08em; text-transform:uppercase;
-    color: var(--muted-foreground, #666);
+    font-size: 0.75rem;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: rgb(255 255 255 / 48%);
   }
-  .luk-card p { margin:0; font-size:.875rem; line-height:1.6; }
-  .luk-promo {
-    display:inline-block; padding:.1rem .5rem; margin-right:.15rem;
-    border-radius:999px; font-size:.8em; font-weight:500;
-    background:var(--coral, #ff7759); color:var(--foreground, #111);
+  .luk-spec dd {
+    margin: 0.6rem 0 0;
+    font-size: 0.95rem;
+    line-height: 1.5;
+    color: rgb(255 255 255 / 92%);
   }
-  code.luk-code, .luk-pre code {
-    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
-    font-size:.86em;
+  .luk-spec code {
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    font-size: 0.875rem;
   }
-  code.luk-code {
-    padding:.12rem .4rem; border-radius:.4rem;
-    background: var(--muted, rgba(127,127,127,.14));
-    color: var(--foreground, #111);
+
+  /* Warm taxonomy chip — the page's only coral fill. */
+  .luk-chip {
+    display: inline-block;
+    padding: 0.1rem 0.55rem;
+    margin-right: 0.4rem;
+    border-radius: 9999px;
+    background: var(--coral, #ff7759);
+    color: #17171c;
+    font-size: 0.8rem;
+    font-weight: 500;
   }
-  .luk-sec { margin-top:3.2rem; }
-  .luk-sec > h2 {
-    margin:0 0 1rem; font-size:1.15rem; font-weight:400; letter-spacing:-.01em;
-    font-family: var(--font-display, inherit);
+
+  /* ── White canvas sections ──────────────────────────────────────────── */
+  .luk-section { padding: 5rem 0 0; }
+
+  .luk-h2 {
+    margin: 0 0 2.5rem;
+    font-family: var(--font-display, system-ui);
+    font-size: clamp(1.75rem, 3.5vw, 3rem);
+    font-weight: 400;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+    color: var(--foreground, #212121);
   }
+
+  /* Rule-separated rows rather than boxed cards. */
+  .luk-rows {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border-top: 1px solid var(--hairline, #d9d9dd);
+  }
+  .luk-row {
+    display: flex;
+    align-items: baseline;
+    gap: 1.5rem;
+    padding: 1.5rem 0;
+    border-bottom: 1px solid var(--hairline, #d9d9dd);
+  }
+  .luk-idx {
+    flex: 0 0 auto;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.875rem;
+    letter-spacing: 0.02em;
+    color: var(--muted-foreground, #93939f);
+  }
+  .luk-row p {
+    margin: 0;
+    font-size: 1.0625rem;
+    line-height: 1.5;
+    color: var(--foreground, #212121);
+  }
+  .luk-row strong { font-weight: 500; }
+
+  /* ── Pale technical block: warm stone, thin border, 8px radius ───────── */
   .luk-pre {
-    margin:0; padding:1.15rem 1.25rem; overflow-x:auto;
-    border:1px solid var(--border, rgba(0,0,0,.1));
-    border-radius:var(--radius, .75rem);
-    background: var(--muted, rgba(127,127,127,.08));
-    line-height:1.65;
+    margin: 0;
+    padding: 1.5rem;
+    overflow-x: auto;
+    border: 1px solid var(--border, #e5e7eb);
+    border-radius: var(--radius-sm, 8px);
+    background: var(--stone, #eeece7);
+    line-height: 1.6;
   }
-  .luk-pre code { color: var(--foreground, #111); white-space:pre; }
-  .luk-steps { display:grid; gap:.85rem; }
-  .luk-step {
-    display:flex; gap:.9rem; align-items:flex-start;
-    border:1px solid var(--card-border, var(--border, rgba(0,0,0,.1)));
-    background: var(--card, rgba(127,127,127,.05));
-    border-radius:var(--radius, .75rem); padding:1rem 1.15rem;
+  .luk-pre code {
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    font-size: 0.875rem;
+    color: var(--foreground, #212121);
+    white-space: pre;
   }
-  .luk-num {
-    flex:0 0 auto; width:1.6rem; height:1.6rem; border-radius:999px;
-    display:flex; align-items:center; justify-content:center;
-    background:var(--primary, #17171c); color:var(--primary-foreground, #fff);
-    font-size:.78rem; font-weight:500;
+  .luk-inline {
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    font-size: 0.9em;
+    padding: 0.12rem 0.4rem;
+    border-radius: var(--radius-xs, 4px);
+    background: var(--muted, #f5f3ef);
+    color: var(--foreground, #212121);
   }
-  .luk-step p { margin:0; font-size:.9rem; line-height:1.65; }
-  .luk-step strong { font-weight:500; }
+
+  /* ── Editorial links ────────────────────────────────────────────────── */
+  .luk-link {
+    color: var(--link, #1863dc);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
   .luk-foot {
-    margin-top:3.5rem; padding-top:1.4rem;
-    border-top:1px solid var(--border, rgba(0,0,0,.1));
-    font-size:.78rem; color: var(--muted-foreground, #888);
+    padding: 3rem 0 5rem;
+    border-top: 1px solid var(--hairline, #d9d9dd);
+    font-size: 0.8125rem;
+    line-height: 1.7;
+    color: var(--muted-foreground, #93939f);
   }
-  .luk-foot a { color:inherit; text-decoration:none; border-bottom:1px dotted currentColor; }
-  a.luk-plain { color: var(--foreground, #111); }
 </style>
 
-<div class="luk-wrap">
+<section class="luk-band">
+  <div class="luk-wrap">
+    <p class="luk-eyebrow luk-status"><span class="luk-dot" aria-hidden="true"></span>API 运行中</p>
 
-  <span class="luk-badge"><span class="luk-dot"></span>API 运行中</span>
+    <h1 class="luk-hero">统一 API 网关，开箱即用</h1>
 
-  <h1 class="luk-h1">统一 API 网关<br><span class="luk-grad">开箱即用</span></h1>
+    <p class="luk-lede">
+      一个兼容 OpenAI 协议的接口地址，即可调用全部可用模型。
+      无需改动任何现有客户端，把 Base URL 换过来就能用。
+    </p>
 
-  <p class="luk-sub">
-    一个兼容 OpenAI 协议的接口地址，即可调用全部可用模型。
-    无需改动任何现有客户端，把 Base URL 换过来就能用。
-  </p>
-
-  <div class="luk-cta">
-    <a class="luk-btn luk-btn-primary" href="/dashboard">开始使用</a>
-    <a class="luk-btn luk-btn-ghost" href="/guide">🚀 快速开始</a>
-    <a class="luk-btn luk-btn-ghost" href="/pricing">查看模型</a>
-  </div>
-
-  <div class="luk-qq">🎉 官方 QQ 群：<strong>1126789475</strong><span class="luk-qq-hint">有问题直接进群问</span></div>
-
-  <div class="luk-grid">
-    <div class="luk-card">
-      <h3>接口地址</h3>
-      <p><code class="luk-code">https://ai.lu-k.cn/v1</code></p>
+    <div class="luk-actions">
+      <a class="luk-btn luk-btn-light" href="/dashboard">开始使用</a>
+      <a class="luk-btn luk-btn-text" href="/pricing">查看模型与价格</a>
     </div>
-    <div class="luk-card">
-      <h3>限时特惠</h3>
-      <p><span class="luk-promo">3 折</span> 稳定 DeepSeek，官方原价直降，用量不限。</p>
-    </div>
-  </div>
 
-  <div class="luk-sec">
-    <h2>三步接入</h2>
-    <div class="luk-steps">
-      <div class="luk-step">
-        <span class="luk-num">1</span>
-        <p>在 <a class="luk-plain" href="/dashboard"><strong>控制台</strong></a> 注册并创建一枚 API 密钥。</p>
+    <dl class="luk-specs">
+      <div class="luk-spec">
+        <dt>接口地址</dt>
+        <dd><code>https://ai.lu-k.cn/v1</code></dd>
       </div>
-      <div class="luk-step">
-        <span class="luk-num">2</span>
-        <p>把客户端的 <strong>Base URL</strong> 填成 <code class="luk-code">https://ai.lu-k.cn/v1</code>，密钥填上一步生成的。</p>
+      <div class="luk-spec">
+        <dt>限时特惠</dt>
+        <dd><span class="luk-chip">3 折</span>稳定 DeepSeek，官方原价直降</dd>
       </div>
-      <div class="luk-step">
-        <span class="luk-num">3</span>
-        <p>模型名填 <code class="luk-code">deepseek/deepseek-v4.1-flash</code>，直接开始对话。</p>
+      <div class="luk-spec">
+        <dt>官方 QQ 群</dt>
+        <dd>1126789475</dd>
       </div>
-    </div>
+    </dl>
   </div>
+</section>
 
-  <div class="luk-sec">
-    <h2>快速验证</h2>
+<section class="luk-section">
+  <div class="luk-wrap">
+    <h2 class="luk-h2">三步接入</h2>
+    <ol class="luk-rows">
+      <li class="luk-row">
+        <span class="luk-idx">01</span>
+        <p>在 <a class="luk-link" href="/dashboard"><strong>控制台</strong></a> 注册并创建一枚 API 密钥。</p>
+      </li>
+      <li class="luk-row">
+        <span class="luk-idx">02</span>
+        <p>把客户端的 <strong>Base URL</strong> 填成 <code class="luk-inline">https://ai.lu-k.cn/v1</code>，密钥填上一步生成的。</p>
+      </li>
+      <li class="luk-row">
+        <span class="luk-idx">03</span>
+        <p>模型名填 <code class="luk-inline">deepseek/deepseek-v4.1-flash</code>，直接开始对话。</p>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<section class="luk-section">
+  <div class="luk-wrap">
+    <h2 class="luk-h2">快速验证</h2>
     <pre class="luk-pre"><code>curl https://ai.lu-k.cn/v1/chat/completions \
   -H "Authorization: Bearer $YOUR_API_KEY" \
   -H "Content-Type: application/json" \
@@ -180,11 +297,11 @@
     "messages": [{"role": "user", "content": "你好"}]
   }'</code></pre>
   </div>
+</section>
 
-  <div class="luk-foot">
-    遇到问题？在 <a href="/dashboard">控制台</a> 查看调用日志与余额明细。<br>
-    官方 QQ 群：<strong>1126789475</strong>
-  </div>
-
+<div class="luk-wrap">
+  <p class="luk-foot">
+    遇到问题？在 <a class="luk-link" href="/dashboard">控制台</a> 查看调用日志与余额明细。<br>
+    官方 QQ 群：1126789475
+  </p>
 </div>
-
