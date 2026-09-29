@@ -1,10 +1,10 @@
 /*
  * LUK 快速开始 —— 教程页
  *
- * 走 newapi 公共页规范：PublicLayout + PageTransition，和「模型广场」「角色酒馆」
- * 是同一套壳子，顶部菜单栏自然保留；导航项由 useTopNavLinks 生成。
+ * 走 newapi 公共页规范：PublicLayout + PageTransition，和「模型广场」是同一套
+ * 壳子，顶部菜单栏自然保留；导航项由 useTopNavLinks 生成。
  *
- * 文案直接写中文（站点是中文站，酒馆页同样如此），不铺 i18n 键。
+ * 文案直接写中文（站点是中文站），不铺 i18n 键。
  * 模型名只是示例（以 DeepSeek-V4.1-Flash 为例），客户端以 DSH 为例。
  */
 import { Link } from '@tanstack/react-router'

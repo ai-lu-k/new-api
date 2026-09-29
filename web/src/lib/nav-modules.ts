@@ -22,14 +22,13 @@ import { readCachedStatus, statusQueryOptions } from '@/lib/status-query'
 
 export type ModuleAccess = { enabled: boolean; requireAuth: boolean }
 
-export type HeaderNavModule = 'rankings' | 'pricing' | 'tavern' | 'guide'
+export type HeaderNavModule = 'rankings' | 'pricing' | 'guide'
 
 export type HeaderNavModules = {
   home: boolean
   console: boolean
   pricing: ModuleAccess
   rankings: ModuleAccess
-  tavern: ModuleAccess
   guide: ModuleAccess
   docs: boolean
   about: boolean
@@ -41,7 +40,6 @@ const DEFAULT_HEADER_NAV_MODULES: HeaderNavModules = {
   console: true,
   pricing: { enabled: true, requireAuth: false },
   rankings: { enabled: true, requireAuth: false },
-  tavern: { enabled: true, requireAuth: false },
   guide: { enabled: true, requireAuth: false },
   docs: true,
   about: true,
@@ -50,7 +48,6 @@ const DEFAULT_HEADER_NAV_MODULES: HeaderNavModules = {
 const DEFAULTS: Record<HeaderNavModule, ModuleAccess> = {
   pricing: DEFAULT_HEADER_NAV_MODULES.pricing,
   rankings: DEFAULT_HEADER_NAV_MODULES.rankings,
-  tavern: DEFAULT_HEADER_NAV_MODULES.tavern,
   guide: DEFAULT_HEADER_NAV_MODULES.guide,
 }
 
@@ -59,7 +56,6 @@ function cloneHeaderNavDefaults(): HeaderNavModules {
     ...DEFAULT_HEADER_NAV_MODULES,
     pricing: { ...DEFAULT_HEADER_NAV_MODULES.pricing },
     rankings: { ...DEFAULT_HEADER_NAV_MODULES.rankings },
-    tavern: { ...DEFAULT_HEADER_NAV_MODULES.tavern },
     guide: { ...DEFAULT_HEADER_NAV_MODULES.guide },
   }
 }
@@ -126,10 +122,6 @@ export function parseHeaderNavModules(raw: unknown): HeaderNavModules {
     }
     if (key === 'rankings') {
       result.rankings = parseAccess(value, result.rankings)
-      return
-    }
-    if (key === 'tavern') {
-      result.tavern = parseAccess(value, result.tavern)
       return
     }
     if (key === 'guide') {

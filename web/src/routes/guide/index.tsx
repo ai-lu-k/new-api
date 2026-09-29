@@ -1,7 +1,7 @@
 /*
  * LUK 快速开始 —— 路由
  *
- * 和 /tavern 同一套写法：可被 HeaderNavModules 开关控制，可要求登录。
+ * 可被 HeaderNavModules 的 guide 开关控制，可要求登录。
  */
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
