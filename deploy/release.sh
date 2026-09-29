@@ -19,6 +19,9 @@ git fetch -q --tags origin
 git reset -q --hard "$REF"
 
 PREV=$(grep -E '^NEWAPI_TAG=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)
+# 首次发布时 .env 里还没有 NEWAPI_TAG，此时回滚目标就是 compose 的默认值 :tavern，
+# 也就是当前正在跑的那个镜像。
+[ -n "$PREV" ] || PREV=tavern
 
 # 改写或追加 NEWAPI_TAG，保持 .env 其余行原样（里面是 DSN / 密钥）。
 set_tag() {
@@ -53,11 +56,7 @@ fi
 
 echo "冒烟检查失败，输出最后 40 行日志：" >&2
 docker compose logs --tail 40 new-api >&2
-if [ -n "$PREV" ]; then
-  echo "回滚到 $PREV" >&2
-  set_tag "$PREV"
-  docker compose up -d --force-recreate new-api
-else
-  echo "没有可回滚的上一个 tag，请人工处理" >&2
-fi
+echo "回滚到 $PREV" >&2
+set_tag "$PREV"
+docker compose up -d --force-recreate new-api
 exit 1
