@@ -30,6 +30,8 @@ printf '%s' "$VERSION" >"$CTX/VERSION"
 
 # 只打不可变的 $VERSION tag，不动 :tavern —— :tavern 是旧脚本在用的移动 tag，
 # 保留它以免两边互相覆盖。
-DOCKER_BUILDKIT=1 docker build -t "$REPO:$VERSION" "$CTX"
+DOCKER_BUILDKIT=1 docker build \
+  --build-arg "GOPROXY=${GOPROXY:-https://goproxy.cn,direct}" \
+  -t "$REPO:$VERSION" "$CTX"
 
 echo "$VERSION"

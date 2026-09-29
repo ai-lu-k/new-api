@@ -110,3 +110,8 @@ git push server tavern
 - **别再回到 `/tmp/new-api.inspect` 那套。** 那是浅克隆 ＋ 手工 patch 的工作区，
   没有版本记录，而且多个会话共用同一棵树；`/tmp/rebuild_newapi.sh` 会从这棵
   脏树直接构建并覆盖 `:tavern`，是颗地雷。
+- **`proxy.golang.org` 在这个网络里不通**（`go mod download` 会 `i/o timeout`）。
+  Dockerfile 里因此有一个可覆盖的 `GOPROXY`，默认值与上游一致，`build.sh` 传的是
+  `https://goproxy.cn,direct`。npm registry 没问题。
+- 首次构建约 15 分钟，几乎全花在最终阶段从 `deb.debian.org` 拉那几个 apt 包上；
+  基础镜像按 digest 固定，该层之后永远命中缓存，所以只有第一次慢。
