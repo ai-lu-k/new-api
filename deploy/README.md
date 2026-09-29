@@ -3,8 +3,11 @@
 这个目录是这台 new-api 的**部署面**：构建、发布、回滚，以及那些不在应用代码里、
 但线上跑起来缺一不可的服务器配置。
 
-分支关系：`ai-lu-k/new-api` 是 `QuantumNous/new-api` 的 fork，生产分支是 `tavern`。
-`main` 只用来跟上游，不部署。
+分支关系：`ai-lu-k/new-api` 是 `QuantumNous/new-api` 的 fork。`tavern` 是**生产分支
+兼基础设施分支**（部署脚本、CI 配置都在这），`staging` 是**测试分支**（`tavern` 加上
+待验证的功能改动），`main` 只用来跟上游，不部署。
+
+想验证新功能：把它提交到 `staging` 并 push —— 剩下服务器自己会做。
 
 ## 一、线上长什么样
 
@@ -13,46 +16,64 @@
 | `new-api` 容器 | 镜像 `luk/new-api:<tag>`，`127.0.0.1:3000` | 应用本体，二进制内嵌前端 |
 | `new-api-mysql` | `mysql:8.4`，仅容器网络 | 业务数据，不对宿主开 3306 |
 | compose 目录 | `/www/wwwroot/new-api` | `docker-compose.yml` + `.env` + `data/` |
-| 部署镜像（裸仓库） | `/opt/new-api.git` | 由开发机 `git push server tavern` 更新 |
-| 构建用 checkout | `/opt/new-api-src` | 常驻，`HEAD` = `origin/tavern` |
-| 镜像 tag | `<git describe>` | 例如 `baseline-live-2026-09-27`，即「线上跑的是哪个 commit」 |
+| 脚本目录 | `/opt/new-api-src/deploy/` | 只放这些脚本；由开发机 `git push server tavern` 更新 |
+| 镜像 tag | `<日期>-<short sha>` | 例如 `20260929-29944e3`，即「线上跑的是哪个 commit」 |
 
 `.env` 里除了数据库 DSN 和密钥，还有一个 `NEWAPI_TAG`，它是**当前部署的版本号**；
 compose 里写的是 `image: luk/new-api:${NEWAPI_TAG:-tavern}`。回滚就是把这一行改回旧值。
 
 ## 二、发布
 
-```bash
-# 1) 开发机：把要发的提交推到部署镜像
-cd <本地 checkout>
-git push server tavern
-git push server --tags
+日常只有一句话：**推到分支，剩下自动**。
 
-# 2) 服务器：同步 → 构建 → 部署 → 冒烟 → 失败自动回滚
-/opt/new-api-src/deploy/release.sh
+```
+推送到 GitHub 的 staging 分支
+   ↓  GitHub Actions 跑检查（LUK CI：前端 typecheck + 构建、后端编译）
+   ↓  服务器的 systemd 定时器每 2 分钟盯一次 api.github.com
+   ↓  tip 变了 → build.sh 拉源码包构建 → 部署测试环境 → 冒烟 → 失败自动回滚
+   ↓
+你用 SSH 隧道看过、满意了 → promote.sh <tag> → 生产
 ```
 
-`release.sh` 做的事，按顺序：
+生产**故意不自动**：只有人工 `promote.sh` 才会动生产，实验性改动不会自己跑上去。
 
-1. `git fetch --tags` + `git reset --hard origin/tavern`；
-2. `deploy/build.sh` —— 见下；
-3. 把新 tag 写回 `/www/wwwroot/new-api/.env` 的 `NEWAPI_TAG`；
-4. `docker compose up -d --force-recreate new-api`；
-5. 轮询 `http://127.0.0.1:3000/api/status`，最多 60 秒；
-6. 不通过就写回上一个 tag 并重新拉起，然后以非零码退出。
+### build.sh：为什么不走 git
 
-### build.sh 为什么这么写
+因为这张网络不允许：
 
-构建上下文是 `git archive <commit>` 导出的**干净快照**，不是工作区。这有两个后果：
+- `github.com` 的 HTTPS git 端点在这里直接超时；SSH 能连，但 GitHub 对 **fork 仓库
+  禁用了 deploy key**，服务器要拉代码就只能挂账号级密钥 —— 等于把整个账号的读权限
+  放到生产机上。
+- 镜像走 registry 也不行：实测从 `ghcr.io` 拉一个几 MB 的小镜像要 **3 分 25 秒**，
+  330MB 的镜像根本等不起。
 
-- 镜像是哪个 commit 就永远是哪个 commit —— 工作区被别的东西改脏了也不会混进去；
-- `VERSION` 按该 commit 的 `git describe` 写进去，同时进 `-ldflags` 和镜像 tag，
-  所以「线上跑的是哪个 commit」不需要靠记忆。
+而 `codeload.github.com` 的源码包很快（实测整包 5.4MB / 3.3 秒，约 1.6 MB/s），
+`api.github.com` 也快（0.8 秒），公开仓库**不需要任何凭据**。所以：
 
-第一次构建要下 bun 依赖和 Go module（几分钟）；之后 Docker 层缓存命中，
-改前端只有几秒到几十秒。
+- 构建留在服务器上 —— 跨境只传 5.4MB 源码，不传 330MB 镜像；
+- 构建上下文就是源码包解出来的快照，天然干净，与工作区无关；
+- 版本号取自 GitHub API 的提交日期 + short sha（如 `20260929-29944e3`），同时进
+  `-ldflags` 和镜像 tag，所以「线上跑的是哪个提交」对得上；
+- 服务器上**没有任何 GitHub 凭据**。
 
-只打不可变的 `luk/new-api:<git describe>`，**不动** `:tavern`（旧脚本还在用它）。
+### 手动发一次
+
+```bash
+# 发到测试环境
+NEWAPI_ENV=staging /opt/new-api-src/deploy/release.sh staging
+
+# 发到生产（一般走 promote.sh，见第七节）
+NEWAPI_ENV=production /opt/new-api-src/deploy/release.sh tavern
+
+# 单跑一次盯梢（测试环境的定时器就是这么干的）
+/opt/new-api-src/deploy/watch.sh staging
+```
+
+### 脚本本身怎么更新
+
+`deploy/` 下的脚本在服务器上的 `/opt/new-api-src`，**只由开发机的
+`git push server tavern` 更新** —— 不让部署器跟着被部署的代码自我更新，那是个隐患。
+日常发版完全不需要这一步。
 
 ## 三、回滚
 
@@ -146,12 +167,19 @@ staging 的 compose 在 `deploy/staging/docker-compose.yml`。两个注意点：
 ssh -N -L 3001:127.0.0.1:3001 root@<host>     # 然后打开 http://127.0.0.1:3001
 ```
 
-部署到测试环境 —— 同一个脚本，换目录和探活地址即可：
+**测试环境是自动的**：`new-api-watch.timer` 每两分钟拉起 `deploy/watch.sh staging`，
+发现 `staging` 分支的 tip 变了就构建并部署过去。手动跑一次或看它的日志：
 
 ```bash
-NEWAPI_COMPOSE_DIR=/www/wwwroot/new-api-staging \
-NEWAPI_SMOKE_URL=http://127.0.0.1:3001/api/status \
-  /opt/new-api-src/deploy/release.sh <ref>
+systemctl start new-api-watch.service
+journalctl -u new-api-watch.service -n 30
+systemctl list-timers new-api-watch.timer
+```
+
+想临时部署别的分支到测试环境（不走自动流程）：
+
+```bash
+NEWAPI_ENV=staging /opt/new-api-src/deploy/release.sh <branch>
 ```
 
 验证通过后**提升到生产**（同一个镜像 digest，不重新构建）：
