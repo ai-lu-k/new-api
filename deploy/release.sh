@@ -1,29 +1,31 @@
 #!/usr/bin/env bash
 #
-# 同步 checkout 到某个 ref、构建、部署，并在新容器不响应 /api/status 时自动回滚。
+# 把某个分支在 GitHub 上的最新提交构建并部署到指定环境。
 #
-# 前置：本地已 `git push server tavern`（server = ssh://root@…/opt/new-api.git）。
+# 用法：NEWAPI_ENV=staging|production deploy/release.sh [branch]
 #
-# 用法：deploy/release.sh [ref]      默认 origin/tavern
+# 生产一般不直接用它，而是先发测试环境、看过之后再 `promote.sh <tag>`。
 
 set -euo pipefail
 
-SRC=${NEWAPI_SRC:-/opt/new-api-src}
-COMPOSE_DIR=${NEWAPI_COMPOSE_DIR:-/www/wwwroot/new-api}
-ENV_FILE=$COMPOSE_DIR/.env
-REF=${1:-origin/tavern}
-SMOKE_URL=${NEWAPI_SMOKE_URL:-http://127.0.0.1:3000/api/status}
+BRANCH=${1:-tavern}
+ENV=${NEWAPI_ENV:-production}
 
-cd "$SRC"
-git fetch -q --tags origin
-git reset -q --hard "$REF"
+case "$ENV" in
+  production) DEF_COMPOSE=/www/wwwroot/new-api; DEF_PORT=3000 ;;
+  staging) DEF_COMPOSE=/www/wwwroot/new-api-staging; DEF_PORT=3001 ;;
+  *) echo "未知环境：$ENV（只能是 production 或 staging）" >&2; exit 1 ;;
+esac
+
+COMPOSE_DIR=${NEWAPI_COMPOSE_DIR:-$DEF_COMPOSE}
+ENV_FILE=$COMPOSE_DIR/.env
+SMOKE_URL=${NEWAPI_SMOKE_URL:-http://127.0.0.1:$DEF_PORT/api/status}
+SELF_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 PREV=$(grep -E '^NEWAPI_TAG=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)
-# 首次发布时 .env 里还没有 NEWAPI_TAG，此时回滚目标就是 compose 的默认值 :tavern，
-# 也就是当前正在跑的那个镜像。
+# 首次部署时还没有 NEWAPI_TAG，回滚目标退回 compose 的默认值。
 [ -n "$PREV" ] || PREV=tavern
 
-# 改写或追加 NEWAPI_TAG，保持 .env 其余行原样（里面是 DSN / 密钥）。
 set_tag() {
   local tag=$1
   if grep -qE '^NEWAPI_TAG=' "$ENV_FILE"; then
@@ -33,8 +35,8 @@ set_tag() {
   fi
 }
 
-TAG=$(bash "$SRC/deploy/build.sh" HEAD | tail -n 1)
-echo "已构建 $TAG（上一个：${PREV:-无}）"
+TAG=$(bash "$SELF_DIR/build.sh" "$BRANCH" | tail -n 1)
+echo "[$ENV] 已构建 $TAG（上一个：$PREV）"
 
 set_tag "$TAG"
 cd "$COMPOSE_DIR"
@@ -50,13 +52,13 @@ smoke() {
 }
 
 if smoke; then
-  echo "OK：$TAG 已上线"
+  echo "[$ENV] OK：$TAG 已上线"
   exit 0
 fi
 
-echo "冒烟检查失败，输出最后 40 行日志：" >&2
+echo "[$ENV] 冒烟检查失败，输出最后 40 行日志：" >&2
 docker compose logs --tail 40 new-api >&2
-echo "回滚到 $PREV" >&2
+echo "[$ENV] 回滚到 $PREV" >&2
 set_tag "$PREV"
 docker compose up -d --force-recreate new-api
 exit 1

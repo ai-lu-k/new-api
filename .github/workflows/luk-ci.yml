@@ -1,0 +1,67 @@
+name: LUK CI
+
+# 上游的 ci.yml 只在 pull_request 上触发，push 到我们自己的分支不跑任何检查。
+# 这个文件补上那一块，并且刻意用独立文件名，避免与上游同文件产生 rebase 冲突。
+#
+# 只做检查，不做部署：部署由服务器上的 deploy/watch.sh 盯着分支自行完成 ——
+# 服务器跨境拉 git 又慢又不通，但拉源码包很快，所以构建留在服务器上更划算。
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: luk-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: 前端 · 类型检查 + 生产构建
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.0'
+
+      - name: 安装依赖
+        run: bun install --frozen-lockfile
+
+      - name: 类型检查
+        run: bun run typecheck
+
+      - name: 生产构建
+        run: bun run build
+        env:
+          DISABLE_ESLINT_PLUGIN: 'true'
+
+  go:
+    name: 后端 · 编译
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # main.go 用 //go:embed 内嵌 web/dist，缺了它 go build 直接失败。
+      # 这里只验编译：真正的产物在服务器上构建（那里有前端产物和缓存）。
+      - name: 造一个占位的 web/dist 供 go:embed 使用
+        run: |
+          mkdir -p web/dist
+          printf '<!doctype html><title>ci placeholder</title>\n' > web/dist/index.html
+
+      - name: 编译
+        run: go build ./...
+        env:
+          GOWORK: off
+          CGO_ENABLED: '0'
