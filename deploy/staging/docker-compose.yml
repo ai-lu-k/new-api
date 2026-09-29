@@ -1,0 +1,31 @@
+services:
+  new-api:
+    # 测试环境：同一个镜像、同一个 MySQL 实例，但独立 schema、独立密钥、独立端口。
+    # 只绑 127.0.0.1，经 SSH 隧道访问，不对外暴露。
+    image: luk/new-api:${NEWAPI_TAG:-tavern}
+    container_name: new-api-staging
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3001:3000"
+    volumes:
+      - ./data:/data
+    environment:
+      - TZ=Asia/Shanghai
+      - SQL_DSN=${SQL_DSN}
+      - SESSION_SECRET=${SESSION_SECRET}
+      - CRYPTO_SECRET=${CRYPTO_SECRET}
+      # 隧道访问的是 http://127.0.0.1:3001，Secure cookie 不会被浏览器发回，
+      # 开着的话登录会直接坏掉。也正因为关了它，SESSION_COOKIE_TRUSTED_URL
+      # 不能再设：new-api 认为这两个设置互斥，会拒绝启动。
+      - SESSION_COOKIE_SECURE=false
+      - CRITICAL_RATE_LIMIT=300
+      - CRITICAL_RATE_LIMIT_DURATION=1200
+    networks:
+      - new-api-net
+
+# 复用生产已有的网络，使 `mysql` 这个主机名解析到现有的 MySQL 容器，
+# 从而不必为测试环境再起一个数据库实例。
+networks:
+  new-api-net:
+    name: new-api_new-api-net
+    external: true
