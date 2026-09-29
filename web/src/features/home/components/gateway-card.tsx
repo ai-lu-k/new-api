@@ -36,11 +36,8 @@ export function GatewayCard({ logo, systemName }: GatewayCardProps) {
 
   return (
     <div className='glass-3 group border-border/50 dark:border-border/20 relative overflow-hidden rounded-4xl border p-10 shadow-2xl transition-all duration-500 sm:p-12 dark:shadow-[0_25px_80px_-15px_rgba(0,0,0,0.4)]'>
-      {/* Top gradient border effect */}
-      <Separator className='absolute top-0 left-[10%] h-[2px] w-[80%] bg-gradient-to-r from-transparent via-amber-500/80 to-transparent' />
-
-      {/* Ambient glow behind card */}
-      <div className='absolute -top-32 left-1/2 h-64 w-[120%] -translate-x-1/2 rounded-full bg-radial from-amber-500/30 to-amber-500/0 blur-3xl transition-all duration-500 group-hover:opacity-100 dark:opacity-80' />
+      {/* Top border accent */}
+      <Separator className='bg-warning/40 absolute top-0 left-[10%] h-[2px] w-[80%]' />
 
       <div className='relative'>
         {/* Gateway Header */}
@@ -50,9 +47,7 @@ export function GatewayCard({ logo, systemName }: GatewayCardProps) {
             alt={systemName}
             className='h-12 w-12 rounded-lg object-cover'
           />
-          <h3 className='from-foreground to-foreground/70 bg-gradient-to-r bg-clip-text text-2xl font-bold text-transparent'>
-            {systemName}
-          </h3>
+          <h3 className='text-foreground text-2xl font-medium'>{systemName}</h3>
         </div>
 
         {/* Features Grid */}
@@ -60,9 +55,9 @@ export function GatewayCard({ logo, systemName }: GatewayCardProps) {
           {features.map((feature, i) => (
             <div
               key={i}
-              className='glass-morphism group/item border-border/40 dark:border-border/20 relative overflow-hidden rounded-xl border px-4 py-3.5 text-center shadow-sm transition-all duration-300 hover:scale-[1.02] hover:border-amber-500/40 hover:shadow-md'
+              className='glass-morphism group/item border-border/40 dark:border-border/20 hover:border-warning/40 relative overflow-hidden rounded-xl border px-4 py-3.5 text-center shadow-sm transition-all duration-300 hover:scale-[1.02] hover:shadow-md'
             >
-              <div className='absolute inset-0 bg-gradient-to-br from-amber-500/0 to-amber-500/0 transition-all duration-300 group-hover/item:from-amber-500/10' />
+              <div className='group-hover/item:bg-warning/8 absolute inset-0 transition-colors duration-300' />
               <span className='text-foreground/90 group-hover/item:text-foreground relative text-sm font-medium'>
                 {feature}
               </span>

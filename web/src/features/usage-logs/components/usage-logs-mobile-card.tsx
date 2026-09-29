@@ -38,9 +38,9 @@ import { CommonLogMobileCard } from './common-log-mobile-card'
 
 const logTypeRowTint: Record<number, string> = {
   [LOG_TYPE_ENUM.ERROR]:
-    'bg-rose-50/40 dark:bg-rose-950/20 border-rose-200/50 dark:border-rose-900/30',
+    'bg-destructive/40 dark:bg-destructive/20 border-destructive/50 dark:border-destructive/30',
   [LOG_TYPE_ENUM.REFUND]:
-    'bg-blue-50/30 dark:bg-blue-950/15 border-blue-200/50 dark:border-blue-900/30',
+    'bg-info/30 dark:bg-info/15 border-info/50 dark:border-info/30',
 }
 
 interface UsageLogsMobileListProps<TData> {

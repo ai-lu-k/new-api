@@ -517,14 +517,19 @@ export const CodeBlock = ({
         bodyMaxHeight={bodyMaxHeight}
         bodyOverlay={
           <>
+            {/* Collapsed bodies clip at `bodyMaxHeight`; a flat scrim marks the
+             * continuation where the design system forbids a gradient fade. */}
             {isCodeCollapsed && (
-              <div className='from-muted/20 to-background pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-linear-to-b' />
+              <div
+                aria-hidden='true'
+                className='bg-background/70 pointer-events-none absolute inset-x-0 bottom-0 h-10'
+              />
             )}
-            {!showToolbar && children && (
+            {!showToolbar && children ? (
               <div className='absolute top-2 right-2 flex items-center gap-1'>
                 {children}
               </div>
-            )}
+            ) : null}
           </>
         }
         className={className}

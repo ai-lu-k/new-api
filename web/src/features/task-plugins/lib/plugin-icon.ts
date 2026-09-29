@@ -85,17 +85,18 @@ function deriveTextLabel(input: PluginIconInput): string {
 
 /**
  * Deterministic palette pick: the same plugin key always renders the same
- * color, and every pair meets WCAG AA contrast in both themes.
+ * color. Every entry pairs a semantic token with a 12% tint of itself, so the
+ * text/background contrast holds in both themes without a `dark:` pair.
  */
 export const TEXT_AVATAR_PALETTE = [
-  'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100',
-  'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-100',
-  'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-100',
-  'bg-violet-100 text-violet-800 dark:bg-violet-900 dark:text-violet-100',
-  'bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-100',
-  'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-100',
-  'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-100',
-  'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-100',
+  'bg-info/12 text-info',
+  'bg-success/12 text-success',
+  'bg-warning/12 text-warning',
+  'bg-destructive/12 text-destructive',
+  'bg-chart-3/12 text-chart-3',
+  'bg-chart-4/12 text-chart-4',
+  'bg-neutral/12 text-neutral',
+  'bg-chart-1/12 text-chart-1',
 ] as const
 
 export function textAvatarClass(colorSeed: string): string {

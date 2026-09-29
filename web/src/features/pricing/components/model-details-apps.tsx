@@ -48,11 +48,11 @@ function RankBadge(props: { rank: number }) {
   const isPodium = rank <= 3
   const palette =
     rank === 1
-      ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300'
+      ? 'bg-warning/10 text-warning dark:bg-warning/20 '
       : rank === 2
-        ? 'bg-slate-100 text-slate-700 dark:bg-slate-500/20 dark:text-slate-300'
+        ? 'bg-muted text-muted-foreground'
         : rank === 3
-          ? 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-300'
+          ? 'bg-warning/10 text-warning dark:bg-warning/20 '
           : 'bg-muted text-muted-foreground'
   return (
     <span
@@ -71,9 +71,9 @@ function GrowthChip(props: { value: number }) {
   const isUp = value > 0
   const isDown = value < 0
   const palette = isUp
-    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'
+    ? 'bg-success/10 text-success dark:bg-success/20 '
     : isDown
-      ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300'
+      ? 'bg-destructive/10 text-destructive dark:bg-destructive/20 '
       : 'bg-muted text-muted-foreground'
   const Icon = isUp ? ArrowUpRight : isDown ? ArrowDownRight : null
   const formatted = `${value > 0 ? '+' : ''}${value.toFixed(1)}%`

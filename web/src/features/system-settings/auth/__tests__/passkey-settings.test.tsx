@@ -234,7 +234,7 @@ describe('Passkey website guidance', () => {
       name: 'Primary Passkey domain',
     })
     expect(input).toHaveValue('')
-    await waitFor(() => expect(input).not.toHaveClass('border-amber-500'))
+    await waitFor(() => expect(input).not.toHaveClass('border-warning/50'))
     expect(input).toHaveAccessibleDescription(
       `${domainHint} The system currently uses: ${window.location.hostname}`
     )
@@ -293,7 +293,7 @@ describe('Passkey website guidance', () => {
       name: 'Primary Passkey domain',
     })
     expect(input).toHaveValue('example.com')
-    expect(input).not.toHaveClass('border-amber-500')
+    expect(input).not.toHaveClass('border-warning/50')
     expect(
       screen.getByRole('textbox', { name: 'Allowed Passkey websites' })
     ).toHaveValue('https://example.com\nhttps://api.example.com')
@@ -351,19 +351,19 @@ describe('Passkey website guidance', () => {
       const input = screen.getByRole('textbox', {
         name: 'Primary Passkey domain',
       })
-      expect(input).not.toHaveClass('border-amber-500')
+      expect(input).not.toHaveClass('border-warning/50')
       await user.clear(input)
       await user.type(input, domain)
       expect(input).toHaveClass(
-        'border-amber-500',
-        'focus-visible:border-amber-500'
+        'border-warning/50',
+        'focus-visible:border-warning/50'
       )
       expect(input).toHaveAccessibleDescription(
         `${domainHint} This domain does not match the current website. Passkeys may not work here.`
       )
       await user.clear(input)
       await user.type(input, window.location.hostname)
-      expect(input).not.toHaveClass('border-amber-500')
+      expect(input).not.toHaveClass('border-warning/50')
       expect(
         screen.queryByText(
           'This domain does not match the current website. Passkeys may not work here.'
@@ -376,7 +376,7 @@ describe('Passkey website guidance', () => {
     render(<Fixture rpId='example.com' />)
     expect(
       screen.getByRole('textbox', { name: 'Primary Passkey domain' })
-    ).not.toHaveClass('border-amber-500')
+    ).not.toHaveClass('border-warning/50')
     const websites = screen.getByRole('textbox', {
       name: 'Allowed Passkey websites',
     })

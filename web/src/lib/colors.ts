@@ -35,24 +35,27 @@ export type SemanticColor =
   | 'grey'
   | 'slate'
 
+/* Solid swatches for the semantic palette. Anchored on the same tokens as
+ * `avatarColorMap` so a name's swatch and its avatar tint agree, and so every
+ * entry resolves per theme instead of pinning one fixed shade. */
 export const colorToBgClass: Record<SemanticColor, string> = {
-  blue: 'bg-blue-500',
-  green: 'bg-green-500',
-  cyan: 'bg-cyan-500',
-  purple: 'bg-purple-500',
-  pink: 'bg-pink-500',
-  red: 'bg-red-500',
-  orange: 'bg-orange-500',
-  amber: 'bg-amber-500',
-  yellow: 'bg-yellow-500',
-  lime: 'bg-lime-500',
-  'light-green': 'bg-green-400',
-  teal: 'bg-teal-500',
-  'light-blue': 'bg-sky-400',
-  indigo: 'bg-indigo-500',
-  violet: 'bg-violet-500',
-  grey: 'bg-gray-400',
-  slate: 'bg-slate-500',
+  blue: 'bg-chart-1',
+  green: 'bg-success',
+  cyan: 'bg-chart-2',
+  purple: 'bg-chart-4',
+  pink: 'bg-chart-5',
+  red: 'bg-destructive',
+  orange: 'bg-warning',
+  amber: 'bg-warning',
+  yellow: 'bg-warning',
+  lime: 'bg-chart-3',
+  'light-green': 'bg-success',
+  teal: 'bg-chart-2',
+  'light-blue': 'bg-info',
+  indigo: 'bg-chart-1',
+  violet: 'bg-chart-4',
+  grey: 'bg-muted-foreground',
+  slate: 'bg-neutral',
 }
 
 export const avatarColorMap: Record<SemanticColor, string> = {
@@ -87,22 +90,24 @@ export function getBgColorClass(color?: string): string {
 }
 
 /**
- * Chart color palette - Modern gradient colors compatible with light/dark themes
- * Uses HSL format for better theme adaptation
+ * Categorical data palette for charts and multi-series figures. Twelve
+ * distinguishable values drawn from the brand's own hues — action blue, coral,
+ * enterprise green, navy and slate — rather than an unrelated rainbow, so
+ * data surfaces stay inside the same color world as the rest of the UI.
  */
 export const CHART_COLORS = [
-  'hsl(217, 91%, 60%)', // blue
-  'hsl(142, 76%, 36%)', // green
-  'hsl(38, 92%, 50%)', // amber
-  'hsl(258, 90%, 66%)', // violet
-  'hsl(330, 81%, 60%)', // pink
-  'hsl(189, 94%, 43%)', // cyan
-  'hsl(25, 95%, 53%)', // orange
-  'hsl(239, 84%, 67%)', // indigo
-  'hsl(173, 80%, 40%)', // teal
-  'hsl(271, 91%, 65%)', // purple
-  'hsl(199, 89%, 48%)', // sky
-  'hsl(280, 65%, 60%)', // fuchsia
+  '#1863dc', // action blue
+  '#0b3f8f', // deep blue
+  '#4c6ee6', // focus blue
+  '#8aa6ff', // pale blue
+  '#ff7759', // coral
+  '#c0492f', // deep coral
+  '#ffad9b', // soft coral
+  '#003c33', // enterprise green
+  '#17663f', // success green
+  '#071829', // navy
+  '#75758a', // slate
+  '#93939f', // muted slate
 ] as const
 
 /**

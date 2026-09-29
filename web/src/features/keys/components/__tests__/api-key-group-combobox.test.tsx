@@ -104,7 +104,7 @@ describe('API key group combobox Auto effect', () => {
     const trigger = getTrigger()
     expect(trigger).toHaveAttribute('aria-expanded', 'false')
     expect(trigger).toHaveAttribute('data-auto-group-effect', 'trigger')
-    expect(trigger).not.toHaveClass('bg-linear-to-r', 'overflow-hidden')
+    expect(trigger).not.toHaveClass('overflow-hidden')
     expect(trigger).toHaveClass('overflow-visible')
 
     const triggerFlowBorder = trigger.querySelector<HTMLElement>(
@@ -140,7 +140,6 @@ describe('API key group combobox Auto effect', () => {
     const autoOption = getCommandItem('Global automatic routing')
     expect(autoOption).toHaveAttribute('data-auto-group-effect', 'option')
     expect(autoOption).toHaveAttribute('aria-selected', 'true')
-    expect(autoOption).not.toHaveClass('bg-linear-to-r')
     expect(autoOption).toHaveClass('overflow-visible')
     expect(
       autoOption.querySelector('[data-auto-group-flow-border]')

@@ -66,7 +66,7 @@ function TaskDetailsCell(props: {
           {t('View details')}
         </button>
         {props.log.fail_reason ? (
-          <span className='max-w-full truncate text-xs text-red-600 dark:text-red-400'>
+          <span className='text-destructive max-w-full truncate text-xs'>
             {props.log.fail_reason}
           </span>
         ) : null}
