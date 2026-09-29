@@ -75,8 +75,8 @@ function ModelList(props: {
           key={row.model_name}
           className={
             compact
-              ? 'flex items-center gap-3 py-2'
-              : 'flex items-center gap-3 py-2.5'
+              ? 'rule-row flex items-center gap-3 py-3 last:border-b-0'
+              : 'rule-row flex items-center gap-3 py-3.5 last:border-b-0'
           }
         >
           <span className='text-muted-foreground/80 w-6 shrink-0 text-right font-mono text-xs tabular-nums'>
