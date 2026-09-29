@@ -79,6 +79,20 @@ export function useTopNavLinks(): TopNavLink[] {
     links.push({ title: t('Model Square'), href: '/pricing', requiresAuth })
   }
 
+  // Quick start guide
+  const guide = modules?.guide
+  if (guide && typeof guide === 'object' && guide.enabled) {
+    const requiresAuth = guide.requireAuth && !isAuthed
+    links.push({ title: '快速开始', href: '/guide', requiresAuth })
+  }
+
+  // Character Tavern
+  const tavern = modules?.tavern
+  if (tavern && typeof tavern === 'object' && tavern.enabled) {
+    const requiresAuth = tavern.requireAuth && !isAuthed
+    links.push({ title: t('Role Tavern'), href: '/tavern', requiresAuth })
+  }
+
   // Rankings
   const rankings = modules?.rankings
   if (rankings && typeof rankings === 'object' && rankings.enabled) {
