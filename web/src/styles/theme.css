@@ -19,7 +19,24 @@ For commercial licensing, please contact support@quantumnous.com
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --font-sans: 'Public Sans', sans-serif;
+  /* Body/UI face. Neither Inter nor the display face carries CJK glyphs, so
+   * each Latin stack ends in explicit CJK sans faces before the generic
+   * fallback; otherwise Chinese text falls to whatever the OS happens to pick. */
+  --font-sans:
+    'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    'Roboto', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei',
+    'Noto Sans SC', 'Source Han Sans SC', 'WenQuanYi Micro Hei', sans-serif;
+  /* Display voice for headlines, deliberately separate from the body face so
+   * size and tracking can carry the hierarchy instead of font weight. */
+  --font-display:
+    'Space Grotesk Variable', 'Space Grotesk', 'Inter Variable', 'Inter',
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC',
+    'Source Han Sans SC', sans-serif;
+  /* Technical labels, identifiers, keys and counters. */
+  --font-mono:
+    'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, SFMono-Regular,
+    Menlo, Consolas, 'Liberation Mono', monospace;
   /* Editorial serif token — the body face used by the `serif` font axis
    * and by presets that opt in (currently Anthropic). Lora carries only
    * Latin glyphs, so the stack walks through CJK serifs (Noto / Source Han
@@ -33,9 +50,8 @@ For commercial licensing, please contact support@quantumnous.com
     'Songti SC', 'STSong', 'STSongti-SC-Regular', 'PingFang SC', 'SimSun',
     'NSimSun', '宋体', 'FangSong', '仿宋', 'KaiTi', '楷体', Georgia,
     'Times New Roman', Cambria, 'Liberation Serif', serif;
-  --font-inter:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu',
-    'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  /* The selectable face in /settings/appearance; same face as the body. */
+  --font-inter: var(--font-sans);
   --font-manrope:
     -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu',
     'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
@@ -64,6 +80,16 @@ For commercial licensing, please contact support@quantumnous.com
   --color-info-foreground: var(--info-foreground);
   --color-neutral: var(--neutral);
   --color-neutral-foreground: var(--neutral-foreground);
+  --color-coral: var(--coral);
+  --color-coral-soft: var(--coral-soft);
+  --color-link: var(--link);
+  --color-enterprise: var(--enterprise);
+  --color-navy: var(--navy);
+  --color-stone: var(--stone);
+  --color-pale-green: var(--pale-green);
+  --color-pale-blue: var(--pale-blue);
+  --color-hairline: var(--hairline);
+  --color-card-border: var(--card-border);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -84,17 +110,21 @@ For commercial licensing, please contact support@quantumnous.com
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+  /* Explicit scale rather than multiples of one base: chips and utility
+   * controls sit at 4-8px, product cards at 16px, and the signature media
+   * radius is 22px. Buttons opt into a full pill at the component level. */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+  --radius-2xl: 30px;
+  --radius-3xl: 34px;
+  --radius-4xl: 40px;
 }
 
 :root {
-  --radius: 1rem;
+  --radius: 16px;
   --app-header-height: 3rem;
   /* Static build-channel fallback consumed when JS hasn't booted yet. */
   --app-rev: '2k6e8r7p';
@@ -103,51 +133,62 @@ For commercial licensing, please contact support@quantumnous.com
    * in theme-presets.css. Default mirrors `--font-sans` so behavior is
    * identical when no font preference is set. */
   --font-body: var(--font-sans);
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.692 0.141 243.716);
-  --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.95 0 0);
-  --secondary-foreground: oklch(0.42 0.16 250);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.49 0 0);
-  --accent: color-mix(in oklch, var(--primary) 12%, var(--background));
-  --accent-foreground: oklch(0.145 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --success: oklch(0.596 0.145 163.225);
-  --success-foreground: oklch(0.985 0 0);
-  --warning: oklch(0.681 0.162 75.834);
-  --warning-foreground: oklch(0.145 0 0);
-  --info: oklch(0.588 0.158 241.966);
-  --info-foreground: oklch(0.985 0 0);
-  --neutral: oklch(0.708 0 0);
-  --neutral-foreground: oklch(0.145 0 0);
-  --border: oklch(0.93 0 0);
-  --input: oklch(0.93 0 0);
-  --ring: oklch(0.708 0.16 249.003);
-  --chart-1: oklch(0.72 0.18 250);
-  --chart-2: oklch(0.65 0.15 200);
-  --chart-3: oklch(0.7 0.12 280);
-  --chart-4: oklch(0.68 0.19 325);
-  --chart-5: oklch(0.68 0.16 155);
-  --overview-accent-1: oklch(0.72 0.18 250);
-  --overview-accent-2: oklch(0.65 0.15 200);
-  --overview-accent-3: oklch(0.7 0.12 280);
-  --sidebar: color-mix(in oklch, var(--foreground) 0.5%, var(--background));
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.64 0.197 253.892);
-  --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: color-mix(in oklch, var(--primary) 12%, var(--background));
-  --sidebar-accent-foreground: oklch(0.579 0.196 255.909);
-  --sidebar-border: oklch(0.93 0 0);
-  --sidebar-ring: oklch(0.58 0.2 250);
-  --skeleton-base: oklch(0.97 0 0);
-  --skeleton-highlight: oklch(0.985 0 0);
+  /* Canvas White page, Ink text, Near-Black actions, Soft Stone surfaces. */
+  --background: #ffffff;
+  --foreground: #212121;
+  --card: #ffffff;
+  --card-foreground: #212121;
+  --popover: #ffffff;
+  --popover-foreground: #212121;
+  --primary: #17171c;
+  --primary-foreground: #ffffff;
+  --secondary: #eeece7;
+  --secondary-foreground: #212121;
+  --muted: #f5f3ef;
+  --muted-foreground: #93939f;
+  --accent: #f0eeea;
+  --accent-foreground: #212121;
+  --destructive: #b30000;
+  --destructive-foreground: #ffffff;
+  --success: #17663f;
+  --success-foreground: #ffffff;
+  --warning: #8a5a00;
+  --warning-foreground: #ffffff;
+  --info: #1863dc;
+  --info-foreground: #ffffff;
+  --neutral: #75758a;
+  --neutral-foreground: #ffffff;
+  --border: #e5e7eb;
+  --input: #d9d9dd;
+  --ring: #4c6ee6;
+  --hairline: #d9d9dd;
+  --card-border: #f2f2f2;
+  --coral: #ff7759;
+  --coral-soft: #ffad9b;
+  --link: #1863dc;
+  --enterprise: #003c33;
+  --navy: #071829;
+  --stone: #eeece7;
+  --pale-green: #edfce9;
+  --pale-blue: #f1f5ff;
+  --chart-1: #1863dc;
+  --chart-2: #ff7759;
+  --chart-3: #003c33;
+  --chart-4: #75758a;
+  --chart-5: #ffad9b;
+  --overview-accent-1: #1863dc;
+  --overview-accent-2: #003c33;
+  --overview-accent-3: #ff7759;
+  --sidebar: #faf9f6;
+  --sidebar-foreground: #212121;
+  --sidebar-primary: #17171c;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f0eeea;
+  --sidebar-accent-foreground: #17171c;
+  --sidebar-border: #e5e7eb;
+  --sidebar-ring: #4c6ee6;
+  --skeleton-base: #f2f2f2;
+  --skeleton-highlight: #f7f7f7;
   --table-row: var(--background);
   --table-header: color-mix(
     in oklch,
@@ -179,49 +220,63 @@ For commercial licensing, please contact support@quantumnous.com
 }
 
 .dark {
-  /* OpenAI-like dark mode with a crisp charcoal canvas. */
-  --background: oklch(0.235 0 0);
-  --foreground: oklch(0.965 0 0);
-  --card: oklch(0.285 0 0);
-  --card-foreground: oklch(0.965 0 0);
-  --popover: oklch(0.305 0 0);
-  --popover-foreground: oklch(0.965 0 0);
-  --primary: oklch(0.54 0.142 248.516);
-  --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.335 0 0);
-  --secondary-foreground: oklch(0.9 0.05 250);
-  --muted: oklch(0.305 0 0);
-  --muted-foreground: oklch(0.78 0 0);
-  --accent: color-mix(in oklch, var(--primary) 20%, var(--background));
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.985 0 0);
-  --success: oklch(0.696 0.17 162.48);
-  --success-foreground: oklch(0.145 0 0);
-  --warning: oklch(0.769 0.188 70.08);
-  --warning-foreground: oklch(0.145 0 0);
-  --info: oklch(0.613 0.14 239.919);
-  --info-foreground: oklch(0.145 0 0);
-  --neutral: oklch(0.76 0 0);
-  --neutral-foreground: oklch(0.155 0 0);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 17%);
-  --ring: oklch(0.554 0.148 250.726);
-  --chart-1: oklch(0.76 0.14 250);
-  --chart-2: oklch(0.76 0.13 200);
-  --chart-3: oklch(0.76 0.13 285);
-  --chart-4: oklch(0.75 0.16 325);
-  --chart-5: oklch(0.76 0.14 155);
-  --sidebar: oklch(0.225 0 0);
-  --sidebar-foreground: oklch(0.95 0 0);
-  --sidebar-primary: oklch(0.588 0.123 246.488);
-  --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: color-mix(in oklch, var(--primary) 20%, var(--background));
-  --sidebar-accent-foreground: oklch(0.9 0.05 250);
-  --sidebar-border: oklch(1 0 0 / 11%);
-  --sidebar-ring: oklch(0.7 0.17 250);
-  --skeleton-base: oklch(0.335 0 0);
-  --skeleton-highlight: oklch(0.44 0 0);
+  /* Near-black canvas with white pills. Depth comes from surface steps and
+   * translucent rules, never from shadow. */
+  --background: #111114;
+  --foreground: #f2f1ee;
+  --card: #17171c;
+  --card-foreground: #f2f1ee;
+  --popover: #1c1c22;
+  --popover-foreground: #f2f1ee;
+  --primary: #ffffff;
+  --primary-foreground: #17171c;
+  --secondary: #24242b;
+  --secondary-foreground: #f2f1ee;
+  --muted: #1f1f25;
+  --muted-foreground: #a3a3ae;
+  --accent: #26262e;
+  --accent-foreground: #f2f1ee;
+  --destructive: #ff6b6b;
+  --destructive-foreground: #17171c;
+  --success: #4ec38a;
+  --success-foreground: #17171c;
+  --warning: #e0a33e;
+  --warning-foreground: #17171c;
+  --info: #6f9bff;
+  --info-foreground: #17171c;
+  --neutral: #a3a3ae;
+  --neutral-foreground: #17171c;
+  --border: rgb(255 255 255 / 12%);
+  --input: rgb(255 255 255 / 18%);
+  --ring: #7b96f0;
+  --hairline: rgb(255 255 255 / 16%);
+  --card-border: rgb(255 255 255 / 9%);
+  --coral: #ff8f75;
+  --coral-soft: #ffad9b;
+  --link: #8aa6ff;
+  --enterprise: #003c33;
+  --navy: #071829;
+  --stone: #1f1f25;
+  --pale-green: #0d1f1a;
+  --pale-blue: #0e1626;
+  --chart-1: #6f9bff;
+  --chart-2: #ff8f75;
+  --chart-3: #4ec38a;
+  --chart-4: #a3a3ae;
+  --chart-5: #ffad9b;
+  --overview-accent-1: #6f9bff;
+  --overview-accent-2: #4ec38a;
+  --overview-accent-3: #ff8f75;
+  --sidebar: #0d0d10;
+  --sidebar-foreground: #f2f1ee;
+  --sidebar-primary: #ffffff;
+  --sidebar-primary-foreground: #17171c;
+  --sidebar-accent: #26262e;
+  --sidebar-accent-foreground: #f2f1ee;
+  --sidebar-border: rgb(255 255 255 / 12%);
+  --sidebar-ring: #7b96f0;
+  --skeleton-base: #24242b;
+  --skeleton-highlight: #2e2e37;
   --table-row: var(--background);
   --table-header: color-mix(in oklch, var(--foreground) 6%, var(--background));
   --table-header-hover: color-mix(

@@ -92,7 +92,9 @@ export type ContentLayout = 'full' | 'centered'
  *   presets resolve to serif; other named color presets fall back to
  *   sans unless they list a different choice. Mirrors how
  *   `radius: 'default'` defers to a per-preset hint.
- * - `sans` — humanist sans (Public Sans), the project's UI fallback.
+ * - `sans` — grotesk UI face (Inter + CJK sans fallbacks), the project's
+ *   default body typography. Headlines stay on the display face (Space
+ *   Grotesk) regardless of this axis.
  * - `serif` — editorial serif (Lora + CJK fallbacks), the project's
  *   "soul" typography. Inherits across the whole UI; monospace contexts
  *   keep their own family via Tailwind preflight and `.font-mono`.

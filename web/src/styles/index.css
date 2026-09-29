@@ -19,7 +19,12 @@ For commercial licensing, please contact support@quantumnous.com
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
-@import '@fontsource-variable/public-sans';
+/* Body/UI face (Inter), headline face (Space Grotesk) and the technical mono
+ * face. All three are self-hosted through @fontsource, so the image carries
+ * the font files and no request leaves for a font CDN. */
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/space-grotesk';
+@import '@fontsource-variable/jetbrains-mono';
 /* Editorial serif (Lora) backing the `serif` font axis and the Anthropic
  * preset's default typography. See `--font-serif` in theme.css for the
  * full Latin + CJK fallback stack and `theme-presets.css` for the cascade
@@ -117,6 +122,23 @@ For commercial licensing, please contact support@quantumnous.com
     font-family: var(--font-body);
   }
 
+  /* Headlines use the display face with tight leading and negative tracking,
+   * so hierarchy comes from size and spacing rather than weight. Sizes stay
+   * with the utilities; weight is deliberately left to the call site so
+   * compact surfaces can still ask for `font-medium`. */
+  :is(h1, h2, h3, h4, h5, h6),
+  :is(
+    [data-slot='card-title'],
+    [data-slot='sheet-title'],
+    [data-slot='dialog-title'],
+    [data-slot='alert-dialog-title'],
+    [data-slot='drawer-title']
+  ) {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+  }
+
   /* Keep sticky headers stable while primitives lock body scrolling. */
   body[data-scroll-locked] {
     overflow: unset !important;
@@ -186,6 +208,24 @@ For commercial licensing, please contact support@quantumnous.com
 @utility container {
   margin-inline: auto;
   padding-inline: 2rem;
+}
+
+/* Oversized headline voice for hero and section declarations. */
+@utility display-type {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1.02;
+}
+
+/* Uppercase technical marker: category labels, system status, eyebrow copy. */
+@utility mono-label {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+  text-transform: uppercase;
 }
 
 @utility max-w-container {
