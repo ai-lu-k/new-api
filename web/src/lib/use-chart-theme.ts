@@ -21,84 +21,43 @@ import { useEffect, useRef, useState } from 'react'
 import { useTheme } from '@/context/theme-provider'
 
 /**
- * Categorical palette for chart series. VChart's built-in themes ship their own
- * rainbow, which put the most saturated colour on the page outside the brand;
- * re-anchoring `dataScheme` here keeps every chart in the design system's own
- * hues. Ordered so the first series is Action Blue and adjacent series stay
- * distinguishable in both themes.
+ * Used until the tokens have been read, and if they are missing entirely.
+ * Kept in step with the `--chart-*` values in `styles/theme.css`.
  */
-const BRAND_CHART_PALETTE = [
-  '#5e6ad2', // accent indigo
-  '#26b5ce', // cyan
-  '#4cb782', // green
-  '#b78bfa', // violet
-  '#f2994a', // amber
-  '#8a8f98', // muted slate
-  '#7c85e0', // light indigo
-  '#3fd0e0', // bright cyan
-  '#5ecf94', // light green
-  '#c9a2fb', // light violet
-  '#f2a65a', // light amber
-  '#62666d', // dim slate
+const FALLBACK_CHART_COLORS = [
+  '#5e6ad2',
+  '#26b5ce',
+  '#4cb782',
+  '#b78bfa',
+  '#f2994a',
 ]
 
-const BRAND_THEME_PREFIX = 'new-api-brand'
-
-/** The subset of VChart's colour scheme this module reads and rewrites. */
-type ChartColorScheme = Record<string, unknown> & { dataScheme?: unknown }
-
 /**
- * VChart types `colorScheme.default` as a struct, an array of structs, or a
- * progressive-scheme case, so the series palette only becomes reachable after
- * a structural check. Returns null for any shape that does not carry a
- * `dataScheme`, which keeps an unrecognised theme on the stock palette.
+ * Reads the categorical series palette from the `--chart-*` tokens.
+ *
+ * Charts take their colours from the resolved spec rather than from a
+ * registered VChart theme. Registering one merges the supplied palette onto a
+ * built-in theme whose `dataScheme` is a progressive array, and the
+ * element-wise merge does not preserve the palette, so the chart silently kept
+ * the VChart default. Reading the tokens also keeps the charts tracking the
+ * rest of the design system automatically.
  */
-function readColorScheme(scheme: unknown): ChartColorScheme | null {
-  const resolved = Array.isArray(scheme) ? scheme[0] : scheme
-  if (typeof resolved !== 'object' || resolved === null) return null
-  if (!('dataScheme' in resolved)) return null
-  return resolved as ChartColorScheme
+function readChartColors(): string[] {
+  if (typeof document === 'undefined') return FALLBACK_CHART_COLORS
+  const style = getComputedStyle(document.documentElement)
+  const colors = [1, 2, 3, 4, 5]
+    .map((step) => style.getPropertyValue(`--chart-${step}`).trim())
+    .filter(Boolean)
+  return colors.length > 0 ? colors : FALLBACK_CHART_COLORS
 }
 
 /**
- * Register a brand-palette variant of a VChart base theme and return its name.
- * Falls back to the base theme when the variant cannot be derived, so a VChart
- * theme-shape change degrades to the stock palette instead of an unstyled chart.
- */
-function brandThemeName(
-  ThemeManager: (typeof import('@visactor/vchart'))['ThemeManager'],
-  base: 'light' | 'dark'
-): string {
-  const name = `${BRAND_THEME_PREFIX}-${base}`
-  if (ThemeManager.themeExist(name)) {
-    return name
-  }
-  if (!ThemeManager.themeExist(base)) {
-    return base
-  }
-
-  const theme = ThemeManager.getTheme(base)
-  const resolved = readColorScheme(theme?.colorScheme?.default)
-  if (!resolved) {
-    return base
-  }
-
-  // `readColorScheme` already narrowed the shape, so the reconstructed theme is
-  // cast once here rather than threading VChart's scheme union through spreads.
-  ThemeManager.registerTheme(name, {
-    ...theme,
-    colorScheme: {
-      ...theme.colorScheme,
-      default: { ...resolved, dataScheme: BRAND_CHART_PALETTE },
-    },
-  } as Parameters<typeof ThemeManager.registerTheme>[1])
-  return name
-}
-
-/**
- * Lazy-load VChart's `ThemeManager` and switch its theme to follow the
- * resolved app theme (light / dark). Returns flags consumers can use to
- * defer chart rendering until the theme is ready.
+ * Lazy-load VChart's `ThemeManager`, switch its theme to follow the resolved
+ * app theme (light / dark), and resolve the series palette for that theme.
+ *
+ * `themeReady` gates rendering: a chart created before the theme is applied
+ * keeps the default chart chrome. Pass `chartColors` as the spec's top-level
+ * `color` so the series carry the design system's hues.
  */
 let themeManagerPromise: Promise<
   (typeof import('@visactor/vchart'))['ThemeManager']
@@ -107,6 +66,9 @@ let themeManagerPromise: Promise<
 export function useChartTheme() {
   const { resolvedTheme } = useTheme()
   const [themeReady, setThemeReady] = useState(false)
+  const [chartColors, setChartColors] = useState<string[]>(
+    FALLBACK_CHART_COLORS
+  )
   const themeRef = useRef<
     (typeof import('@visactor/vchart'))['ThemeManager'] | null
   >(null)
@@ -123,8 +85,8 @@ export function useChartTheme() {
       const ThemeManager = await themeManagerPromise
       if (cancelled) return
       themeRef.current = ThemeManager
-      const base = resolvedTheme === 'dark' ? 'dark' : 'light'
-      ThemeManager.setCurrentTheme(brandThemeName(ThemeManager, base))
+      ThemeManager.setCurrentTheme(resolvedTheme === 'dark' ? 'dark' : 'light')
+      setChartColors(readChartColors())
       setThemeReady(true)
     }
     updateTheme()
@@ -133,5 +95,5 @@ export function useChartTheme() {
     }
   }, [resolvedTheme])
 
-  return { resolvedTheme, themeReady }
+  return { resolvedTheme, themeReady, chartColors }
 }

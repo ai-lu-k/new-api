@@ -50,7 +50,7 @@ type ModelsSectionProps = {
  */
 export function ModelsSection(props: ModelsSectionProps) {
   const { t } = useTranslation()
-  const { resolvedTheme, themeReady } = useChartTheme()
+  const { resolvedTheme, themeReady, chartColors } = useChartTheme()
   const chartTextColor =
     resolvedTheme === 'dark'
       ? 'rgba(255, 255, 255, 0.68)'
@@ -81,6 +81,7 @@ export function ModelsSection(props: ModelsSectionProps) {
     if (orderedPoints.length === 0) return null
     return {
       type: 'bar' as const,
+      color: chartColors,
       data: [{ id: 'models-history', values: orderedPoints }],
       xField: 'label',
       yField: 'tokens',
@@ -161,7 +162,7 @@ export function ModelsSection(props: ModelsSectionProps) {
       },
       animationAppear: { duration: 500 },
     }
-  }, [chartGridColor, chartTextColor, orderedPoints, t])
+  }, [chartColors, chartGridColor, chartTextColor, orderedPoints, t])
 
   return (
     <section className='bg-card overflow-hidden rounded-lg border'>
