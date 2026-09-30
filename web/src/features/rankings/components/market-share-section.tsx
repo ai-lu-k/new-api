@@ -61,19 +61,19 @@ const VENDOR_COLOURS: Record<string, string> = {
  * are drawn from the brand hues rather than a generic rainbow so an
  * unrecognised vendor does not pull the chart off-palette. */
 const FALLBACK_PALETTE = [
-  '#1863dc', // action blue
-  '#ff7759', // coral
-  '#003c33', // enterprise green
-  '#4c6ee6', // focus blue
-  '#ffad9b', // soft coral
-  '#17663f', // success green
-  '#071829', // navy
-  '#75758a', // slate
-  '#8aa6ff', // pale blue
-  '#c0492f', // deep coral
-  '#93939f', // muted slate
-  '#0b3f8f', // deep blue
-  '#94a3b8', // matches the `Others` bucket
+  '#5e6ad2', // accent indigo
+  '#26b5ce', // cyan
+  '#4cb782', // green
+  '#b78bfa', // violet
+  '#f2994a', // amber
+  '#8a8f98', // muted slate
+  '#7c85e0', // light indigo
+  '#3fd0e0', // bright cyan
+  '#5ecf94', // light green
+  '#c9a2fb', // light violet
+  '#f2a65a', // light amber
+  '#62666d', // dim slate
+  '#6b6f76', // everything else
 ]
 
 function buildVendorColourMap(names: string[]): Record<string, string> {

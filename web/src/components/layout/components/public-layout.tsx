@@ -16,6 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { ShaderBackdrop } from '@/components/shader-backdrop'
+import { useTheme } from '@/context/theme-provider'
+
 import type { TopNavLink } from '../types'
 import { Footer } from './footer'
 import { PublicHeader, type PublicHeaderProps } from './public-header'
@@ -24,6 +27,10 @@ type PublicLayoutProps = {
   children: React.ReactNode
   showMainContainer?: boolean
   showFooter?: boolean
+  /** Ambient shader glow behind the page. Default on for public surfaces. */
+  showShader?: boolean
+  /** 0..1, forwarded to the backdrop. Lower it on dense data pages. */
+  shaderIntensity?: number
   navContent?: React.ReactNode
   headerProps?: Omit<PublicHeaderProps, 'navContent'>
   navLinks?: TopNavLink[]
@@ -35,28 +42,46 @@ type PublicLayoutProps = {
 }
 
 export function PublicLayout(props: PublicLayoutProps) {
-  return (
-    <div className='bg-background text-foreground relative flex min-h-svh flex-col overflow-x-clip'>
-      <PublicHeader
-        navContent={props.navContent}
-        navLinks={props.navLinks}
-        showThemeSwitch={props.showThemeSwitch}
-        showAuthButtons={props.showAuthButtons}
-        showNotifications={props.showNotifications}
-        logo={props.logo}
-        siteName={props.siteName}
-        {...props.headerProps}
-      />
+  const { resolvedTheme } = useTheme()
+  /* The glow is an effect on a dark canvas. On a white one it would only
+   * darken the page, so light mode skips it entirely — including the render
+   * loop, which is the expensive part. */
+  const showShader = props.showShader !== false && resolvedTheme === 'dark'
 
-      {props.showMainContainer !== false ? (
-        <main className='container flex-1 px-4 py-6 pt-20 md:px-4'>
-          {props.children}
-        </main>
-      ) : (
-        props.children
+  return (
+    /* The shell deliberately paints no background of its own: `body` carries
+     * the canvas colour and the backdrop sits in the gap between it and the
+     * content column, so the glow shows through translucent surfaces. */
+    <div className='text-foreground relative flex min-h-svh flex-col overflow-x-clip'>
+      {showShader && (
+        <ShaderBackdrop
+          className='z-0'
+          intensity={props.shaderIntensity ?? 1}
+        />
       )}
 
-      {props.showFooter !== false && <Footer className='mt-auto' />}
+      <div className='relative z-10 flex min-h-svh flex-col'>
+        <PublicHeader
+          navContent={props.navContent}
+          navLinks={props.navLinks}
+          showThemeSwitch={props.showThemeSwitch}
+          showAuthButtons={props.showAuthButtons}
+          showNotifications={props.showNotifications}
+          logo={props.logo}
+          siteName={props.siteName}
+          {...props.headerProps}
+        />
+
+        {props.showMainContainer !== false ? (
+          <main className='container flex-1 px-4 py-6 pt-20 md:px-4'>
+            {props.children}
+          </main>
+        ) : (
+          props.children
+        )}
+
+        {props.showFooter !== false && <Footer className='mt-auto' />}
+      </div>
     </div>
   )
 }

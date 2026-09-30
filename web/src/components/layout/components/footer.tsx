@@ -230,7 +230,7 @@ export function Footer(props: FooterProps) {
           props.className
         )}
       >
-        <div className='mx-auto w-full max-w-container-lg px-6 py-10'>
+        <div className='max-w-container-lg mx-auto w-full px-6 py-10'>
           <div
             className='custom-footer text-footer-foreground/60 min-w-0 text-sm [&_a]:underline [&_a]:underline-offset-4'
             dangerouslySetInnerHTML={{ __html: footerHtml }}
@@ -251,9 +251,9 @@ export function Footer(props: FooterProps) {
         props.className
       )}
     >
-      <div className='mx-auto max-w-container-lg px-6 py-16 md:py-20'>
-        {/* Brand statement. The coral marker is the footer's only warm accent;
-         * the headline and every rule beneath it stay white on near-black. */}
+      <div className='max-w-container-lg mx-auto px-6 py-16 md:py-20'>
+        {/* Brand statement. The footer stays monochrome on the dark band; the
+         * accent colour is spent on content, not on chrome. */}
         <div className='max-w-2xl'>
           <div className='flex items-center gap-2.5'>
             <img
@@ -261,7 +261,9 @@ export function Footer(props: FooterProps) {
               alt={displayName}
               className='size-6 rounded-sm object-contain'
             />
-            <p className='mono-label text-coral'>{displayName}</p>
+            <p className='mono-label text-footer-foreground/50'>
+              {displayName}
+            </p>
           </div>
           <h2 className='text-card-heading text-footer-foreground mt-5'>
             {t('Powerful API Management Platform')}

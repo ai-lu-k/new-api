@@ -112,14 +112,14 @@ export function PublicHeader(props: PublicHeaderProps) {
   let authContent = (
     <Button
       size='sm'
-      className='h-8 rounded-full px-4 text-xs font-medium'
+      className='h-8 rounded-sm px-3.5 text-xs font-medium'
       render={<Link to='/sign-in' />}
     >
       {t('Sign in')}
     </Button>
   )
   if (isAuthenticated) authContent = <ProfileDropdown />
-  if (loading) authContent = <Skeleton className='h-8 w-20 rounded-full' />
+  if (loading) authContent = <Skeleton className='h-8 w-20 rounded-sm' />
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20)
@@ -199,7 +199,7 @@ export function PublicHeader(props: PublicHeaderProps) {
   return (
     <>
       <header className='fixed inset-x-0 top-0 z-50'>
-        <div className='mx-auto w-full max-w-container-lg px-4 md:px-6'>
+        <div className='max-w-container-lg mx-auto w-full px-4 md:px-6'>
           <nav
             className={cn(
               'grid h-16 grid-cols-[1fr_auto] items-center gap-4 border-b transition-colors duration-300 lg:grid-cols-[1fr_auto_1fr]',
@@ -228,7 +228,7 @@ export function PublicHeader(props: PublicHeaderProps) {
                   )}
                 </span>
               </Link>
-                  </div>
+            </div>
 
             {/* Zone 2 — menu, centred by the two 1fr side columns */}
             <div className='hidden min-w-0 items-center gap-0.5 lg:flex'>
@@ -246,7 +246,7 @@ export function PublicHeader(props: PublicHeaderProps) {
                       tabIndex={link.disabled ? -1 : undefined}
                       onClick={(event) => handleNavLinkClick(event, link)}
                       className={cn(
-                        'text-muted-foreground hover:text-foreground min-w-0 truncate rounded-lg px-3 py-1.5 text-sm font-medium transition-colors duration-200',
+                        'text-muted-foreground hover:text-foreground min-w-0 truncate rounded-sm px-3 py-1.5 text-sm font-medium transition-colors duration-200',
                         link.disabled && 'pointer-events-none opacity-50'
                       )}
                     >
@@ -262,7 +262,7 @@ export function PublicHeader(props: PublicHeaderProps) {
                     disabled={link.disabled}
                     onClick={(event) => handleNavLinkClick(event, link)}
                     className={cn(
-                      'min-w-0 truncate rounded-lg px-3 py-1.5 text-sm font-medium transition-colors duration-200',
+                      'min-w-0 truncate rounded-sm px-3 py-1.5 text-sm font-medium transition-colors duration-200',
                       isActive
                         ? 'text-foreground'
                         : 'text-muted-foreground hover:text-foreground',
@@ -273,7 +273,6 @@ export function PublicHeader(props: PublicHeaderProps) {
                   </Link>
                 )
               })}
-
             </div>
 
             {/* Zone 3 — utilities and the single primary action, anchored right */}

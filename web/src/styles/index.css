@@ -19,11 +19,10 @@ For commercial licensing, please contact support@quantumnous.com
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
-/* Body/UI face (Inter), headline face (Space Grotesk) and the technical mono
- * face. All three are self-hosted through @fontsource, so the image carries
- * the font files and no request leaves for a font CDN. */
+/* Body/UI and headline face (Inter) plus the technical mono face. Both are
+ * self-hosted through @fontsource, so the image carries the font files and no
+ * request leaves for a font CDN. */
 @import '@fontsource-variable/inter';
-@import '@fontsource-variable/space-grotesk';
 @import '@fontsource-variable/jetbrains-mono';
 /* Editorial serif (Lora) backing the `serif` font axis and the Anthropic
  * preset's default typography. See `--font-serif` in theme.css for the
@@ -122,10 +121,9 @@ For commercial licensing, please contact support@quantumnous.com
     font-family: var(--font-body);
   }
 
-  /* Headlines use the display face with tight leading and negative tracking,
-   * so hierarchy comes from size and spacing rather than weight. Sizes stay
-   * with the utilities; weight is deliberately left to the call site so
-   * compact surfaces can still ask for `font-medium`. */
+  /* Headlines run in the body face at medium weight with tight tracking, so
+   * hierarchy comes from size, weight and colour contrast. The weight set here
+   * is a default the call site can still override with a `font-*` utility. */
   :is(h1, h2, h3, h4, h5, h6),
   :is(
     [data-slot='card-title'],
@@ -135,8 +133,9 @@ For commercial licensing, please contact support@quantumnous.com
     [data-slot='drawer-title']
   ) {
     font-family: var(--font-display);
+    font-weight: 500;
     letter-spacing: -0.02em;
-    line-height: 1.15;
+    line-height: 1.2;
   }
 
   /* Keep sticky headers stable while primitives lock body scrolling. */
@@ -210,45 +209,57 @@ For commercial licensing, please contact support@quantumnous.com
   padding-inline: 2rem;
 }
 
-/* Oversized headline voice for hero and section declarations. Pair with a
- * `text-hero` / `text-display` / `text-display-lg` step, which carry the size,
- * 1.0 leading and -0.02em tracking. */
+/* Headline voice for hero and section declarations. Pair with a `text-hero` /
+ * `text-display` step, which carry the size, leading and tracking. */
 @utility display-type {
   font-family: var(--font-display);
-  font-weight: 400;
+  font-weight: 500;
   letter-spacing: -0.02em;
-  line-height: 1;
+  line-height: 1.1;
+}
+
+/* Large display type carries a vertical white-to-grey ramp so the glyphs read
+ * as lit rather than flat. Scoped to display sizes on purpose: at body sizes
+ * the ramp trades contrast for a effect nobody asked for. */
+@utility text-ramp {
+  background-image: linear-gradient(
+    180deg,
+    var(--foreground) 0%,
+    color-mix(in oklab, var(--foreground) 58%, var(--background)) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 /* Uppercase technical marker: category labels, system status, eyebrow copy. */
 @utility mono-label {
   font-family: var(--font-mono);
-  font-size: 0.875rem;
-  font-weight: 400;
-  letter-spacing: 0.02em;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
   line-height: 1.4;
   text-transform: uppercase;
 }
 
-/* Denser variant of `mono-label` for table headers, chip rows and footer
- * microcopy, where a 14px uppercase marker would overpower the row. */
+/* Denser variant of `mono-label` for table headers and chip rows, where a
+ * letterspaced uppercase marker would overpower the row. */
 @utility micro-label {
   font-family: var(--font-mono);
-  font-size: 0.75rem;
-  font-weight: 400;
-  letter-spacing: 0.02em;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
   line-height: 1.4;
   text-transform: uppercase;
 }
 
-/* Rule-separated publication row (research-table idiom): tall, white, and
- * driven by hairlines rather than card boxing. */
+/* Hairline-separated list row. */
 @utility rule-row {
   border-bottom: 1px solid var(--hairline);
   transition: background-color 0.15s ease;
 
   &:hover {
-    background: color-mix(in oklab, var(--foreground) 3%, transparent);
+    background: color-mix(in oklab, var(--foreground) 4%, transparent);
   }
 }
 
