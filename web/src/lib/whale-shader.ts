@@ -28,7 +28,7 @@ export const STATIC_FRAME_TIME_SECONDS = 30
  * Seconds of accumulated shader time after which the intro is over and the
  * distant whale only drifts.
  */
-export const INTRO_END_SECONDS = 5
+export const INTRO_END_SECONDS = 8.5
 
 /**
  * Deep-sea fragment shader: the light field from the original backdrop, plus
@@ -66,6 +66,11 @@ uniform sampler2D uWhale;
 uniform vec2 uWhaleEye;
 
 // Intro timings, in accumulated shader seconds.
+// The intro is authored against a shorter clock and then stretched, because
+// the app mounts this backdrop before the landing content resolves: at the
+// authored pace the eye finished behind the loading state and most visitors
+// never saw it.
+const float INTRO_STRETCH = 1.7;
 const float EYE_HOLD_END = 2.2;
 const float SWIM_END = 5.0;
 
@@ -158,6 +163,8 @@ void main() {
   // Height-relative coordinates keep the cells round on any aspect ratio.
   vec2 p = (gl_FragCoord.xy - 0.5 * uResolution) / uResolution.y;
   float t = uTime;
+  // Intro-relative clock; the resting drift keeps real time.
+  float it = t / INTRO_STRETCH;
 
   // Two low-octave fields displace the sampling position, turning the
   // lattice-aligned fBm into slow, curling sheets rather than blobs.
@@ -206,9 +213,9 @@ void main() {
 
   // Whale placement. Ease-out, so the turn never snaps, and the resting path is
   // evaluated at zero age during the intro so the two agree at the handover.
-  float swimK = clamp((t - EYE_HOLD_END) / (SWIM_END - EYE_HOLD_END), 0.0, 1.0);
+  float swimK = clamp((it - EYE_HOLD_END) / (SWIM_END - EYE_HOLD_END), 0.0, 1.0);
   float swim = 1.0 - pow(1.0 - swimK, 3.0);
-  float restAge = max(t - SWIM_END, 0.0);
+  float restAge = max(t - SWIM_END * INTRO_STRETCH, 0.0);
   // Resting traverse: in from the left, across the light, out to the right,
   // both ends clear of the frame so the wrap is never visible. The phase offset
   // starts it where the intro leaves the whale.
@@ -243,7 +250,7 @@ void main() {
 
   // The body darkens what passes behind it and scatters a rim of light around
   // its edge, as if it were between the viewer and the light.
-  float whaleAlpha = smoothstep(2.25, 3.35, t);
+  float whaleAlpha = smoothstep(2.25, 3.35, it);
   if (whaleAlpha > 0.002) {
     vec2 rel = p - whaleCenter;
     vec2 local = vec2(
@@ -292,8 +299,8 @@ void main() {
 
   // The eye: a macro shot of the whale's eye for the intro, squashing shut as
   // the whale turns away and the body takes over.
-  float blink = smoothstep(2.15, 2.95, t);
-  float eyeAmount = smoothstep(0.0, 0.5, t) * (1.0 - smoothstep(2.62, 3.5, t));
+  float blink = smoothstep(2.15, 2.95, it);
+  float eyeAmount = smoothstep(0.0, 0.5, it) * (1.0 - smoothstep(2.62, 3.5, it));
   if (eyeAmount > 0.003) {
     // Slow lissajous parallax: the eye drifts against the light field instead
     // of sitting on top of it like a decal.
