@@ -34,7 +34,12 @@ import {
 type Theme = 'dark' | 'light' | 'system'
 type ResolvedTheme = Exclude<Theme, 'system'>
 
-const DEFAULT_THEME = 'system'
+/* Dark by default rather than following the system. The interface is designed
+ * dark-first — the near-black canvas, the accent's contrast, and the ambient
+ * backdrop are all authored against it — and a light-mode OS otherwise landed
+ * visitors on a canvas that reads as unfinished. An explicit choice in
+ * Appearance still wins and is remembered. */
+const DEFAULT_THEME: Theme = 'dark'
 const THEMES = new Set<Theme>(['dark', 'light', 'system'])
 
 type ThemeProviderProps = {
@@ -53,7 +58,7 @@ type ThemeProviderState = {
 
 const initialState: ThemeProviderState = {
   defaultTheme: DEFAULT_THEME,
-  resolvedTheme: 'light',
+  resolvedTheme: 'dark',
   theme: DEFAULT_THEME,
   setTheme: () => null,
   resetTheme: () => null,
