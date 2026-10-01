@@ -153,8 +153,15 @@ git push server tavern
 | 数据库 | 同一 MySQL 实例内的 `new_api` | 同实例内的 `new_api_staging` |
 | 应用密钥 | 生产 `.env` | staging `.env`，两个 secret 与生产不同 |
 
-staging 的 compose 在 `deploy/staging/docker-compose.yml`。两个注意点：
+staging 的 compose 在 `deploy/staging/docker-compose.yml`。三个注意点：
 
+- **服务名不能和生产一样叫 `new-api`。** 两个环境共用 `new-api_new-api-net` 这张
+  网络，compose 会把服务名注册成网络别名；同名时 `new-api` 同时解析到两个容器，
+  而 `/v1/` 的审计入口正是用 `http://new-api:3000` 找上游的 —— 线上请求就会有一部分
+  落到测试环境，用测试库鉴权、计费、记日志（新建的令牌在那边不存在，直接 401）。
+  2026-09-29 到 10-02 有 1955 个线上请求是这样被测试环境处理的。现在测试服务叫
+  `new-api-staging`，`release.sh` 起容器后还会再查一遍，发现重名就把测试容器停掉。
+  核对方法：`docker exec llm-evidence-audit-1 getent hosts new-api` 只应返回一个地址。
 - 测试环境**不能设 `SESSION_COOKIE_TRUSTED_URL`**：new-api 认为它与
   `SESSION_COOKIE_SECURE=false` 互斥，会直接拒绝启动（日志反复打印
   `SESSION_COOKIE_TRUSTED_URL requires SESSION_COOKIE_SECURE=true`）。隧道走 http，
