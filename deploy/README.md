@@ -139,6 +139,12 @@ git push server tavern
   `https://goproxy.cn,direct`。npm registry 没问题。
 - 首次构建约 15 分钟，几乎全花在最终阶段从 `deb.debian.org` 拉那几个 apt 包上；
   基础镜像按 digest 固定，该层之后永远命中缓存，所以只有第一次慢。
+- **在这台机器上构建会和生产抢内存。** 机器 7.7G，生产的 MySQL 也在上面，前端打包
+  那一步的 node 进程自己要 1.6G 以上。2026-10-02 一次测试环境构建触发了内核 OOM，
+  被杀的是生产的 `mysqld`（约 30 秒后自动恢复）。所以 `build.sh` 会先看可用内存加
+  空闲 swap，低于 `NEWAPI_BUILD_MIN_FREE_MB`（默认 3072）就直接放弃，watcher 下一轮
+  再试。看到"放弃这次构建"不是脚本坏了，是机器上没余量：腾内存或加 swap，别调低
+  阈值硬上。
 
 ## 七、生产 / 测试隔离
 
