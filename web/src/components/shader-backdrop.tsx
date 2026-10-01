@@ -19,16 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 import { useEffect, useRef, useState, type ReactElement } from 'react'
 
 import { cn } from '@/lib/utils'
-import {
-  rasterizeWhaleMask,
-  WHALE_EYE_MASK_UV,
-  WHALE_MASK_HEIGHT,
-  WHALE_MASK_WIDTH,
-} from '@/lib/whale-mask'
-import {
-  FRAGMENT_SHADER_SOURCE,
-  STATIC_FRAME_TIME_SECONDS,
-} from '@/lib/whale-shader'
 
 export interface ShaderBackdropProps {
   className?: string
@@ -95,6 +85,111 @@ attribute vec2 ${POSITION_ATTRIBUTE};
 
 void main() {
   gl_Position = vec4(${POSITION_ATTRIBUTE}, 0.0, 1.0);
+}
+`
+
+/**
+ * Domain-warped value-noise fBm coloured from two theme-derived tints, with a
+ * vignette and an ordered dither.
+ *
+ * Written against GLSL ES 1.00 so a single program serves both WebGL2 and
+ * WebGL1, and unrolled rather than looped because every octave count is fixed
+ * and dynamic loop bounds are the least portable construct in ES 1.00.
+ */
+const FRAGMENT_SHADER_SOURCE = `
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+
+uniform vec2 uResolution;
+uniform float uTime;
+uniform float uIntensity;
+uniform vec3 uAccent;
+uniform vec3 uCool;
+
+// Integer-free hash (Hoskins). Stable across GPUs without the sin() trick,
+// which loses precision on mobile.
+float hash21(vec2 p) {
+  vec3 q = fract(vec3(p.xyx) * 0.1031);
+  q += dot(q, q.yzx + 33.33);
+  return fract((q.x + q.y) * q.z);
+}
+
+float valueNoise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(hash21(i), hash21(i + vec2(1.0, 0.0)), u.x),
+    mix(hash21(i + vec2(0.0, 1.0)), hash21(i + vec2(1.0, 1.0)), u.x),
+    u.y
+  );
+}
+
+// Two octaves are enough for the warp field: it only needs broad curvature,
+// and the octaves it feeds cost far more than the ones skipped here.
+float fbmWarp(vec2 p) {
+  return (
+    valueNoise(p) * 0.5 +
+    valueNoise(p * 2.03 + vec2(11.3, 7.7)) * 0.25
+  ) * 1.3333;
+}
+
+// Five octaves shape the light itself: enough structure to avoid a flat blob,
+// few enough to stay cheap at the internal render scale.
+float fbmLight(vec2 p) {
+  float sum = valueNoise(p) * 0.5;
+  sum += valueNoise(p * 2.03 + vec2(11.3, 7.7)) * 0.25;
+  sum += valueNoise(p * 4.09 + vec2(3.1, 19.7)) * 0.125;
+  sum += valueNoise(p * 8.21 + vec2(23.9, 5.3)) * 0.0625;
+  sum += valueNoise(p * 16.43 + vec2(7.1, 31.4)) * 0.03125;
+  return sum * 1.0323;
+}
+
+void main() {
+  vec2 uv = gl_FragCoord.xy / uResolution;
+  // Height-relative coordinates keep the cells round on any aspect ratio.
+  vec2 p = (gl_FragCoord.xy - 0.5 * uResolution) / uResolution.y;
+  float t = uTime;
+
+  // Two low-octave fields displace the sampling position, turning the
+  // lattice-aligned fBm into slow, curling sheets rather than blobs.
+  vec2 q = vec2(
+    fbmWarp(p * 1.35 + vec2(t * 0.030, 0.0)),
+    fbmWarp(p * 1.35 + vec2(4.7, 2.3) + vec2(t * 0.021, t * -0.017))
+  );
+  float field = fbmLight(p * 1.35 + 1.7 * (q - 0.5));
+
+  // The high threshold and the squaring together keep the lit area small, so
+  // roughly half the frame stays within a few 8-bit steps of black.
+  float glow = smoothstep(0.36, 0.84, field);
+  glow *= glow;
+
+  // The warp field also picks the tint, so the two hues drift into each other
+  // instead of sitting in fixed bands.
+  float tint = clamp((q.x - 0.32) * 1.6, 0.0, 1.0);
+  vec3 light = mix(uCool, uAccent, tint);
+
+  // ~24 s breathing cycle: slow enough to read as ambient, short enough that
+  // the field is never exactly static.
+  float breath = 0.84 + 0.16 * sin(t * 0.26);
+
+  vec2 centered = uv * 2.0 - 1.0;
+  float vignette = 1.0 - smoothstep(0.32, 1.42, length(centered * vec2(1.0, 1.06)));
+
+  // The unlit field keeps a trace of the accent so backdrop and page share one
+  // colour family instead of meeting at pure black.
+  vec3 color = uAccent * 0.05;
+  color += light * glow * breath * uIntensity * 0.85;
+  color *= mix(0.10, 1.0, vignette);
+
+  // One LSB of fixed-pattern dither. Near-black gradients band hard on 8-bit
+  // panels, and a time-varying dither would flicker, so the pattern is static.
+  float dither = (hash21(gl_FragCoord.xy) - 0.5) / 255.0;
+
+  gl_FragColor = vec4(clamp(color + dither, 0.0, 1.0), 1.0);
 }
 `
 
@@ -344,15 +439,12 @@ interface GlResources {
   buffer: WebGLBuffer
   positionAttribute: number
   program: WebGLProgram
-  texture: WebGLTexture
   uniforms: {
     accent: WebGLUniformLocation | null
     cool: WebGLUniformLocation | null
     intensity: WebGLUniformLocation | null
     resolution: WebGLUniformLocation | null
     time: WebGLUniformLocation | null
-    whale: WebGLUniformLocation | null
-    whaleEye: WebGLUniformLocation | null
   }
 }
 
@@ -361,12 +453,10 @@ function buildResources(gl: GlContext): GlResources | null {
   const program = createProgram(gl)
   if (!program) return null
   const buffer = gl.createBuffer()
-  const texture = gl.createTexture()
   const positionAttribute = gl.getAttribLocation(program, POSITION_ATTRIBUTE)
-  if (!buffer || !texture || positionAttribute < 0) {
+  if (!buffer || positionAttribute < 0) {
     gl.deleteProgram(program)
     if (buffer) gl.deleteBuffer(buffer)
-    if (texture) gl.deleteTexture(texture)
     return null
   }
   gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
@@ -377,52 +467,16 @@ function buildResources(gl: GlContext): GlResources | null {
     new Float32Array([-1, -1, 3, -1, -1, 3]),
     gl.STATIC_DRAW
   )
-
-  gl.bindTexture(gl.TEXTURE_2D, texture)
-  // The mask is single-channel, so the default 4-byte row alignment would
-  // insert padding between rows and shear the silhouette.
-  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1)
-  // A missing or unreadable 2D context still uploads a correctly sized all-zero
-  // mask, so the program links and the water renders without a whale.
-  const mask =
-    rasterizeWhaleMask() ?? new Uint8Array(WHALE_MASK_WIDTH * WHALE_MASK_HEIGHT)
-  // LUMINANCE, not ALPHA: the shader reads the mask through `texture2D(...).r`.
-  gl.texImage2D(
-    gl.TEXTURE_2D,
-    0,
-    gl.LUMINANCE,
-    WHALE_MASK_WIDTH,
-    WHALE_MASK_HEIGHT,
-    0,
-    gl.LUMINANCE,
-    gl.UNSIGNED_BYTE,
-    mask
-  )
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
-
-  const whale = gl.getUniformLocation(program, 'uWhale')
-  // A sampler uniform may only be written while its program is current, and it
-  // defaults to unit 0 anyway; binding it once keeps the frame loop to one
-  // texture bind instead of a uniform write per draw.
-  gl.useProgram(program)
-  gl.uniform1i(whale, 0)
-
   return {
     buffer,
     positionAttribute,
     program,
-    texture,
     uniforms: {
       accent: gl.getUniformLocation(program, 'uAccent'),
       cool: gl.getUniformLocation(program, 'uCool'),
       intensity: gl.getUniformLocation(program, 'uIntensity'),
       resolution: gl.getUniformLocation(program, 'uResolution'),
       time: gl.getUniformLocation(program, 'uTime'),
-      whale,
-      whaleEye: gl.getUniformLocation(program, 'uWhaleEye'),
     },
   }
 }
@@ -430,20 +484,18 @@ function buildResources(gl: GlContext): GlResources | null {
 /** Releases the GL objects owned by one mount. */
 function disposeResources(gl: GlContext, resources: GlResources): void {
   gl.deleteBuffer(resources.buffer)
-  gl.deleteTexture(resources.texture)
   gl.deleteProgram(resources.program)
 }
 
 /**
- * Decorative animated backdrop: the deep-sea light field with a distant whale,
- * tinted from the theme accent.
+ * Decorative animated backdrop: a near-black field carrying a very slow,
+ * low-saturation aurora glow built from the theme accent.
  *
  * Chooses WebGL2, then WebGL1, then a static CSS gradient when neither is
  * available. The rendering loop only runs while the canvas is on screen, the
  * page is visible, and reduced motion is not requested; under
- * `prefers-reduced-motion: reduce` it draws a single frame of the resting scene
- * and stops. The element never takes pointer events and is hidden from
- * assistive tech.
+ * `prefers-reduced-motion: reduce` it draws a single frame and stops. The
+ * element never takes pointer events and is hidden from assistive tech.
  *
  * @param props - Backdrop options; see {@link ShaderBackdropProps}.
  * @returns The canvas backdrop, or the CSS gradient fallback.
@@ -498,8 +550,8 @@ export function ShaderBackdrop(props: ShaderBackdropProps): ReactElement {
     // Distinguishes "nothing drawn yet" from "drawn and now paused", so a mount
     // under reduced motion still produces exactly one frame.
     let hasDrawn = false
-    // Accumulated instead of derived from a start timestamp: a pause keeps its
-    // position, so a resume neither replays the intro nor jumps the animation.
+    // Accumulated instead of derived from a start timestamp so a pause never
+    // turns into a jump in the animation.
     let elapsed = 0
     let lastFrameAt = performance.now()
     let onScreen = true
@@ -520,20 +572,11 @@ export function ShaderBackdrop(props: ShaderBackdropProps): ReactElement {
         0
       )
       const [warm, cool] = toGlowPalette(accentRef.current)
-      // Reduced motion shows the resting whale, never the intro's giant eye.
-      const time = motionQuery.matches ? STATIC_FRAME_TIME_SECONDS : elapsed
       gl.uniform2f(resources.uniforms.resolution, canvas.width, canvas.height)
-      gl.uniform1f(resources.uniforms.time, time)
+      gl.uniform1f(resources.uniforms.time, elapsed)
       gl.uniform1f(resources.uniforms.intensity, intensityRef.current)
       gl.uniform3f(resources.uniforms.accent, warm[0], warm[1], warm[2])
       gl.uniform3f(resources.uniforms.cool, cool[0], cool[1], cool[2])
-      gl.uniform2f(
-        resources.uniforms.whaleEye,
-        WHALE_EYE_MASK_UV[0],
-        WHALE_EYE_MASK_UV[1]
-      )
-      gl.activeTexture(gl.TEXTURE0)
-      gl.bindTexture(gl.TEXTURE_2D, resources.texture)
       gl.drawArrays(gl.TRIANGLES, 0, 3)
       hasDrawn = true
     }
