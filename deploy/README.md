@@ -125,6 +125,13 @@ git push server tavern
 
 ## 六、已知坑
 
+- **首页文案不在代码里。** 首页是 `options` 表里的 `HomePageContent`（HTML + `<style>`），
+  按环境存库，推代码不会带过去。仓库里的 `deploy/home-page-content.html` 是它的副本，
+  改完要手动写回：后台「系统设置 → 站点与品牌 → 系统信息 → 首页内容」粘贴保存即时生效；
+  走 SQL 的话 `mysql` 读写都要加 `--raw --default-character-set=utf8mb4`（批处理默认会把
+  换行转义成 `\n`，把内容写坏），写完重启对应容器（options 在内存里有缓存）。这段 HTML
+  渲染在 shadow root 里，能用 `var(--foreground)`、`var(--primary)`、`var(--radius)` 这类
+  主题 token，但用不了 Tailwind 工具类（构建时扫描不到），样式只能靠它自带的 `<style>`。
 - **`github.com` 的 git-over-HTTPS 在这个网络里是断的**（`info/refs` 直接超时），
   但 SSH 正常。所以远端一律用 `git@github.com:...`，别用 https。
 - **GitHub 对 fork 仓库禁用 deploy key**，所以服务器不能自己拉 fork。部署镜像
