@@ -101,6 +101,7 @@ it('lists the clients to start with and opens on DSH', async () => {
     'Start with Codex',
     'Start with OpenCode',
     'Start with OpenClaw',
+    'Call the API directly',
   ])
   expect(currentOption(nav)).toEqual(['Start with DSH'])
   expect(screen.getByText('Set up DSH with one prompt')).toBeVisible()
@@ -114,6 +115,17 @@ it('opens on the client named in the address', async () => {
   expect(
     screen.queryByText('Set up DSH with one prompt')
   ).not.toBeInTheDocument()
+})
+
+it("ends with calling the API from one's own code", async () => {
+  const nav = await renderQuickStart('/#api')
+
+  expect(currentOption(nav)).toEqual(['Call the API directly'])
+  expect(
+    await screen.findByText(
+      /curl https:\/\/ai\.example\.test\/v1\/chat\/completions/
+    )
+  ).toBeVisible()
 })
 
 it('falls back to DSH when the address names no client', async () => {

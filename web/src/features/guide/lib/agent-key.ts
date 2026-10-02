@@ -23,6 +23,14 @@ import { API_KEY_STATUS } from '@/features/keys/constants'
 import type { ApiKey } from '@/features/keys/types'
 import { createServerError } from '@/lib/server-error-message'
 
+/** What stands in for the key until the user has one. */
+export const KEY_PLACEHOLDER = 'YOUR_API_KEY'
+
+/** Enough of a key to recognise it by, never enough to use it. */
+export function maskKey(key: string): string {
+  return `${key.slice(0, 5)}…${key.slice(-4)}`
+}
+
 /** The account's enabled, unrestricted Auto-group key of this exact name. */
 async function findAgentKey(name: string): Promise<ApiKey | undefined> {
   const result = await searchApiKeys({ keyword: name, p: 1, size: 50 })

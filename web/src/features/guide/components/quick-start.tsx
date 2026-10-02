@@ -24,10 +24,18 @@ import { cn } from '@/lib/utils'
 
 import { AGENT_CLIENTS } from '../lib/agents'
 import { AgentGuide } from './agent-guide'
+import { ApiGuide } from './api-guide'
 import { DshGuide } from './dsh-guide'
 
-/** DSH comes first: it is the one client the site can set up on its own. */
-const CLIENTS = [{ id: 'dsh', name: 'DSH' }, ...AGENT_CLIENTS]
+/**
+ * DSH comes first: it is the one client the site can set up on its own. Calling
+ * the API from one's own code comes last and names no client.
+ */
+const CLIENTS: { id: string; name: string | null }[] = [
+  { id: 'dsh', name: 'DSH' },
+  ...AGENT_CLIENTS,
+  { id: 'api', name: null },
+]
 
 /**
  * The quick-start section: a centred row of clients to start with, and the
@@ -81,14 +89,18 @@ export function QuickStart() {
                   : 'text-muted-foreground hover:text-foreground border-transparent'
               )}
             >
-              {t('Start with {{client}}', { client: client.name })}
+              {client.name
+                ? t('Start with {{client}}', { client: client.name })
+                : t('Call the API directly')}
             </Link>
           ))}
         </nav>
       </div>
 
       <div className='mx-auto w-full max-w-3xl px-4 pt-8'>
-        {agent ? <AgentGuide key={agent.id} client={agent} /> : <DshGuide />}
+        {active.id === 'api' && <ApiGuide />}
+        {active.id !== 'api' &&
+          (agent ? <AgentGuide key={agent.id} client={agent} /> : <DshGuide />)}
       </div>
     </section>
   )

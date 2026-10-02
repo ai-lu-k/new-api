@@ -232,6 +232,7 @@ NEWAPI_ENV=staging /opt/new-api-src/deploy/release.sh <branch>
 |---|---|
 | DSH | 一段提示词全自动，或手动运行同一条命令（本节后半）；`dsh_setup.enabled` 没开时只显示在 DSH 表单里手填的那套步骤 |
 | Claude Code / Codex / OpenCode / OpenClaw | 半自动：页面上直接有 CC Switch 的表单，填好点「打开 CC Switch」，由它导入并切换；或者手动：按页面给的配置文件内容粘贴 |
+| 直接调用 API | 自己写代码调用：创建密钥、选模型，再给出 cURL / Python / Node.js / Go / Java 的请求示例 |
 
 后四栏的说明：
 
@@ -249,6 +250,15 @@ NEWAPI_ENV=staging /opt/new-api-src/deploy/release.sh <branch>
 - 配置里的站点地址取 `ServerAddress`。
 - **这四种客户端的配置格式是照各家官方文档（2026-10-02 查的）写的，没有在真实客户端上跑过。** 上线前
   每种至少实际试一次；格式变了就改 `agent-configs.ts` 和它的测试。
+
+「直接调用 API」一栏（`web/src/features/guide/components/api-guide.tsx`，示例在 `lib/api-examples.ts`）：
+
+- 示例跟着所选模型走：网关能用 `/v1/chat/completions` 提供的模型给 OpenAI 格式的示例，只走 `/v1/messages` 的
+  （比如 Claude）给 Anthropic 格式的示例。cURL、Go、Java 是不依赖任何库的原始请求，Python 和 Node.js 用对应格式的官方 SDK，
+  把地址指到网关。
+- 自动分组开着时，「创建并复制 API 密钥」会准备一把名为 `Quick Start` 的 auto 密钥，示例里随即带上它（屏幕上打码，复制出来是完整的）；
+  没开时改为说明怎么在控制台自己建。
+- 要加一种语言：在 `API_LANGUAGES` 里加一项，再写它在两种格式下的示例。
 
 ### DSH：一段提示词，或手动运行命令
 

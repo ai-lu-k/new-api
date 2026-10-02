@@ -22,7 +22,6 @@ import { Loader2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { CopyButton } from '@/components/copy-button'
 import { Button } from '@/components/ui/button'
 import { TitledCard } from '@/components/ui/titled-card'
 import { CCSwitchFields } from '@/features/keys/components/dialogs/cc-switch-dialog'
@@ -39,28 +38,11 @@ import {
   buildAgentConfig,
   pickAgentModel,
 } from '../lib/agent-configs'
-import { ensureAgentKey } from '../lib/agent-key'
+import { ensureAgentKey, KEY_PLACEHOLDER, maskKey } from '../lib/agent-key'
 import type { AgentClient } from '../lib/agents'
+import { Snippet } from './snippet'
 
 const CC_SWITCH_DOWNLOAD = 'https://github.com/farion1231/cc-switch/releases'
-const KEY_PLACEHOLDER = 'YOUR_API_KEY'
-
-/** Enough of a key to recognise it by, never enough to use it. */
-function maskKey(key: string): string {
-  return `${key.slice(0, 5)}…${key.slice(-4)}`
-}
-
-function Snippet(props: { code: string; copy: string }) {
-  return (
-    <div className='flex items-start gap-2'>
-      <pre className='bg-muted/60 border-border max-h-80 min-w-0 flex-1 overflow-auto rounded-md border p-3 text-xs leading-relaxed'>
-        <code className='font-mono whitespace-pre'>{props.code}</code>
-      </pre>
-      <CopyButton value={props.copy} variant='outline' />
-    </div>
-  )
-}
-
 /**
  * Getting started with one coding agent. There are two ways in: the CC Switch
  * form hands the gateway over as a provider, or the user pastes the
