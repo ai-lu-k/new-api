@@ -109,7 +109,10 @@ For commercial licensing, please contact support@quantumnous.com
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.5208 0.2694 291.2);
+  /* The brand colour is #8AB4F9 (see .dark). On a light page it is too pale
+   * to read as text or to carry white text, so the light palette uses the same
+   * hue at a lower lightness. */
+  --primary: oklch(0.55 0.17 260.1);
   --primary-foreground: oklch(1 0 0);
   --secondary: oklch(0.95 0 0);
   --secondary-foreground: oklch(0.2103 0.0059 285.9);
@@ -129,23 +132,23 @@ For commercial licensing, please contact support@quantumnous.com
   --neutral-foreground: oklch(0.145 0 0);
   --border: oklch(0.9321 0.0054 286.3);
   --input: oklch(0.9321 0.0054 286.3);
-  --ring: oklch(0.5208 0.2694 291.2);
-  --chart-1: oklch(0.5208 0.2694 291.2);
+  --ring: oklch(0.55 0.17 260.1);
+  --chart-1: oklch(0.55 0.17 260.1);
   --chart-2: oklch(0.65 0.15 200);
   --chart-3: oklch(0.7 0.12 280);
   --chart-4: oklch(0.68 0.19 325);
   --chart-5: oklch(0.68 0.16 155);
-  --overview-accent-1: oklch(0.5208 0.2694 291.2);
+  --overview-accent-1: oklch(0.55 0.17 260.1);
   --overview-accent-2: oklch(0.65 0.15 200);
   --overview-accent-3: oklch(0.7 0.12 280);
   --sidebar: oklch(1 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.5208 0.2694 291.2);
+  --sidebar-primary: oklch(0.55 0.17 260.1);
   --sidebar-primary-foreground: oklch(1 0 0);
   --sidebar-accent: color-mix(in oklch, var(--primary) 12%, var(--background));
-  --sidebar-accent-foreground: oklch(0.4907 0.2412 292.6);
+  --sidebar-accent-foreground: oklch(0.45 0.16 260.1);
   --sidebar-border: oklch(0.9321 0.0054 286.3);
-  --sidebar-ring: oklch(0.5208 0.2694 291.2);
+  --sidebar-ring: oklch(0.55 0.17 260.1);
   --skeleton-base: oklch(0.97 0 0);
   --skeleton-highlight: oklch(0.985 0 0);
   --table-row: var(--background);
@@ -186,8 +189,9 @@ For commercial licensing, please contact support@quantumnous.com
   --card-foreground: oklch(0.965 0 0);
   --popover: oklch(0.2205 0.0116 285.4);
   --popover-foreground: oklch(0.965 0 0);
-  --primary: oklch(0.5832 0.2393 295);
-  --primary-foreground: oklch(1 0 0);
+  /* #8AB4F9. White text on it has a contrast of 2.1, so what sits on it is dark. */
+  --primary: oklch(0.7665 0.1096 260.1);
+  --primary-foreground: oklch(0.2 0.03 260.1);
   --secondary: oklch(0.335 0 0);
   --secondary-foreground: oklch(0.9197 0.004 286.3);
   --muted: oklch(0.305 0 0);
@@ -206,20 +210,20 @@ For commercial licensing, please contact support@quantumnous.com
   --neutral-foreground: oklch(0.155 0 0);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 17%);
-  --ring: oklch(0.5832 0.2393 295);
-  --chart-1: oklch(0.709 0.1592 293.5);
+  --ring: oklch(0.7665 0.1096 260.1);
+  --chart-1: oklch(0.7665 0.1096 260.1);
   --chart-2: oklch(0.76 0.13 200);
   --chart-3: oklch(0.76 0.13 285);
   --chart-4: oklch(0.75 0.16 325);
   --chart-5: oklch(0.76 0.14 155);
   --sidebar: oklch(0.1657 0.0083 285.5);
   --sidebar-foreground: oklch(0.95 0 0);
-  --sidebar-primary: oklch(0.5832 0.2393 295);
-  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-primary: oklch(0.7665 0.1096 260.1);
+  --sidebar-primary-foreground: oklch(0.2 0.03 260.1);
   --sidebar-accent: color-mix(in oklch, var(--primary) 20%, var(--background));
   --sidebar-accent-foreground: oklch(0.9197 0.004 286.3);
   --sidebar-border: oklch(1 0 0 / 11%);
-  --sidebar-ring: oklch(0.5832 0.2393 295);
+  --sidebar-ring: oklch(0.7665 0.1096 260.1);
   --skeleton-base: oklch(0.335 0 0);
   --skeleton-highlight: oklch(0.44 0 0);
   --table-row: var(--background);
