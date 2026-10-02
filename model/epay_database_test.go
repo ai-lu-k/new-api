@@ -57,24 +57,24 @@ func TestEpayDatabaseCompatibility(t *testing.T) {
 	}
 	for _, engine := range engines {
 		t.Run(engine.name, func(t *testing.T) {
-			db, err := gorm.Open(engine.open(), &gorm.Config{})
-			require.NoError(t, err)
-			sqlDB, err := db.DB()
-			require.NoError(t, err)
-			defer sqlDB.Close()
-			if engine.name == "sqlite" {
-				sqlDB.SetMaxOpenConns(1)
-			} else {
-				sqlDB.SetMaxOpenConns(10)
-			}
-			savedDB, savedLogDB := DB, LOG_DB
-			savedMain, savedLog := common.MainDatabaseType(), common.LogDatabaseType()
-			DB, LOG_DB = db, db
-			common.SetDatabaseTypes(engine.kind, engine.kind)
-			initCol()
-			defer func() { DB, LOG_DB = savedDB, savedLogDB; common.SetDatabaseTypes(savedMain, savedLog); initCol() }()
 			for _, upgrade := range []bool{false, true} {
 				t.Run(map[bool]string{false: "fresh", true: "upgrade"}[upgrade], func(t *testing.T) {
+					db, err := gorm.Open(engine.open(), &gorm.Config{})
+					require.NoError(t, err)
+					sqlDB, err := db.DB()
+					require.NoError(t, err)
+					defer sqlDB.Close()
+					if engine.name == "sqlite" {
+						sqlDB.SetMaxOpenConns(1)
+					} else {
+						sqlDB.SetMaxOpenConns(10)
+					}
+					savedDB, savedLogDB := DB, LOG_DB
+					savedMain, savedLog := common.MainDatabaseType(), common.LogDatabaseType()
+					DB, LOG_DB = db, db
+					common.SetDatabaseTypes(engine.kind, engine.kind)
+					initCol()
+					defer func() { DB, LOG_DB = savedDB, savedLogDB; common.SetDatabaseTypes(savedMain, savedLog); initCol() }()
 					for _, table := range []any{&TopUp{}, &User{}, &Log{}} {
 						require.False(t, db.Migrator().HasTable(table), "disposable databases only")
 					}
@@ -83,7 +83,7 @@ func TestEpayDatabaseCompatibility(t *testing.T) {
 					user := insertUserForPaymentGuardTest(t, 509, 31)
 					if upgrade {
 						require.NoError(t, db.AutoMigrate(&legacyEpayTopUp{}))
-						require.NoError(t, db.Create(&legacyEpayTopUp{Id: 1, UserId: user.Id, Amount: 1, Money: 1.234, TradeNo: "LEGACY", PaymentProvider: PaymentProviderEpay, PaymentMethod: "alipay", Status: common.TopUpStatusPending}).Error)
+						require.NoError(t, db.Create(&legacyEpayTopUp{UserId: user.Id, Amount: 1, Money: 1.234, TradeNo: "LEGACY", PaymentProvider: PaymentProviderEpay, PaymentMethod: "alipay", Status: common.TopUpStatusPending}).Error)
 					}
 					for range 2 {
 						require.NoError(t, db.AutoMigrate(&TopUp{}))
@@ -102,7 +102,7 @@ func TestEpayDatabaseCompatibility(t *testing.T) {
 					row := TopUp{UserId: user.Id, Amount: 1, Money: 1.239, TradeNo: "SNAPSHOT", EpayMerchantId: "old", PaymentProvider: PaymentProviderEpay, PaymentMethod: "alipay", Status: common.TopUpStatusPending}
 					require.NoError(t, db.Create(&row).Error)
 					before := getUserQuotaForPaymentGuardTest(t, user.Id)
-					_, err := RechargeEpay(row.TradeNo, EpayNotification{Money: "0.01", MerchantId: "old", PaymentMethod: "alipay"}, "127.0.0.1")
+					_, err = RechargeEpay(row.TradeNo, EpayNotification{Money: "0.01", MerchantId: "old", PaymentMethod: "alipay"}, "127.0.0.1")
 					require.ErrorIs(t, err, ErrPaymentAmountMismatch)
 					assert.Equal(t, row, *GetTopUpByTradeNo(row.TradeNo))
 					errs := make(chan error, 10)
