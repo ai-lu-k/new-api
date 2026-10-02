@@ -112,8 +112,12 @@ export function AppHeader({
 
   return (
     <Header>
-      <div className='@container/system-brand flex min-w-0 flex-1 items-center gap-1'>
+      {/* Brand, then search: the search box keeps this place on every page. */}
+      <div className='@container/system-brand flex min-w-0 flex-1 items-center gap-2'>
         <SystemBrand variant='inline' />
+        {showSearch && (
+          <Search className='w-8 flex-none [&>span]:hidden sm:[&>span]:inline' />
+        )}
       </div>
 
       {leftContent ? (
@@ -126,9 +130,6 @@ export function AppHeader({
             <div className='me-1 hidden lg:block'>
               <TopNav links={links} />
             </div>
-          )}
-          {showSearch && (
-            <Search className='w-8 flex-none [&>span]:hidden sm:[&>span]:inline' />
           )}
           {showNotifications && (
             <NotificationPopover

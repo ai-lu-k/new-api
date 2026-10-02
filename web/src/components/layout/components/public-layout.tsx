@@ -16,6 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { SearchProvider } from '@/context/search-provider'
+import { useAuthStore } from '@/stores/auth-store'
+
 import type { TopNavLink } from '../types'
 import { PublicHeader, type PublicHeaderProps } from './public-header'
 
@@ -33,7 +36,9 @@ type PublicLayoutProps = {
 }
 
 export function PublicLayout(props: PublicLayoutProps) {
-  return (
+  const signedIn = useAuthStore((state) => Boolean(state.auth.user))
+
+  const page = (
     <div className='bg-background text-foreground relative min-h-svh overflow-x-clip'>
       <PublicHeader
         navContent={props.navContent}
@@ -41,6 +46,7 @@ export function PublicLayout(props: PublicLayoutProps) {
         showThemeSwitch={props.showThemeSwitch}
         showAuthButtons={props.showAuthButtons}
         showNotifications={props.showNotifications}
+        showSearch={signedIn}
         logo={props.logo}
         siteName={props.siteName}
         {...props.headerProps}
@@ -55,4 +61,8 @@ export function PublicLayout(props: PublicLayoutProps) {
       )}
     </div>
   )
+
+  // The search box jumps between console pages, so it is there only for
+  // someone who is signed in. SearchProvider brings the palette it opens.
+  return signedIn ? <SearchProvider>{page}</SearchProvider> : page
 }

@@ -24,6 +24,7 @@ import { Dialog } from '@/components/dialog'
 import { LanguageSwitcher } from '@/components/language-switcher'
 import { NotificationPopover } from '@/components/notification-popover'
 import { ProfileDropdown } from '@/components/profile-dropdown'
+import { Search } from '@/components/search'
 import { ThemeSwitch } from '@/components/theme-switch'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -56,6 +57,8 @@ export interface PublicHeaderProps {
   leftContent?: React.ReactNode
   rightContent?: React.ReactNode
   showNavigation?: boolean
+  /** Show the search box after the logo. Needs a SearchProvider above. */
+  showSearch?: boolean
   showAuthButtons?: boolean
   showNotifications?: boolean
   className?: string
@@ -194,7 +197,7 @@ export function PublicHeader(props: PublicHeaderProps) {
         <div className='mx-auto px-4 md:px-6'>
           <nav className='flex h-14 items-center justify-between gap-2'>
             {/* Logo */}
-            <div className='@container/system-brand flex min-w-0 flex-1 items-center gap-1 lg:min-w-36'>
+            <div className='@container/system-brand flex min-w-0 flex-1 items-center gap-4 lg:min-w-36'>
               <Link
                 to={homeUrl}
                 className='group flex min-w-0 items-center gap-2.5'
@@ -213,6 +216,9 @@ export function PublicHeader(props: PublicHeaderProps) {
                   )}
                 </span>
               </Link>
+              {props.showSearch && (
+                <Search className='w-8 flex-none [&>span]:hidden sm:[&>span]:inline' />
+              )}
             </div>
 
             {/* Desktop nav */}
