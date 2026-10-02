@@ -8,6 +8,8 @@
     margin: 0; font-size: clamp(2.5rem, 7vw, 4rem); line-height: 1.1;
     font-weight: 750; letter-spacing: -.035em;
   }
+  /* 窄屏放不下整行时在两个短语之间换行，不把单个字挤到下一行 */
+  .luk-h1 span { display: inline-block; }
   .luk-sub {
     margin: 1.5rem auto 0; max-width: 36rem; font-size: 1.0625rem; line-height: 1.7;
     color: var(--muted-foreground, #6b7280);
@@ -36,11 +38,11 @@
 <div class="luk">
 
   <div class="luk-hero">
-    <h1 class="luk-h1">统一 API 网关<br>开箱即用</h1>
+    <h1 class="luk-h1">统一 API 网关<br><span>成本透明，</span><span>代码开源</span></h1>
 
     <p class="luk-sub">
       一个兼容 OpenAI 协议的接口地址，即可调用<a href="/pricing">全部可用模型</a>。<br>
-      无需改动任何现有客户端，把 Base URL 换过来就能用。
+      <a href="/about">每一项成本</a>都会列出来，网关代码放在 <a href="https://github.com/ai-lu-k/new-api" target="_blank" rel="noopener noreferrer">GitHub</a> 上，欢迎审查和二次开发。
     </p>
 
     <div class="luk-cta">

@@ -134,6 +134,12 @@ git push server tavern
   主题 token，但用不了 Tailwind 工具类（构建时扫描不到），样式只能靠它自带的 `<style>`。
   这段 HTML 现在**只有首屏**（标题、一句话、两个按钮）；它下面那排「使用 xx 开始」和各客户端的
   接入步骤是代码里的组件（见第八节），紧跟在这段 HTML 后面渲染，推代码就会更新。
+- **成本公开页就是「关于」页。** 首屏副标题里的「每一项成本」链到 `/about`，内容是 `options` 表里的 `About`
+  （HTML、Markdown 或一个网址都行），后台「系统设置 → 关于」可以直接改，不用发版；仓库副本是
+  `deploy/about-page-content.html`，现在只是占位，没有任何数字。顶部导航里的「关于」入口是关着的
+  （`HeaderNavModules.about=false`），不影响这个页面打开。
+- **首屏写的是「成本透明，代码开源」，上线前这两句都得先成立。** 成本页要先填上真实的明细；
+  代码的说法以实际公开的仓库为准，页面上链到的是网关的仓库。
 - **`github.com` 的 git-over-HTTPS 在这个网络里是断的**（`info/refs` 直接超时），
   但 SSH 正常。所以远端一律用 `git@github.com:...`，别用 https。
 - **GitHub 对 fork 仓库禁用 deploy key**，所以服务器不能自己拉 fork。部署镜像
