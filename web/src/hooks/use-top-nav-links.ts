@@ -62,9 +62,10 @@ export function useTopNavLinks(): TopNavLink[] {
 
   const links: TopNavLink[] = []
 
-  // Home
+  // Home. The landing page is the quick-start walkthrough, so the link is
+  // labelled as one and the guide page gets no entry of its own.
   if (modules?.home !== false) {
-    links.push({ title: t('Home'), href: '/' })
+    links.push({ title: t('Quick Start'), href: '/' })
   }
 
   // Console -> /dashboard (new console path)
@@ -77,13 +78,6 @@ export function useTopNavLinks(): TopNavLink[] {
   if (pricing && typeof pricing === 'object' && pricing.enabled) {
     const requiresAuth = pricing.requireAuth && !isAuthed
     links.push({ title: t('Model Square'), href: '/pricing', requiresAuth })
-  }
-
-  // Quick start guide
-  const guide = modules?.guide
-  if (guide && typeof guide === 'object' && guide.enabled) {
-    const requiresAuth = guide.requireAuth && !isAuthed
-    links.push({ title: '快速开始', href: '/guide', requiresAuth })
   }
 
   // Rankings
