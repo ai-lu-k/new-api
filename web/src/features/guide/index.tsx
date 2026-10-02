@@ -8,10 +8,12 @@
  * 模型名只是示例（以 DeepSeek-V4.1-Flash 为例），客户端以 DSH 为例。
  */
 import { Link } from '@tanstack/react-router'
-import { type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 
 import { PublicLayout } from '@/components/layout'
 import { PageTransition } from '@/components/page-transition'
+
+import { DshQuickSetup } from './components/dsh-quick-setup'
 
 const BASE_URL = 'https://ai.lu-k.cn/v1'
 const EXAMPLE_MODEL = 'deepseek/deepseek-v4.1-flash'
@@ -66,15 +68,19 @@ export function Guide() {
           <header>
             <h1 className='text-2xl font-bold tracking-tight'>快速开始</h1>
             <p className='text-muted-foreground mt-2 text-sm'>
-              三步接入。下面以 DeepSeek-V4.1-Flash + DSH 客户端为例，其它
-              OpenAI 兼容客户端同理。
+              三步接入。下面以 DeepSeek-V4.1-Flash + DSH 客户端为例，其它 OpenAI
+              兼容客户端同理。
             </p>
           </header>
+
+          {/* Renders nothing unless the site has the one-command setup on. */}
+          <DshQuickSetup />
 
           <Step index='1' title='拿一枚 API Key'>
             <ol className='list-decimal space-y-1.5 pl-5'>
               <li>
-                登录后进 <Link to='/dashboard'>控制台</Link>，左侧点「API 密钥」。
+                登录后进 <Link to='/dashboard'>控制台</Link>，左侧点「API
+                密钥」。
               </li>
               <li>
                 点「<strong>创建 API 密钥</strong>」，填名称（随便写），
@@ -118,7 +124,12 @@ export function Guide() {
               <C>openai-completions</C>，模型目录加上上面的模型名，然后创建。
             </p>
             <figure className='border-border bg-card mt-4 overflow-hidden rounded-lg border'>
-              <a href={SHOT} target='_blank' rel='noopener' title='点击查看原图'>
+              <a
+                href={SHOT}
+                target='_blank'
+                rel='noopener noreferrer'
+                title='点击查看原图'
+              >
                 <img
                   src={SHOT}
                   alt='自定义提供方表单：Provider ID、API 地址、openai-completions 协议与模型名'
@@ -159,7 +170,8 @@ export function Guide() {
             <p className='mt-2'>
               也可以只写一次路由级默认值
               <C>defaultInput</C> / <C>defaultContextWindow</C> /{' '}
-              <C>defaultMaxTokens</C>，对该提供方下所有手填模型生效。保存即生效，
+              <C>defaultMaxTokens</C>
+              ，对该提供方下所有手填模型生效。保存即生效，
               <strong>不用重启</strong>；之前贴图被拒的会话要新开一个。
             </p>
 
@@ -177,7 +189,9 @@ export function Guide() {
                     <th className='w-64 px-3 py-2 font-medium'>
                       MISSING_CREDENTIAL / 401
                     </th>
-                    <td className='px-3 py-2'>密钥没保存或没复制全，重新创建一枚。</td>
+                    <td className='px-3 py-2'>
+                      密钥没保存或没复制全，重新创建一枚。
+                    </td>
                   </tr>
                   <tr className='border-border border-b'>
                     <th className='px-3 py-2 font-medium'>

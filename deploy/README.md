@@ -213,3 +213,56 @@ NEWAPI_ENV=staging /opt/new-api-src/deploy/release.sh <branch>
 **规矩：实验性改动一律先上测试环境，生产只接受在测试环境看过的 tag。** 测试库是
 生产库的全量拷贝（含真实用户和 API 令牌），所以它绝不能对外暴露 —— 端口只绑
 `127.0.0.1`，入口只有 SSH 隧道。在测试环境改数据、跑迁移都不会碰到生产库。
+
+## 八、DSH 一键配置
+
+「快速开始」页（`/guide`）顶部的卡片：登录用户点一下，拿到一条终端命令，粘贴运行后 DSH 就配好了
+——提供方、这个账号能调的全部模型、密钥，一次写进 `~/.dsh/settings.yaml` 和 `~/.dsh/.credentials.yaml`。
+用户不用选模型、选分组，也不用自己建密钥。代码在 `service/dshsetup/`（脚本、配置码、下发内容）
+和 `controller/dsh_setup.go`。
+
+流程：
+
+1. 网页 `POST /api/dsh_setup/code`（要登录）：给这个账号准备一把名为 `DSH`、分组为 `auto`、开了跨分组
+   重试的密钥（已有就复用），返回一个一次性配置码。
+2. 用户运行 `curl -fsSL <站点>/api/dsh_setup/setup.sh | sh -s -- <配置码>`（Windows 是
+   `setup.ps1`，配置码放在 `LUK_SETUP_CODE` 环境变量里）。脚本本身不含任何密钥，人人相同。
+3. 脚本先确认能写 DSH 的目录，再 `POST /api/dsh_setup/redeem`（配置码放在 `X-Setup-Code` 请求头）
+   换回配置，然后只改自己管的那几项：`llm-pi-ai.providers` 下的 `lu-k` / `lu-k-messages` /
+   `lu-k-responses`，以及密钥引用 `LU_K_API_KEY`。别的提供方、别的密钥、注释都不动；改之前先备份；
+   遇到看不懂的写法就不动，改为把要粘贴的内容打印出来。
+
+配置码的规矩（对照 OWASP ASVS 5.0）：192 位随机、只存 SHA-256、只能用一次、10 分钟过期、同一用户再申请
+会作废上一个；不出现在 URL 里；兑换接口限流、响应禁止缓存；无论码不存在、用过还是过期，回答都一样；
+发码和兑换都记审计日志，日志里没有码也没有密钥。配置码存在进程内存里，所以**只适用于单节点部署**，
+重启后未用的码作废。
+
+**前提：自动分组要开。** 这个功能靠 `auto` 分组让一把密钥通所有模型：
+
+| 选项 | 值 |
+|---|---|
+| `AutoGroups` | 分组顺序，便宜的在前，如 `["国庆福利","特惠","稳定","Claude","GPT"]` |
+| `UserUsableGroups` | 原有内容上加一项 `"auto":"自动选择"` |
+| `DefaultUseAutoGroup` | `true`（控制台里新建密钥也默认用 auto） |
+
+以上三项在后台系统设置的分组倍率表单里都能改。下面这几项没有界面，写 `options` 表（改完等一分钟同步，或重启容器）：
+
+| 选项 | 说明 |
+|---|---|
+| `dsh_setup.enabled` | `true` 才开放；默认关，三个接口都是 404，页面上也不出现卡片 |
+| `dsh_setup.provider_id` | DSH 里的提供方 ID，默认 `lu-k`。**定了就别改**：DSH 用它认提供方和密钥 |
+| `dsh_setup.display_name` | DSH 里显示的名字，默认 `LUK` |
+| `dsh_setup.default_model` | 新装的 DSH 默认用哪个模型 |
+| `dsh_setup.models` | 模型清单（JSON），仓库里的副本是 `deploy/dsh-setup-models.json` |
+| `ServerAddress` | 命令和脚本里的站点地址都取它，必须是用户能访问到的那个 |
+
+`dsh_setup.models` 的键是模型名，值里的字段都可省：`name`（显示名）、`context_window`、`max_tokens`、
+`input`（`text` / `image`）、`reasoning_efforts`、`compat`（后两项原样写进 DSH 配置，含义见 DSH 的
+providers 文档）、`hidden`（不是对话模型的，比如生图和 `jev`，设 `true`）。清单里没写的模型照样会下发，
+只是用 DSH 的默认值（262144 上下文、32768 输出、仅文本）。模型按它支持的协议分到三个提供方：能走
+`/v1/chat/completions` 的进 `lu-k`，只能走 `/v1/messages` 的（Claude）进 `lu-k-messages`，只能走
+`/v1/responses` 的进 `lu-k-responses`，共用同一把密钥。
+
+脚本的测试在 `service/dshsetup/dshsetup_test.go`：用真的 `sh` 对着几种现有配置跑一遍，逐字节比对结果；
+机器上有 `pwsh` 时同一批用例也会跑 PowerShell 版。**PowerShell 版到 2026-10-02 为止没有实际运行过**
+（开发机上没有 PowerShell），上线前要在一台真的 Windows 上试一次。

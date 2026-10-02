@@ -54,6 +54,12 @@ token.auto_groups_too_many: "A token can select at most {{.Max}} Auto groups"
 token.auto_groups_duplicate: "Auto group {{.Group}} is duplicated"
 token.auto_groups_invalid: "Auto group {{.Group}} is unavailable or unauthorized"
 
+# DSH setup messages
+dsh_setup.disabled: "One-command DSH setup is not enabled on this site"
+dsh_setup.auto_group_unavailable: "Your account cannot use the Auto group, which the DSH setup relies on"
+dsh_setup.no_models: "There is no model the DSH client could be set up with"
+dsh_setup.token_limit: "You have reached the API key limit; delete a key you no longer use and try again"
+
 # Redemption messages
 redemption.name_length: "Redemption code name length must be between 1-20"
 redemption.count_positive: "Redemption code count must be greater than 0"

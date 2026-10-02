@@ -1,0 +1,16 @@
+{
+  "deepseek/deepseek-v4.1-flash": {"name": "DeepSeek V4.1 Flash", "context_window": 1000000, "input": ["text", "image"]},
+  "deepseek-v4.1-flash": {"name": "DeepSeek V4.1 Flash（极低）"},
+  "glm-5.3": {"name": "GLM 5.3"},
+  "glm-5.3-flash": {"name": "GLM 5.3 Flash", "context_window": 1000000, "input": ["text", "image"]},
+  "glm-5.3-flashx": {"name": "GLM 5.3 FlashX"},
+  "mimo-v2.6-flash": {"name": "MiMo V2.6 Flash（特惠）", "context_window": 1000000},
+  "mimo-v2.6-pro": {"name": "MiMo V2.6 Pro（特惠）", "context_window": 1000000},
+  "xiaomi/mimo-v2.6-flash": {"name": "MiMo V2.6 Flash（稳定）", "context_window": 1000000},
+  "xiaomi/mimo-v2.6-pro": {"name": "MiMo V2.6 Pro（稳定）", "context_window": 1000000},
+  "claude-sonnet-5-5": {"name": "Claude Sonnet 5.5"},
+  "gpt-6-luna": {"name": "GPT-6 Luna"},
+  "gpt-5.6-sol": {"name": "GPT-5.6 Sol"},
+  "gpt-image-2.5-flare": {"hidden": true},
+  "jev": {"hidden": true}
+}

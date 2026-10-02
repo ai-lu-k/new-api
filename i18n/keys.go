@@ -62,6 +62,14 @@ const (
 	MsgTokenAutoGroupsInvalid    = "token.auto_groups_invalid"
 )
 
+// DSH setup related messages
+const (
+	MsgDshSetupDisabled             = "dsh_setup.disabled"
+	MsgDshSetupAutoGroupUnavailable = "dsh_setup.auto_group_unavailable"
+	MsgDshSetupNoModels             = "dsh_setup.no_models"
+	MsgDshSetupTokenLimit           = "dsh_setup.token_limit"
+)
+
 // Redemption related messages
 const (
 	MsgRedemptionNameLength        = "redemption.name_length"

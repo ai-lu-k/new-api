@@ -55,6 +55,12 @@ token.auto_groups_too_many: "每個令牌最多可選擇 {{.Max}} 個 Auto 分�
 token.auto_groups_duplicate: "Auto 分組 {{.Group}} 重複"
 token.auto_groups_invalid: "Auto 分組 {{.Group}} 不可用或無權存取"
 
+# DSH setup messages
+dsh_setup.disabled: "本站尚未開啟 DSH 一鍵設定"
+dsh_setup.auto_group_unavailable: "目前帳號不能使用自動分組，無法一鍵設定 DSH"
+dsh_setup.no_models: "目前沒有可以設定給 DSH 的模型"
+dsh_setup.token_limit: "API 金鑰數量已達上限，請先刪除不用的金鑰再試"
+
 # Redemption messages
 redemption.name_length: "兌換碼名稱長度必須在1-20之間"
 redemption.count_positive: "兌換碼個數必須大於0"
