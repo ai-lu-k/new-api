@@ -57,7 +57,11 @@ export function QuickStart() {
         <nav
           ref={row}
           aria-label={t('Quick Start')}
-          className='relative mx-auto flex w-fit max-w-full gap-1 overflow-x-auto px-4'
+          // The row sits one pixel over the rule below it, so that the current
+          // entry's underline covers the rule. The overlap belongs to the row
+          // and not to its entries: an entry reaching past a scrolling row's
+          // box makes the row scroll up and down as well.
+          className='no-scrollbar relative mx-auto -mb-px flex w-fit max-w-full gap-1 overflow-x-auto px-4'
         >
           {CLIENTS.map((client) => (
             <Link
@@ -71,7 +75,7 @@ export function QuickStart() {
               activeOptions={{ includeHash: true }}
               aria-current={client.id === active.id ? 'page' : undefined}
               className={cn(
-                '-mb-px border-b-2 px-3 py-3 text-sm font-medium whitespace-nowrap transition-colors',
+                'border-b-2 px-3 py-3 text-sm font-medium whitespace-nowrap transition-colors',
                 client.id === active.id
                   ? 'border-foreground text-foreground'
                   : 'text-muted-foreground hover:text-foreground border-transparent'
