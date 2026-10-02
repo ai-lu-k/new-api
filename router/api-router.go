@@ -33,6 +33,7 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/about", controller.GetAbout)
 		//apiRouter.GET("/midjourney", controller.GetMidjourney)
 		apiRouter.GET("/home_page_content", controller.GetHomePageContent)
+		apiRouter.GET("/dsh_setup/models", middleware.TryUserAuth(), controller.GetDshSetupModels)
 		apiRouter.GET("/dsh_setup/:script", controller.GetDshSetupScript)
 		apiRouter.POST("/dsh_setup/code", middleware.UserAuth(), middleware.CriticalRateLimit(), middleware.DisableCache(), controller.CreateDshSetupCode)
 		apiRouter.POST("/dsh_setup/redeem", middleware.CriticalRateLimit(), middleware.DisableCache(), anonymousRequestBodyLimit, controller.RedeemDshSetupCode)

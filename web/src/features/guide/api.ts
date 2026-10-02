@@ -18,6 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 
+import type { SetupModel } from './lib/agents'
+
 export type DshSetupCode = {
   code: string
   /** Unix seconds after which the code can no longer be redeemed. */
@@ -31,5 +33,22 @@ export async function createDshSetupCode(): Promise<{
   data?: DshSetupCode
 }> {
   const res = await api.post('/api/dsh_setup/code')
+  return res.data
+}
+
+export type SetupCatalog = {
+  /** Whether this account can use the Auto group, i.e. one key for every model. */
+  auto_group: boolean
+  default_model: string
+  models: SetupModel[]
+}
+
+/** The models the quick-start guides should offer this account. */
+export async function getSetupCatalog(): Promise<{
+  success: boolean
+  message?: string
+  data?: SetupCatalog
+}> {
+  const res = await api.get('/api/dsh_setup/models')
   return res.data
 }

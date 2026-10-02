@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
+import { Link, useLocation } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -89,6 +89,7 @@ export function DshQuickSetup() {
   const { t } = useTranslation()
   const { status } = useStatus()
   const signedIn = useAuthStore((state) => Boolean(state.auth.user))
+  const here = useLocation({ select: (location) => location.href })
   const [setup, setSetup] = useState<DshSetupCode | null>(null)
   const [expired, setExpired] = useState(false)
 
@@ -140,7 +141,7 @@ export function DshQuickSetup() {
       <p className='text-muted-foreground min-w-0 flex-1 text-sm'>
         {t('Sign in to get your command.')}
       </p>
-      <Button render={<Link to='/sign-in' search={{ redirect: '/guide' }} />}>
+      <Button render={<Link to='/sign-in' search={{ redirect: here }} />}>
         {t('Sign in')}
       </Button>
     </div>
@@ -223,7 +224,6 @@ export function DshQuickSetup() {
         'Run one command in a terminal and DSH is ready to use: the provider, every model and your API key are written for you. There is no model, group or key to pick.'
       )}
       disableHoverEffect
-      className='mt-8'
     >
       {body}
     </TitledCard>

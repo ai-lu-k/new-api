@@ -23,6 +23,7 @@ import { PublicLayout } from '@/components/layout'
 import { Footer } from '@/components/layout/components/footer'
 import { RichContent } from '@/components/rich-content'
 import { useTheme } from '@/context/theme-provider'
+import { QuickStart } from '@/features/guide/components/quick-start'
 import { isLikelyHtml } from '@/lib/content-format'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -103,6 +104,8 @@ export function Home() {
             content={content}
             className='custom-home-content'
           />
+          {/* The stored HTML is the page's heading; the ways to start follow it. */}
+          <QuickStart />
         </PublicLayout>
       )
     }

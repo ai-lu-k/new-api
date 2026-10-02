@@ -73,6 +73,62 @@ func CredentialRef(providerID string) string {
 	return nonRefChars.ReplaceAllString(strings.ToUpper(providerID), "_") + "_API_KEY"
 }
 
+// ClientModel is one gateway model as a coding client should be told about it.
+type ClientModel struct {
+	ID string `json:"id"`
+	// Name is the display name; empty means the client shows the id.
+	Name string `json:"name,omitempty"`
+	// Protocols are the wire protocols the model is served on, in the names
+	// DSH uses for them and in order of preference.
+	Protocols     []string `json:"protocols"`
+	ContextWindow int      `json:"context_window,omitempty"`
+	MaxTokens     int      `json:"max_tokens,omitempty"`
+	Input         []string `json:"input,omitempty"`
+}
+
+// ClientModels lists, sorted by id, the models a coding client can be pointed
+// at: those served on a chat protocol, minus the ones the catalogue hides and
+// the ones whose id could not be written into a config file unescaped.
+func ClientModels(setting operation_setting.DshSetupSetting, models []GatewayModel) []ClientModel {
+	offered := make([]ClientModel, 0, len(models))
+	for _, model := range models {
+		entry := setting.Models[model.ID]
+		if !modelIDPattern.MatchString(model.ID) || entry.Hidden {
+			continue
+		}
+		var protocols []string
+		for _, route := range routes {
+			if slices.Contains(model.Endpoints, route.endpoint) {
+				protocols = append(protocols, route.api)
+			}
+		}
+		if len(protocols) == 0 {
+			continue
+		}
+		offered = append(offered, ClientModel{
+			ID:            model.ID,
+			Name:          entry.Name,
+			Protocols:     protocols,
+			ContextWindow: entry.ContextWindow,
+			MaxTokens:     entry.MaxTokens,
+			Input:         inputModalities(entry.Input),
+		})
+	}
+	slices.SortFunc(offered, func(a, b ClientModel) int { return strings.Compare(a.ID, b.ID) })
+	return offered
+}
+
+// inputModalities keeps the modalities DSH knows, in its own order.
+func inputModalities(declared []string) []string {
+	var input []string
+	for _, modality := range []string{"text", "image"} {
+		if slices.Contains(declared, modality) {
+			input = append(input, modality)
+		}
+	}
+	return input
+}
+
 // BuildPayload renders what a redeemed setup code delivers: the credential,
 // the provider entries as YAML, and the default-model section. The format is
 // line-based so that a shell script can take it apart without a parser.
@@ -92,15 +148,13 @@ func BuildPayload(setting operation_setting.DshSetupSetting, serverAddress strin
 		displayName = setting.ProviderID
 	}
 
+	// A DSH provider speaks one protocol, so each model goes to the first
+	// route it is served on.
 	offered := make([][]string, len(routes))
-	for _, model := range models {
-		if !modelIDPattern.MatchString(model.ID) || setting.Models[model.ID].Hidden {
-			continue
-		}
+	for _, model := range ClientModels(setting, models) {
 		for i, route := range routes {
-			if slices.Contains(model.Endpoints, route.endpoint) {
+			if model.Protocols[0] == route.api {
 				offered[i] = append(offered[i], model.ID)
-				break
 			}
 		}
 	}
@@ -111,7 +165,6 @@ func BuildPayload(setting operation_setting.DshSetupSetting, serverAddress strin
 		if len(offered[i]) == 0 {
 			continue
 		}
-		slices.Sort(offered[i])
 		id := setting.ProviderID + route.idSuffix
 		if slices.Contains(offered[i], setting.DefaultModel) {
 			defaultProvider, defaultModel = id, setting.DefaultModel
@@ -169,13 +222,7 @@ func writeModel(out *strings.Builder, id string, entry operation_setting.DshSetu
 	if entry.MaxTokens > 0 {
 		fmt.Fprintf(out, "      maxTokens: %d\n", entry.MaxTokens)
 	}
-	var input []string
-	for _, modality := range []string{"text", "image"} {
-		if slices.Contains(entry.Input, modality) {
-			input = append(input, modality)
-		}
-	}
-	if len(input) > 0 {
+	if input := inputModalities(entry.Input); len(input) > 0 {
 		fmt.Fprintf(out, "      input: [%s]\n", strings.Join(input, ", "))
 	}
 

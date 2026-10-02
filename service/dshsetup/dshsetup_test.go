@@ -127,6 +127,21 @@ agent-default-model:
 @@end
 `
 
+func TestClientModelsNameTheProtocolsOfEachChatModel(t *testing.T) {
+	assert.Equal(t, []ClientModel{
+		{ID: "claude-sonnet-5-5", Protocols: []string{"anthropic-messages"}},
+		{
+			ID:            "deepseek/deepseek-v4.1-flash",
+			Name:          "DeepSeek V4.1 Flash",
+			Protocols:     []string{"openai-completions", "anthropic-messages", "openai-responses"},
+			ContextWindow: 1000000,
+			MaxTokens:     32768,
+			Input:         []string{"text", "image"},
+		},
+		{ID: "glm-5.3", Name: "GLM 5.3（特惠）", Protocols: []string{"openai-completions"}},
+	}, ClientModels(testSetting, testModels), "hidden, image-only and unsafe ids are left out")
+}
+
 func TestPayloadOffersEachModelOnOneProtocol(t *testing.T) {
 	payload, err := BuildPayload(testSetting, "https://ai.example.test/", "sk-test0123456789", testModels)
 	require.NoError(t, err)

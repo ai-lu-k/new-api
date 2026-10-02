@@ -132,6 +132,8 @@ git push server tavern
   换行转义成 `\n`，把内容写坏），写完重启对应容器（options 在内存里有缓存）。这段 HTML
   渲染在 shadow root 里，能用 `var(--foreground)`、`var(--primary)`、`var(--radius)` 这类
   主题 token，但用不了 Tailwind 工具类（构建时扫描不到），样式只能靠它自带的 `<style>`。
+  这段 HTML 现在**只有首屏**（标题、一句话、两个按钮）；它下面那排「使用 xx 开始」和各客户端的
+  接入步骤是代码里的组件（见第八节），紧跟在这段 HTML 后面渲染，推代码就会更新。
 - **`github.com` 的 git-over-HTTPS 在这个网络里是断的**（`info/refs` 直接超时），
   但 SSH 正常。所以远端一律用 `git@github.com:...`，别用 https。
 - **GitHub 对 fork 仓库禁用 deploy key**，所以服务器不能自己拉 fork。部署镜像
@@ -214,9 +216,33 @@ NEWAPI_ENV=staging /opt/new-api-src/deploy/release.sh <branch>
 生产库的全量拷贝（含真实用户和 API 令牌），所以它绝不能对外暴露 —— 端口只绑
 `127.0.0.1`，入口只有 SSH 隧道。在测试环境改数据、跑迁移都不会碰到生产库。
 
-## 八、DSH 一键配置
+## 八、快速开始与 DSH 一键配置
 
-「快速开始」页（`/guide`）顶部的卡片：登录用户点一下，拿到一条终端命令，粘贴运行后 DSH 就配好了
+首页首屏下面（以及 `/guide`）是同一个「快速开始」组件：一排居中的子导航，每个客户端一栏，选中的那栏
+记在网址的 `#` 后面（如 `/#codex`），可以直接发链接。组件在 `web/src/features/guide/components/quick-start.tsx`，
+要加客户端就在 `web/src/features/guide/lib/agents.ts` 里加一项，再在 `agent-configs.ts` 里写它的配置格式。
+
+| 栏 | 怎么接入 |
+|---|---|
+| DSH | 一条命令全自动（本节后半）；`dsh_setup.enabled` 没开时只显示手动步骤 |
+| Claude Code / Codex / OpenCode / OpenClaw | 半自动：点「填入 CC Switch」，由 CC Switch 导入并切换；或者手动：按页面给的配置文件内容粘贴 |
+
+后四栏的说明：
+
+- 模型列表来自 `GET /api/dsh_setup/models`（不用登录；登录后按账号的分组算）。每个客户端只列它那种协议
+  能调的模型：Claude Code 走 `/v1/messages`，Codex 走 `/v1/responses`，OpenCode 和 OpenClaw 走
+  `/v1/chat/completions`。显示名、上下文长度这些取自 `dsh_setup.models`，和 DSH 用的是同一份清单。
+- 自动分组开着时，页面会替登录用户准备一把以客户端命名的密钥（`Claude Code`、`Codex`……，分组 `auto`，
+  开跨分组重试；已有同名且没加限制的就复用），所以用户不用自己建。自动分组没开时页面不建密钥，改为
+  指路去控制台的「API 密钥」。
+- CC Switch 一次只导入一个模型（页面上选的那个「起始模型」），手动配置里 OpenCode 和 OpenClaw 会写上全部模型。
+- 配置里的站点地址取 `ServerAddress`。
+- **这四种客户端的配置格式是照各家官方文档（2026-10-02 查的）写的，没有在真实客户端上跑过。** 上线前
+  每种至少实际试一次；格式变了就改 `agent-configs.ts` 和它的测试。
+
+### DSH：一条命令
+
+DSH 一栏顶部的卡片：登录用户点一下，拿到一条终端命令，粘贴运行后 DSH 就配好了
 ——提供方、这个账号能调的全部模型、密钥，一次写进 `~/.dsh/settings.yaml` 和 `~/.dsh/.credentials.yaml`。
 用户不用选模型、选分组，也不用自己建密钥。代码在 `service/dshsetup/`（脚本、配置码、下发内容）
 和 `controller/dsh_setup.go`。
@@ -249,7 +275,7 @@ NEWAPI_ENV=staging /opt/new-api-src/deploy/release.sh <branch>
 
 | 选项 | 说明 |
 |---|---|
-| `dsh_setup.enabled` | `true` 才开放；默认关，三个接口都是 404，页面上也不出现卡片 |
+| `dsh_setup.enabled` | `true` 才开放一条命令配置；默认关：脚本和兑换接口返回 404，申请配置码的接口回答「未开放」，DSH 一栏只显示手动步骤（模型列表接口不受它影响） |
 | `dsh_setup.provider_id` | DSH 里的提供方 ID，默认 `lu-k`。**定了就别改**：DSH 用它认提供方和密钥 |
 | `dsh_setup.display_name` | DSH 里显示的名字，默认 `LUK` |
 | `dsh_setup.default_model` | 新装的 DSH 默认用哪个模型 |

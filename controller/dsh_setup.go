@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"maps"
 	"net/http"
 	"slices"
 
@@ -21,10 +22,9 @@ import (
 // can find and revoke it among their API keys.
 const dshSetupTokenName = "DSH"
 
-// dshSetupModels lists what an Auto-group key of this user can call: every
-// priced model that one of the user's Auto groups carries.
-func dshSetupModels(userGroup string) []dshsetup.GatewayModel {
-	groups := service.GetUserAutoGroup(userGroup)
+// dshSetupModels lists what a key in these groups can call: every priced model
+// that one of the groups carries.
+func dshSetupModels(groups []string) []dshsetup.GatewayModel {
 	models := make([]dshsetup.GatewayModel, 0)
 	for _, pricing := range model.GetPricing() {
 		reachable := slices.ContainsFunc(pricing.EnableGroup, func(group string) bool {
@@ -35,6 +35,34 @@ func dshSetupModels(userGroup string) []dshsetup.GatewayModel {
 		}
 	}
 	return models
+}
+
+// GetDshSetupModels tells the quick-start guides which models to offer: the
+// catalogue as this account would reach it. Nothing here is private: the same
+// model names are on the public pricing page.
+func GetDshSetupModels(c *gin.Context) {
+	userGroup := ""
+	if userId := c.GetInt("id"); userId > 0 {
+		group, err := getTokenRequestUserGroup(c)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		userGroup = group
+	}
+	setting := operation_setting.GetDshSetupSetting()
+	groups := service.GetUserAutoGroup(userGroup)
+	autoGroup := service.GroupInUserUsableGroups(userGroup, "auto") && len(groups) > 0
+	if !autoGroup {
+		// No single key reaches everything, so show what the account could
+		// reach with a key in any group it may use.
+		groups = slices.Collect(maps.Keys(service.GetUserUsableGroups(userGroup)))
+	}
+	common.ApiSuccess(c, gin.H{
+		"auto_group":    autoGroup,
+		"default_model": setting.DefaultModel,
+		"models":        dshsetup.ClientModels(*setting, dshSetupModels(groups)),
+	})
 }
 
 // GetDshSetupScript serves the setup script. It holds no secret and is the
@@ -74,7 +102,7 @@ func CreateDshSetupCode(c *gin.Context) {
 		return
 	}
 	// A code is only worth handing out if redeeming it will produce something.
-	if _, err := dshsetup.BuildPayload(*setting, system_setting.ServerAddress, "sk-placeholder", dshSetupModels(userGroup)); err != nil {
+	if _, err := dshsetup.BuildPayload(*setting, system_setting.ServerAddress, "sk-placeholder", dshSetupModels(service.GetUserAutoGroup(userGroup))); err != nil {
 		logger.LogError(c.Request.Context(), err.Error())
 		common.ApiErrorI18n(c, i18n.MsgDshSetupNoModels)
 		return
@@ -159,7 +187,7 @@ func RedeemDshSetupCode(c *gin.Context) {
 		refuse(fmt.Sprintf("token %d of user %d is not available", grant.TokenID, grant.UserID))
 		return
 	}
-	payload, err := dshsetup.BuildPayload(*setting, system_setting.ServerAddress, "sk-"+token.Key, dshSetupModels(user.Group))
+	payload, err := dshsetup.BuildPayload(*setting, system_setting.ServerAddress, "sk-"+token.Key, dshSetupModels(service.GetUserAutoGroup(user.Group)))
 	if err != nil {
 		logger.LogError(c.Request.Context(), err.Error())
 		c.String(http.StatusInternalServerError, "setup is not available right now\n")
