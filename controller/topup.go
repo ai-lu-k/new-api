@@ -18,7 +18,6 @@ import (
 
 	"github.com/Calcium-Ion/go-epay/epay"
 	"github.com/gin-gonic/gin"
-	"github.com/samber/lo"
 	"github.com/shopspring/decimal"
 )
 
@@ -336,6 +335,7 @@ func RequestEpay(c *gin.Context) {
 		TradeNo:         tradeNo,
 		PaymentMethod:   req.PaymentMethod,
 		PaymentProvider: model.PaymentProviderEpay,
+		EpayMerchantId:  params["pid"],
 		CreateTime:      time.Now().Unix(),
 		Status:          common.TopUpStatusPending,
 	}
@@ -398,25 +398,28 @@ func EpayNotify(c *gin.Context) {
 		return
 	}
 
-	var params map[string]string
-
-	if c.Request.Method == "POST" {
-		// POST 请求：从 POST body 解析参数
+	var values url.Values
+	if c.Request.Method == http.MethodPost {
 		if err := c.Request.ParseForm(); err != nil {
-			logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 webhook POST 表单解析失败 path=%q client_ip=%s error=%q", c.Request.RequestURI, c.ClientIP(), err.Error()))
 			_, _ = c.Writer.Write([]byte("fail"))
 			return
 		}
-		params = lo.Reduce(lo.Keys(c.Request.PostForm), func(r map[string]string, t string, i int) map[string]string {
-			r[t] = c.Request.PostForm.Get(t)
-			return r
-		}, map[string]string{})
+		values = c.Request.PostForm
 	} else {
-		// GET 请求：从 URL Query 解析参数
-		params = lo.Reduce(lo.Keys(c.Request.URL.Query()), func(r map[string]string, t string, i int) map[string]string {
-			r[t] = c.Request.URL.Query().Get(t)
-			return r
-		}, map[string]string{})
+		var err error
+		values, err = url.ParseQuery(c.Request.URL.RawQuery)
+		if err != nil {
+			_, _ = c.Writer.Write([]byte("fail"))
+			return
+		}
+	}
+	params := make(map[string]string, len(values))
+	for key, entries := range values {
+		if len(entries) != 1 {
+			_, _ = c.Writer.Write([]byte("fail"))
+			return
+		}
+		params[key] = entries[0]
 	}
 	logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 webhook 收到请求 path=%q client_ip=%s method=%s params=%q", c.Request.RequestURI, c.ClientIP(), c.Request.Method, common.GetJsonString(params)))
 
@@ -446,6 +449,16 @@ func EpayNotify(c *gin.Context) {
 		}
 		return
 	}
+	for _, field := range []string{"pid", "type", "out_trade_no", "trade_no", "money", "trade_status"} {
+		if params[field] == "" {
+			_, _ = c.Writer.Write([]byte("fail"))
+			return
+		}
+	}
+	if _, err := model.EpayMoneyCents(verifyInfo.Money); err != nil || params["sign_type"] != "MD5" {
+		_, _ = c.Writer.Write([]byte("fail"))
+		return
+	}
 	logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 webhook 验签成功 trade_no=%s callback_type=%s trade_status=%s client_ip=%s verify_info=%q", verifyInfo.ServiceTradeNo, verifyInfo.Type, verifyInfo.TradeStatus, c.ClientIP(), common.GetJsonString(verifyInfo)))
 
 	if verifyInfo.TradeStatus == epay.StatusTradeSuccess {
@@ -453,7 +466,10 @@ func EpayNotify(c *gin.Context) {
 		// 数据库行锁 + 事务内状态校验保证（多实例部署下同样安全）。
 		LockOrder(verifyInfo.ServiceTradeNo)
 		defer UnlockOrder(verifyInfo.ServiceTradeNo)
-		alreadyDone, err := model.RechargeEpay(verifyInfo.ServiceTradeNo, verifyInfo.Type, c.ClientIP())
+		alreadyDone, err := model.RechargeEpay(verifyInfo.ServiceTradeNo, model.EpayNotification{
+			Money: verifyInfo.Money, MerchantId: params["pid"],
+			LegacyMerchantId: operation_setting.EpayId, PaymentMethod: verifyInfo.Type,
+		}, c.ClientIP())
 		if err != nil {
 			switch {
 			case errors.Is(err, model.ErrTopUpNotFound):
