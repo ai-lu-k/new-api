@@ -23,7 +23,7 @@ func TestSetupCodeWorksOnceWithinItsLifetime(t *testing.T) {
 	store := NewCodeStore()
 	store.now = func() time.Time { return now }
 
-	code, expires, err := store.Issue(Grant{UserID: 7, TokenID: 31})
+	code, expires, err := store.Issue(7)
 	require.NoError(t, err)
 	assert.Equal(t, now.Add(10*time.Minute), expires)
 	assert.Len(t, code, 32, "192 random bits, base64url")
@@ -31,33 +31,73 @@ func TestSetupCodeWorksOnceWithinItsLifetime(t *testing.T) {
 	_, ok := store.Redeem("not-" + code)
 	assert.False(t, ok, "a code that was never issued")
 
-	grant, ok := store.Redeem(code)
+	userID, ok := store.Redeem(code)
 	require.True(t, ok)
-	assert.Equal(t, Grant{UserID: 7, TokenID: 31}, grant)
+	assert.Equal(t, 7, userID)
 
 	_, ok = store.Redeem(code)
 	assert.False(t, ok, "a code that has been used")
 
-	stale, _, err := store.Issue(Grant{UserID: 7, TokenID: 31})
+	stale, _, err := store.Issue(7)
 	require.NoError(t, err)
 	now = now.Add(10 * time.Minute)
 	_, ok = store.Redeem(stale)
 	assert.False(t, ok, "a code at the end of its lifetime")
+}
 
-	first, _, err := store.Issue(Grant{UserID: 7, TokenID: 31})
-	require.NoError(t, err)
-	second, _, err := store.Issue(Grant{UserID: 7, TokenID: 31})
-	require.NoError(t, err)
-	other, _, err := store.Issue(Grant{UserID: 8, TokenID: 40})
-	require.NoError(t, err)
-	_, ok = store.Redeem(first)
-	assert.False(t, ok, "a code replaced by a newer one for the same user")
-	grant, ok = store.Redeem(second)
+// The page asks for a code each time it is opened, so a newer code must not
+// void the one the user has already copied.
+func TestSetupCodesOfOneUserCoexistUpToALimit(t *testing.T) {
+	now := time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
+	store := NewCodeStore()
+	store.now = func() time.Time { return now }
+
+	issue := func(userID int) string {
+		code, _, err := store.Issue(userID)
+		require.NoError(t, err)
+		return code
+	}
+
+	first := issue(7)
+	second := issue(7)
+	other := issue(8)
+	userID, ok := store.Redeem(first)
+	require.True(t, ok, "an earlier code survives a newer one")
+	assert.Equal(t, 7, userID)
+	userID, ok = store.Redeem(second)
 	require.True(t, ok)
-	assert.Equal(t, 7, grant.UserID)
-	grant, ok = store.Redeem(other)
+	assert.Equal(t, 7, userID)
+	userID, ok = store.Redeem(other)
 	require.True(t, ok)
-	assert.Equal(t, Grant{UserID: 8, TokenID: 40}, grant)
+	assert.Equal(t, 8, userID)
+
+	oldest := issue(7)
+	kept := make([]string, 0, MaxPendingPerUser)
+	for range MaxPendingPerUser {
+		kept = append(kept, issue(7))
+	}
+	bystander := issue(8)
+	_, ok = store.Redeem(oldest)
+	assert.False(t, ok, "the oldest code gives way once the user holds too many")
+	for _, code := range kept {
+		_, ok = store.Redeem(code)
+		assert.True(t, ok)
+	}
+	_, ok = store.Redeem(bystander)
+	assert.True(t, ok, "another user's code is not affected")
+
+	// Expired codes do not count against the limit and leave nothing behind.
+	for range MaxPendingPerUser {
+		issue(7)
+	}
+	now = now.Add(CodeLifetime)
+	fresh := issue(7)
+	assert.Len(t, store.pending, 1)
+	assert.Len(t, store.byUser[7], 1)
+	_, ok = store.Redeem(fresh)
+	assert.True(t, ok)
+	assert.Empty(t, store.pending)
+	assert.Empty(t, store.byUser)
 }
 
 var testSetting = operation_setting.DshSetupSetting{

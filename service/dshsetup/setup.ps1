@@ -312,10 +312,10 @@
 
     try {
         if ([string]::IsNullOrEmpty($Code)) {
-            throw "缺少配置码。请回到 $Site 的「快速开始」页面，重新复制完整的命令。"
+            throw "缺少配置码。请回到 $Site 的「快速开始」页面，重新复制提示词。"
         }
         if ($Code -cnotmatch '^[A-Za-z0-9_-]+$') {
-            throw "配置码的格式不对。请回到 $Site 的「快速开始」页面，重新复制完整的命令。"
+            throw "配置码的格式不对。请回到 $Site 的「快速开始」页面，重新复制提示词。"
         }
 
         $dshHome = $env:DSH_HOME
@@ -351,11 +351,14 @@
             $status = 0
             if ($null -ne $_.Exception.Response) { $status = [int]$_.Exception.Response.StatusCode }
             if ($status -eq 404) {
-                throw '配置码无效、已经用过或已过期（生成后 10 分钟内有效，只能用一次）。回到网页重新生成一条命令即可。'
+                throw "配置码无效、已经用过或已过期（生成后 10 分钟内有效，只能用一次）。回到 $Site 的「快速开始」页面重新复制提示词即可。"
+            }
+            if ($status -eq 409) {
+                throw "这个账号的 API 密钥数量已达上限，没有改动任何文件。请先在 $Site 的「API 密钥」页面删掉一把不用的，再回到「快速开始」页面重新复制提示词。"
             }
             if ($status -eq 429) { throw '尝试次数太多，请稍后再试。' }
             if ($status -gt 0) { throw "服务器返回了 $status，暂时无法完成配置，没有改动任何文件。请稍后重试。" }
-            throw "连不上 $BaseUrl 。请检查网络后重试；如果之后提示配置码无效，回到网页重新生成一条命令即可。"
+            throw "连不上 $BaseUrl 。请检查网络后重试；如果之后提示配置码无效，回到 $Site 的「快速开始」页面重新复制提示词即可。"
         }
         $raw = $response.RawContentStream
         $raw.Position = 0

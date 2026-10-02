@@ -36,3 +36,22 @@ export function buildDshSetupCommands(
     powershell: `$env:LUK_SETUP_CODE='${code}'; irm ${base}/setup.ps1 | iex`,
   }
 }
+
+/**
+ * The prompt a user sends to DSH: what to do, then the command for each
+ * system. It carries the one-time setup code, never the API key.
+ */
+export function buildDshSetupPrompt(
+  instructions: string,
+  commands: DshSetupCommands
+): string {
+  return [
+    instructions,
+    '',
+    'macOS / Linux:',
+    commands.shell,
+    '',
+    'Windows (PowerShell):',
+    commands.powershell,
+  ].join('\n')
+}

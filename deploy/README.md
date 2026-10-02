@@ -224,8 +224,8 @@ NEWAPI_ENV=staging /opt/new-api-src/deploy/release.sh <branch>
 
 | 栏 | 怎么接入 |
 |---|---|
-| DSH | 一条命令全自动（本节后半）；`dsh_setup.enabled` 没开时只显示手动步骤 |
-| Claude Code / Codex / OpenCode / OpenClaw | 半自动：点「填入 CC Switch」，由 CC Switch 导入并切换；或者手动：按页面给的配置文件内容粘贴 |
+| DSH | 一段提示词全自动（本节后半）；`dsh_setup.enabled` 没开时只显示手动步骤 |
+| Claude Code / Codex / OpenCode / OpenClaw | 半自动：页面上直接有 CC Switch 的表单，填好点「打开 CC Switch」，由它导入并切换；或者手动：按页面给的配置文件内容粘贴 |
 
 后四栏的说明：
 
@@ -235,32 +235,43 @@ NEWAPI_ENV=staging /opt/new-api-src/deploy/release.sh <branch>
 - 自动分组开着时，页面会替登录用户准备一把以客户端命名的密钥（`Claude Code`、`Codex`……，分组 `auto`，
   开跨分组重试；已有同名且没加限制的就复用），所以用户不用自己建。自动分组没开时页面不建密钥，改为
   指路去控制台的「API 密钥」。
-- CC Switch 一次只导入一个模型（页面上选的那个「起始模型」），手动配置里 OpenCode 和 OpenClaw 会写上全部模型。
+- CC Switch 的表单和「API 密钥」页每行菜单里的是同一套（字段在
+  `web/src/features/keys/components/dialogs/cc-switch-dialog.tsx` 的 `CCSwitchFields`，应用表和链接生成在
+  `web/src/features/keys/lib/cc-switch.ts`）：密钥页是弹窗、要自己选应用；快速开始里直接摆在页面上，应用就是所在的那一栏，
+  主模型用页面上方选的那个。应用表里有 Claude、Codex、Gemini、OpenCode、OpenClaw 五个。
+- CC Switch 一次只导入一个主模型（Claude 另外可以填 Haiku / Sonnet / Opus 三档），手动配置里 OpenCode 和 OpenClaw 会写上全部模型。
 - 配置里的站点地址取 `ServerAddress`。
 - **这四种客户端的配置格式是照各家官方文档（2026-10-02 查的）写的，没有在真实客户端上跑过。** 上线前
   每种至少实际试一次；格式变了就改 `agent-configs.ts` 和它的测试。
 
-### DSH：一条命令
+### DSH：一段提示词
 
-DSH 一栏顶部的卡片：登录用户点一下，拿到一条终端命令，粘贴运行后 DSH 就配好了
+DSH 一栏顶部的卡片：登录用户一打开就看到一段提示词（不用点任何按钮），复制后发给 DSH，DSH 运行里面的那条命令就配好了
 ——提供方、这个账号能调的全部模型、密钥，一次写进 `~/.dsh/settings.yaml` 和 `~/.dsh/.credentials.yaml`。
-用户不用选模型、选分组，也不用自己建密钥。代码在 `service/dshsetup/`（脚本、配置码、下发内容）
-和 `controller/dsh_setup.go`。
+用户不用选模型、选分组，也不用自己建密钥；密钥也不经过对话（提示词里只有一次性配置码）。访客看到的是
+「请先登录」，登录后回到原处。代码在 `service/dshsetup/`（脚本、配置码、下发内容）和 `controller/dsh_setup.go`。
+
+**DSH 里得已经有一个能用的模型，它才收得了提示词。** 全新的 DSH 没法对话，这种情况卡片最下面有一句提示：
+把提示词里对应系统的那条命令自己粘到终端运行，效果一样。
 
 流程：
 
-1. 网页 `POST /api/dsh_setup/code`（要登录）：给这个账号准备一把名为 `DSH`、分组为 `auto`、开了跨分组
-   重试的密钥（已有就复用），返回一个一次性配置码。
-2. 用户运行 `curl -fsSL <站点>/api/dsh_setup/setup.sh | sh -s -- <配置码>`（Windows 是
-   `setup.ps1`，配置码放在 `LUK_SETUP_CODE` 环境变量里）。脚本本身不含任何密钥，人人相同。
-3. 脚本先确认能写 DSH 的目录，再 `POST /api/dsh_setup/redeem`（配置码放在 `X-Setup-Code` 请求头）
-   换回配置，然后只改自己管的那几项：`llm-pi-ai.providers` 下的 `lu-k` / `lu-k-messages` /
-   `lu-k-responses`，以及密钥引用 `LU_K_API_KEY`。别的提供方、别的密钥、注释都不动；改之前先备份；
-   遇到看不懂的写法就不动，改为把要粘贴的内容打印出来。
+1. 网页 `POST /api/dsh_setup/code`（要登录）拿一个一次性配置码。页面每次打开、每次复制之后、以及码快过期时
+   都会自己再要一个，所以这一步很轻：只检查能不能配（自动分组可用、有模型、密钥没满），**不建密钥、不记审计**，
+   也不走登录接口共用的那个按 IP 的限流额度。
+2. 提示词里带两条命令，DSH 按所在系统运行其中一条：`curl -fsSL <站点>/api/dsh_setup/setup.sh | sh -s -- <配置码>`，
+   或 Windows 的 `setup.ps1`（配置码放在 `LUK_SETUP_CODE` 环境变量里）。脚本本身不含任何密钥，人人相同。
+3. 脚本先确认能写 DSH 的目录，再 `POST /api/dsh_setup/redeem`（配置码放在 `X-Setup-Code` 请求头）换回配置。
+   **密钥是这一步才准备的**：账号里已有名为 `DSH`、分组 `auto`、没加限制的密钥就复用，没有就新建一把
+   （开跨分组重试）。所以只是打开过页面的人不会多出一把密钥。
+4. 脚本只改自己管的那几项：`llm-pi-ai.providers` 下的 `lu-k` / `lu-k-messages` / `lu-k-responses`，
+   以及密钥引用 `LU_K_API_KEY`。别的提供方、别的密钥、注释都不动；改之前先备份；遇到看不懂的写法就不动，
+   改为把要粘贴的内容打印出来。
 
-配置码的规矩（对照 OWASP ASVS 5.0）：192 位随机、只存 SHA-256、只能用一次、10 分钟过期、同一用户再申请
-会作废上一个；不出现在 URL 里；兑换接口限流、响应禁止缓存；无论码不存在、用过还是过期，回答都一样；
-发码和兑换都记审计日志，日志里没有码也没有密钥。配置码存在进程内存里，所以**只适用于单节点部署**，
+配置码的规矩（对照 OWASP ASVS 5.0）：192 位随机、只存 SHA-256、只能用一次、10 分钟过期；同一用户最多同时有
+5 个没用过的码，再多就挤掉最早的（页面一打开就发码，新码不能让刚复制走的那个失效）；不出现在 URL 里；
+兑换接口限流、响应禁止缓存；无论码不存在、用过还是过期，回答都一样；兑换记审计日志，日志里没有码也没有密钥。
+兑换时账号的密钥数已满会回 409，脚本会提示先去删一把。配置码存在进程内存里，所以**只适用于单节点部署**，
 重启后未用的码作废。
 
 **前提：自动分组要开。** 这个功能靠 `auto` 分组让一把密钥通所有模型：
@@ -275,12 +286,12 @@ DSH 一栏顶部的卡片：登录用户点一下，拿到一条终端命令，�
 
 | 选项 | 说明 |
 |---|---|
-| `dsh_setup.enabled` | `true` 才开放一条命令配置；默认关：脚本和兑换接口返回 404，申请配置码的接口回答「未开放」，DSH 一栏只显示手动步骤（模型列表接口不受它影响） |
+| `dsh_setup.enabled` | `true` 才开放提示词配置；默认关：脚本和兑换接口返回 404，申请配置码的接口回答「未开放」，DSH 一栏只显示手动步骤（模型列表接口不受它影响） |
 | `dsh_setup.provider_id` | DSH 里的提供方 ID，默认 `lu-k`。**定了就别改**：DSH 用它认提供方和密钥 |
 | `dsh_setup.display_name` | DSH 里显示的名字，默认 `LUK` |
 | `dsh_setup.default_model` | 新装的 DSH 默认用哪个模型 |
 | `dsh_setup.models` | 模型清单（JSON），仓库里的副本是 `deploy/dsh-setup-models.json` |
-| `ServerAddress` | 命令和脚本里的站点地址都取它，必须是用户能访问到的那个 |
+| `ServerAddress` | 提示词、脚本和各客户端配置里的站点地址都取它，必须是用户能访问到的那个 |
 
 `dsh_setup.models` 的键是模型名，值里的字段都可省：`name`（显示名）、`context_window`、`max_tokens`、
 `input`（`text` / `image`）、`reasoning_efforts`、`compat`（后两项原样写进 DSH 配置，含义见 DSH 的

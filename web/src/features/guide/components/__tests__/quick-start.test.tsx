@@ -103,7 +103,7 @@ it('lists the clients to start with and opens on DSH', async () => {
     'Start with OpenClaw',
   ])
   expect(currentOption(nav)).toEqual(['Start with DSH'])
-  expect(screen.getByText('Set up DSH with one command')).toBeVisible()
+  expect(screen.getByText('Set up DSH with one prompt')).toBeVisible()
 })
 
 it('opens on the client named in the address', async () => {
@@ -112,7 +112,7 @@ it('opens on the client named in the address', async () => {
   expect(currentOption(nav)).toEqual(['Start with Codex'])
   expect(await screen.findByText('Import with CC Switch')).toBeVisible()
   expect(
-    screen.queryByText('Set up DSH with one command')
+    screen.queryByText('Set up DSH with one prompt')
   ).not.toBeInTheDocument()
 })
 

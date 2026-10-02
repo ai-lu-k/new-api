@@ -23,9 +23,9 @@ fail() {
 }
 
 code=${1:-${LUK_SETUP_CODE:-}}
-[ -n "$code" ] || fail "缺少配置码。请回到 $SITE 的「快速开始」页面，重新复制完整的命令。"
+[ -n "$code" ] || fail "缺少配置码。请回到 $SITE 的「快速开始」页面，重新复制提示词。"
 case $code in
-*[!A-Za-z0-9_-]*) fail "配置码的格式不对。请回到 $SITE 的「快速开始」页面，重新复制完整的命令。" ;;
+*[!A-Za-z0-9_-]*) fail "配置码的格式不对。请回到 $SITE 的「快速开始」页面，重新复制提示词。" ;;
 esac
 
 command -v curl >/dev/null 2>&1 || fail "这台机器上没有 curl，无法继续。"
@@ -54,10 +54,11 @@ trap 'exit 1' INT TERM HUP
 
 status=$(curl -sS -o "$work/payload" -w '%{http_code}' -X POST \
 	-H "X-Setup-Code: $code" "$BASE_URL/api/dsh_setup/redeem") ||
-	fail "连不上 $BASE_URL 。请检查网络后重试；如果之后提示配置码无效，回到网页重新生成一条命令即可。"
+	fail "连不上 $BASE_URL 。请检查网络后重试；如果之后提示配置码无效，回到 $SITE 的「快速开始」页面重新复制提示词即可。"
 case $status in
 200) ;;
-404) fail "配置码无效、已经用过或已过期（生成后 10 分钟内有效，只能用一次）。回到网页重新生成一条命令即可。" ;;
+404) fail "配置码无效、已经用过或已过期（生成后 10 分钟内有效，只能用一次）。回到 $SITE 的「快速开始」页面重新复制提示词即可。" ;;
+409) fail "这个账号的 API 密钥数量已达上限，没有改动任何文件。请先在 $SITE 的「API 密钥」页面删掉一把不用的，再回到「快速开始」页面重新复制提示词。" ;;
 429) fail "尝试次数太多，请稍后再试。" ;;
 *) fail "服务器返回了 $status，暂时无法完成配置，没有改动任何文件。请稍后重试。" ;;
 esac

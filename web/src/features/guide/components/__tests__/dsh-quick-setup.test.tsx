@@ -23,7 +23,14 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { act, cleanup, render, screen } from '@testing-library/react'
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
@@ -32,30 +39,45 @@ import { useAuthStore } from '@/stores/auth-store'
 
 import { DshQuickSetup } from '../dsh-quick-setup'
 
-const shellCommand =
-  'curl -fsSL https://ai.example.test/api/dsh_setup/setup.sh | sh -s -- the-setup-code'
-const powershellCommand =
-  "$env:LUK_SETUP_CODE='the-setup-code'; irm https://ai.example.test/api/dsh_setup/setup.ps1 | iex"
+function shellCommand(code: string) {
+  return `curl -fsSL https://ai.example.test/api/dsh_setup/setup.sh | sh -s -- ${code}`
+}
 
-let codeResponse: unknown
+function powershellCommand(code: string) {
+  return `$env:LUK_SETUP_CODE='${code}'; irm https://ai.example.test/api/dsh_setup/setup.ps1 | iex`
+}
+
+/**
+ * Matches the prompt that carries this code. The queries collapse whitespace
+ * first, so the line break after the command is a space by then.
+ */
+function promptFor(code: string) {
+  return new RegExp(`sh -s -- ${code} `)
+}
+
+/** What the server answers instead of a code, when it refuses. */
+let refusal: string | null
+let codeRequests: ReturnType<typeof vi.spyOn>
 
 beforeEach(() => {
-  codeResponse = {
-    success: true,
-    data: {
-      code: 'the-setup-code',
-      expires_at: Math.floor(Date.now() / 1000) + 600,
-    },
-  }
-  vi.spyOn(api, 'post').mockImplementation(async (url) => {
+  refusal = null
+  let issued = 0
+  codeRequests = vi.spyOn(api, 'post').mockImplementation(async (url) => {
     if (url !== '/api/dsh_setup/code') {
       throw new Error(`Unexpected request: ${url}`)
     }
-    return { data: codeResponse }
+    if (refusal) return { data: { success: false, message: refusal } }
+    issued += 1
+    return {
+      data: {
+        success: true,
+        data: {
+          code: `code-${issued}`,
+          expires_at: Math.floor(Date.now() / 1000) + 600,
+        },
+      },
+    }
   })
-  vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue(
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'
-  )
 })
 
 afterEach(() => {
@@ -69,6 +91,11 @@ function signIn() {
   useAuthStore.getState().auth.setUser({ id: 7, username: 'ada', role: 1 })
 }
 
+function showPage(visibility: 'visible' | 'hidden') {
+  vi.spyOn(document, 'visibilityState', 'get').mockReturnValue(visibility)
+  fireEvent(document, new Event('visibilitychange'))
+}
+
 async function renderQuickSetup(status: Record<string, unknown>) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
@@ -80,7 +107,7 @@ async function renderQuickSetup(status: Record<string, unknown>) {
   })
   const router = createRouter({
     routeTree: createRootRoute({ component: DshQuickSetup }),
-    history: createMemoryHistory({ initialEntries: ['/guide'] }),
+    history: createMemoryHistory({ initialEntries: ['/#dsh'] }),
   })
   await router.load()
   return render(
@@ -95,110 +122,121 @@ it('stays out of the page while the site has the setup switched off', async () =
   const view = await renderQuickSetup({ dsh_setup_enabled: false })
 
   expect(view.container).toBeEmptyDOMElement()
+  expect(codeRequests).not.toHaveBeenCalled()
 })
 
-it('sends a visitor to sign in and come back instead of offering a command', async () => {
+it('has a visitor sign in first and come back, without asking for a code', async () => {
   await renderQuickSetup({ dsh_setup_enabled: true })
 
   // The shared Button gives a link the button role.
   const link = await screen.findByRole('button', { name: 'Sign in' })
-  expect(link).toHaveAttribute('href', '/sign-in?redirect=%2Fguide')
+  expect(link).toHaveAttribute('href', '/sign-in?redirect=%2F%23dsh')
   expect(
-    screen.queryByRole('button', { name: 'Generate setup command' })
+    screen.queryByRole('button', { name: 'Copy prompt' })
   ).not.toBeInTheDocument()
+  expect(codeRequests).not.toHaveBeenCalled()
 })
 
-it('shows the command for each shell once a signed-in user generates one', async () => {
+it('shows a signed-in user the prompt at once, with the command for each system', async () => {
   signIn()
-  const user = userEvent.setup()
   await renderQuickSetup({ dsh_setup_enabled: true })
 
-  await user.click(
-    await screen.findByRole('button', { name: 'Generate setup command' })
-  )
-
-  expect(await screen.findByText(shellCommand)).toBeInTheDocument()
-  await user.click(screen.getByRole('tab', { name: 'Windows' }))
-  expect(await screen.findByText(powershellCommand)).toBeInTheDocument()
-  expect(
-    screen.getByText('Paste this into PowerShell and run it:')
-  ).toBeInTheDocument()
+  const prompt = await screen.findByText(/Please set up the LUK models in DSH/)
+  expect(prompt).toHaveTextContent(shellCommand('code-1'))
+  expect(prompt).toHaveTextContent(powershellCommand('code-1'))
+  expect(codeRequests).toHaveBeenCalledTimes(1)
+  // Nothing but the prompt is offered: no command box, no system to pick.
+  expect(screen.queryByRole('tab')).not.toBeInTheDocument()
+  expect(screen.getAllByRole('button')).toHaveLength(1)
 })
 
-it('offers the Windows command first to a visitor on Windows', async () => {
-  vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue(
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
-  )
-  signIn()
-  const user = userEvent.setup()
-  await renderQuickSetup({ dsh_setup_enabled: true })
-
-  await user.click(
-    await screen.findByRole('button', { name: 'Generate setup command' })
-  )
-
-  expect(await screen.findByText(powershellCommand)).toBeInTheDocument()
-  expect(screen.queryByText(shellCommand)).not.toBeInTheDocument()
-})
-
-it('copies a prompt for DSH that carries the command but not the key', async () => {
+it('copies the prompt without the key and lines up a fresh one', async () => {
   signIn()
   const user = userEvent.setup()
   const copy = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
   await renderQuickSetup({ dsh_setup_enabled: true })
-  await user.click(
-    await screen.findByRole('button', { name: 'Generate setup command' })
-  )
 
-  await user.click(
-    await screen.findByRole('button', { name: 'Copy prompt for DSH' })
-  )
+  await user.click(await screen.findByRole('button', { name: 'Copy prompt' }))
 
   expect(copy).toHaveBeenCalledTimes(1)
-  const prompt = copy.mock.calls[0][0]
-  expect(prompt).toContain(shellCommand)
-  expect(prompt).not.toMatch(/sk-/)
+  const copied = copy.mock.calls[0][0]
+  expect(copied).toContain(shellCommand('code-1'))
+  expect(copied).toContain(powershellCommand('code-1'))
+  expect(copied).not.toMatch(/sk-/)
+  // The copied prompt counts as used, so the page moves on to the next code.
+  expect(await screen.findByText(promptFor('code-2'))).toBeInTheDocument()
+  expect(codeRequests).toHaveBeenCalledTimes(2)
 })
 
-it('offers no command when the server turns the request down', async () => {
-  codeResponse = {
-    success: false,
-    message: 'Your account cannot use the Auto group',
-  }
+it('moves on to a fresh prompt when the text is copied by hand', async () => {
+  signIn()
+  await renderQuickSetup({ dsh_setup_enabled: true })
+  const prompt = await screen.findByText(promptFor('code-1'))
+
+  fireEvent.copy(prompt)
+
+  expect(await screen.findByText(promptFor('code-2'))).toBeInTheDocument()
+})
+
+it('says why there is no prompt when the server turns the request down', async () => {
+  refusal = 'Your account cannot use the Auto group'
   signIn()
   const user = userEvent.setup()
   await renderQuickSetup({ dsh_setup_enabled: true })
 
-  await user.click(
-    await screen.findByRole('button', { name: 'Generate setup command' })
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Your account cannot use the Auto group'
   )
+  expect(
+    screen.queryByRole('button', { name: 'Copy prompt' })
+  ).not.toBeInTheDocument()
 
-  expect(
-    await screen.findByText('Your account cannot use the Auto group')
-  ).toBeInTheDocument()
-  expect(screen.queryByText(shellCommand)).not.toBeInTheDocument()
-  expect(
-    screen.getByRole('button', { name: 'Generate setup command' })
-  ).toBeEnabled()
+  refusal = null
+  await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+  expect(await screen.findByText(promptFor('code-1'))).toBeInTheDocument()
 })
 
-it('withdraws the command when its ten minutes are up', async () => {
+it('replaces the prompt a minute before its ten minutes are up', async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true })
   signIn()
-  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
   await renderQuickSetup({ dsh_setup_enabled: true })
-  await user.click(
-    await screen.findByRole('button', { name: 'Generate setup command' })
-  )
-  expect(await screen.findByText(shellCommand)).toBeInTheDocument()
+  expect(await screen.findByText(promptFor('code-1'))).toBeInTheDocument()
 
   act(() => {
-    vi.advanceTimersByTime(601_000)
+    vi.advanceTimersByTime(8 * 60 * 1000)
+  })
+  expect(codeRequests).toHaveBeenCalledTimes(1)
+
+  act(() => {
+    vi.advanceTimersByTime(61 * 1000)
   })
 
-  expect(screen.queryByText(shellCommand)).not.toBeInTheDocument()
-  expect(screen.getByText('This command has expired.')).toBeInTheDocument()
-  expect(
-    screen.getByRole('button', { name: 'Generate setup command' })
-  ).toBeEnabled()
+  expect(await screen.findByText(promptFor('code-2'))).toBeInTheDocument()
+  expect(codeRequests).toHaveBeenCalledTimes(2)
+})
+
+it('leaves a hidden page alone and catches up when it is shown again', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  signIn()
+  await renderQuickSetup({ dsh_setup_enabled: true })
+  expect(await screen.findByText(promptFor('code-1'))).toBeInTheDocument()
+
+  showPage('hidden')
+  act(() => {
+    vi.advanceTimersByTime(11 * 60 * 1000)
+  })
+  expect(codeRequests).toHaveBeenCalledTimes(1)
+
+  showPage('visible')
+  act(() => {
+    vi.advanceTimersByTime(1)
+  })
+
+  // The dead prompt is withdrawn before its successor arrives.
+  await waitFor(() =>
+    expect(screen.queryByText(promptFor('code-1'))).not.toBeInTheDocument()
+  )
+  expect(await screen.findByText(promptFor('code-2'))).toBeInTheDocument()
+  expect(codeRequests).toHaveBeenCalledTimes(2)
 })

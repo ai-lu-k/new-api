@@ -35,7 +35,10 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/home_page_content", controller.GetHomePageContent)
 		apiRouter.GET("/dsh_setup/models", middleware.TryUserAuth(), controller.GetDshSetupModels)
 		apiRouter.GET("/dsh_setup/:script", controller.GetDshSetupScript)
-		apiRouter.POST("/dsh_setup/code", middleware.UserAuth(), middleware.CriticalRateLimit(), middleware.DisableCache(), controller.CreateDshSetupCode)
+		// The setup page asks for a code each time it is opened, so this must not
+		// draw on the per-address budget that sign-in shares; unused codes are
+		// capped per user instead.
+		apiRouter.POST("/dsh_setup/code", middleware.UserAuth(), middleware.DisableCache(), controller.CreateDshSetupCode)
 		apiRouter.POST("/dsh_setup/redeem", middleware.CriticalRateLimit(), middleware.DisableCache(), anonymousRequestBodyLimit, controller.RedeemDshSetupCode)
 		apiRouter.GET("/pricing", middleware.HeaderNavModuleAuth("pricing"), controller.GetPricing)
 		perfMetricsRoute := apiRouter.Group("/perf-metrics")
