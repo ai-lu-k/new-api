@@ -16,51 +16,25 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { ChevronRight } from 'lucide-react'
-import { useTranslation } from 'react-i18next'
-
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible'
 import { useStatus } from '@/hooks/use-status'
 
 import { DshManualSteps } from './dsh-manual-steps'
 import { DshQuickSetup } from './dsh-quick-setup'
 
 /**
- * Getting started with DSH: the one-command setup where the site offers it,
- * with the manual steps kept one click away; the manual steps alone otherwise.
+ * Getting started with DSH. Where the site offers the setup, both ways in run
+ * the same script: through a prompt, or by hand. A site that has it switched
+ * off shows the steps for filling DSH's own forms instead.
  */
 export function DshGuide() {
-  const { t } = useTranslation()
   const { status } = useStatus()
 
-  if (!status?.dsh_setup_enabled) {
-    // The first step brings its own top margin, which the section already has.
-    return (
-      <div className='-mt-9'>
-        <DshManualSteps />
-      </div>
-    )
-  }
+  if (status?.dsh_setup_enabled) return <DshQuickSetup />
 
+  // The first step brings its own top margin, which the section already has.
   return (
-    <>
-      <DshQuickSetup />
-      <Collapsible className='mt-6'>
-        <CollapsibleTrigger className='group text-muted-foreground hover:text-foreground flex cursor-pointer items-center gap-1 text-sm font-medium'>
-          <ChevronRight
-            className='size-4 transition-transform group-data-[panel-open]:rotate-90'
-            aria-hidden='true'
-          />
-          {t('Set it up by hand instead')}
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <DshManualSteps />
-        </CollapsibleContent>
-      </Collapsible>
-    </>
+    <div className='-mt-9'>
+      <DshManualSteps />
+    </div>
   )
 }

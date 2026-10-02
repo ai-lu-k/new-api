@@ -80,6 +80,28 @@ beforeEach(() => {
   })
 })
 
+/** What the models listing answers; null makes it fail. */
+let models: { id: string; name?: string }[] | null
+
+beforeEach(() => {
+  models = [
+    { id: 'deepseek/deepseek-v4.1-flash', name: 'DeepSeek V4.1 Flash' },
+    { id: 'glm-5.3' },
+  ]
+  vi.spyOn(api, 'get').mockImplementation(async (url) => {
+    if (url !== '/api/dsh_setup/models') {
+      throw new Error(`Unexpected request: ${url}`)
+    }
+    if (models === null) return { data: { success: false, message: 'down' } }
+    return {
+      data: {
+        success: true,
+        data: { auto_group: true, default_model: 'glm-5.3', models },
+      },
+    }
+  })
+})
+
 afterEach(() => {
   cleanup()
   vi.useRealTimers()
@@ -134,6 +156,7 @@ it('has a visitor sign in first and come back, without asking for a code', async
   expect(
     screen.queryByRole('button', { name: 'Copy prompt' })
   ).not.toBeInTheDocument()
+  expect(screen.queryByText('Set it up by hand')).not.toBeInTheDocument()
   expect(codeRequests).not.toHaveBeenCalled()
 })
 
@@ -141,13 +164,66 @@ it('shows a signed-in user the prompt at once, with the command for each system'
   signIn()
   await renderQuickSetup({ dsh_setup_enabled: true })
 
-  const prompt = await screen.findByText(/Please set up the LUK models in DSH/)
+  const prompt = await screen.findByText(/Please connect the LUK models to DSH/)
   expect(prompt).toHaveTextContent(shellCommand('code-1'))
   expect(prompt).toHaveTextContent(powershellCommand('code-1'))
   expect(codeRequests).toHaveBeenCalledTimes(1)
-  // Nothing but the prompt is offered: no command box, no system to pick.
   expect(screen.queryByRole('tab')).not.toBeInTheDocument()
-  expect(screen.getAllByRole('button')).toHaveLength(1)
+})
+
+it('has DSH ask which model to use and match it to the official model itself', async () => {
+  signIn()
+  await renderQuickSetup({ dsh_setup_enabled: true })
+
+  const prompt = await screen.findByText(/Please connect the LUK models to DSH/)
+  const text = prompt.textContent ?? ''
+  // The question comes first, with the models as its choices.
+  expect(text).toMatch(
+    /Step 1\. Ask me which model I want to use\..*ask_user_question.*\n- deepseek\/deepseek-v4\.1-flash — DeepSeek V4\.1 Flash\n- glm-5\.3\n/
+  )
+  expect(text.indexOf('Step 1.')).toBeLessThan(text.indexOf('Step 2.'))
+  expect(text.indexOf(shellCommand('code-1'))).toBeLessThan(
+    text.indexOf('Step 3.')
+  )
+  // The site keeps no limits per model: DSH is sent to look them up.
+  expect(text).toMatch(
+    /Step 3\..*agent-default-model.*look up its official specifications yourself.*contextWindow, maxTokens, input and reasoningEfforts/
+  )
+  expect(text).toContain('do not read or print .credentials.yaml')
+  // Declared levels do nothing until one is selected, so the default is set too.
+  expect(text).toMatch(/set reasoningEffort in agent-default-model/)
+  expect(text).toMatch(/docs\S+user\S+guide\S+providers\.md/)
+})
+
+it('still gives a prompt when the models cannot be listed', async () => {
+  models = null
+  signIn()
+  await renderQuickSetup({ dsh_setup_enabled: true })
+
+  const prompt = await screen.findByText(/Please connect the LUK models to DSH/)
+  expect(prompt).toHaveTextContent(shellCommand('code-1'))
+  expect(prompt.textContent).not.toMatch(/\n- /)
+})
+
+it('gives the bare command to run by hand, one per system', async () => {
+  signIn()
+  const user = userEvent.setup()
+  const copy = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
+  await renderQuickSetup({ dsh_setup_enabled: true })
+  await screen.findByText(/Please connect the LUK models to DSH/)
+
+  expect(screen.getByText('Set it up by hand')).toBeVisible()
+  expect(screen.getByText(shellCommand('code-1'))).toBeVisible()
+  expect(screen.getByText(powershellCommand('code-1'))).toBeVisible()
+
+  // The test translations escape the slash in the system's name.
+  await user.click(
+    screen.getByRole('button', { name: /^Copy the command for macOS/ })
+  )
+
+  expect(copy).toHaveBeenLastCalledWith(shellCommand('code-1'))
+  // A copied command counts as used too.
+  expect(await screen.findByText(shellCommand('code-2'))).toBeVisible()
 })
 
 it('copies the prompt without the key and lines up a fresh one', async () => {

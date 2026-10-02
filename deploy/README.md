@@ -224,7 +224,7 @@ NEWAPI_ENV=staging /opt/new-api-src/deploy/release.sh <branch>
 
 | 栏 | 怎么接入 |
 |---|---|
-| DSH | 一段提示词全自动（本节后半）；`dsh_setup.enabled` 没开时只显示手动步骤 |
+| DSH | 一段提示词全自动，或手动运行同一条命令（本节后半）；`dsh_setup.enabled` 没开时只显示在 DSH 表单里手填的那套步骤 |
 | Claude Code / Codex / OpenCode / OpenClaw | 半自动：页面上直接有 CC Switch 的表单，填好点「打开 CC Switch」，由它导入并切换；或者手动：按页面给的配置文件内容粘贴 |
 
 后四栏的说明：
@@ -237,22 +237,32 @@ NEWAPI_ENV=staging /opt/new-api-src/deploy/release.sh <branch>
   指路去控制台的「API 密钥」。
 - CC Switch 的表单和「API 密钥」页每行菜单里的是同一套（字段在
   `web/src/features/keys/components/dialogs/cc-switch-dialog.tsx` 的 `CCSwitchFields`，应用表和链接生成在
-  `web/src/features/keys/lib/cc-switch.ts`）：密钥页是弹窗、要自己选应用；快速开始里直接摆在页面上，应用就是所在的那一栏，
-  主模型用页面上方选的那个。应用表里有 Claude、Codex、Gemini、OpenCode、OpenClaw 五个。
+  `web/src/features/keys/lib/cc-switch.ts`）：密钥页是弹窗、要自己选应用；快速开始里直接摆在页面上，应用就是所在的那一栏。
+  表单里选的主模型同时也是下面「手动配置」用的模型。应用表里有 Claude、Codex、Gemini、OpenCode、OpenClaw 五个。
 - CC Switch 一次只导入一个主模型（Claude 另外可以填 Haiku / Sonnet / Opus 三档），手动配置里 OpenCode 和 OpenClaw 会写上全部模型。
 - 配置里的站点地址取 `ServerAddress`。
 - **这四种客户端的配置格式是照各家官方文档（2026-10-02 查的）写的，没有在真实客户端上跑过。** 上线前
   每种至少实际试一次；格式变了就改 `agent-configs.ts` 和它的测试。
 
-### DSH：一段提示词
+### DSH：一段提示词，或手动运行命令
 
-DSH 一栏顶部的卡片：登录用户一打开就看到一段提示词（不用点任何按钮），复制后发给 DSH，DSH 运行里面的那条命令就配好了
-——提供方、这个账号能调的全部模型、密钥，一次写进 `~/.dsh/settings.yaml` 和 `~/.dsh/.credentials.yaml`。
-用户不用选模型、选分组，也不用自己建密钥；密钥也不经过对话（提示词里只有一次性配置码）。访客看到的是
-「请先登录」，登录后回到原处。代码在 `service/dshsetup/`（脚本、配置码、下发内容）和 `controller/dsh_setup.go`。
+DSH 一栏有两张卡片，登录用户一打开就都是现成的（不用点任何按钮）；访客看到的是「请先登录」，登录后回到原处。
+代码在 `service/dshsetup/`（脚本、配置码、下发内容）和 `controller/dsh_setup.go`，页面在
+`web/src/features/guide/components/dsh-quick-setup.tsx`。
 
-**DSH 里得已经有一个能用的模型，它才收得了提示词。** 全新的 DSH 没法对话，这种情况卡片最下面有一句提示：
-把提示词里对应系统的那条命令自己粘到终端运行，效果一样。
+1. **提示词**：复制后发给 DSH，它按提示词里的四步做——先问用户想用哪个模型（有 `ask_user_question` 工具就用它，
+   选项是这个账号能调的模型）；运行配置命令，把提供方、全部模型和密钥写进 `~/.dsh/settings.yaml` 和
+   `~/.dsh/.credentials.yaml`；把用户选的模型设成默认模型，并**自己去查这个模型的官方规格**（上下文、最大输出、
+   是否支持图片、思考等级），照 DSH 的「配置模型」文档写进该模型的条目；最后汇报，并让用户确认模型列表还在。
+   密钥不经过对话，提示词里只有一次性配置码。
+2. **手动配置**：同一条命令（macOS / Linux 和 Windows 各一条），用户自己粘到终端运行。DSH 里还没有可用模型、
+   收不了提示词的人走这条路；运行后在 DSH 的模型列表里选模型。
+
+**规格由 DSH 自己查，站点不维护。** 手动添加进 DSH 的模型默认只有文本输入、没有思考等级，所以要对齐。这件事交给
+提示词里的 DSH 去做，以后站点加模型不用跟着改任何东西。代价有两条：对齐只发生在走提示词的那一次、只针对用户选的那个
+模型（手动运行命令的不会对齐，重新运行命令也会把提供方条目换回站点下发的样子）；DSH 写错的话整个提供方会从它的
+模型列表里消失，所以提示词要求它先备份、写完让用户确认、出错就恢复。`dsh_setup.models` 里仍然可以给某个模型写死
+`context_window` / `max_tokens` / `input` / `reasoning_efforts` / `compat`，脚本会原样下发，但不是必须的。
 
 流程：
 
