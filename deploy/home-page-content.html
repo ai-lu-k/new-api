@@ -2,7 +2,7 @@
   :host { display:block; width:100%; }
   .luk { color: var(--foreground, #0a0a0a); padding-bottom: 3.5rem; }
 
-  /* 首屏：居中大标题 + 两个主操作 */
+  /* 首屏：居中大标题 + 一个去模型广场的按钮；开始使用的入口就是紧跟在下面的快速开始 */
   .luk-hero { max-width: 56rem; margin: 0 auto; padding: 8.5rem 1.5rem 0; text-align: center; }
   .luk-h1 {
     margin: 0; font-size: clamp(2.5rem, 7vw, 4rem); line-height: 1.1;
@@ -26,8 +26,6 @@
     font-size:.9375rem; font-weight:500; text-decoration:none;
     transition:background-color .15s ease, border-color .15s ease;
   }
-  .luk-btn-primary { background:var(--primary, #7524f3); color:var(--primary-foreground, #fff); }
-  .luk-btn-primary:hover { background:color-mix(in oklab, var(--primary, #7524f3) 88%, #000); }
   .luk-btn-ghost {
     border-color:var(--border, #e8e8ec); background:var(--card, #fff);
     color:var(--foreground, #0a0a0a);
@@ -46,7 +44,6 @@
     </p>
 
     <div class="luk-cta">
-      <a class="luk-btn luk-btn-primary" href="/dashboard">开始使用</a>
       <a class="luk-btn luk-btn-ghost" href="/pricing">查看模型</a>
     </div>
   </div>
