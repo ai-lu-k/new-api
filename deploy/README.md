@@ -146,6 +146,12 @@ git push server tavern
   `https://goproxy.cn,direct`。npm registry 没问题。
 - 首次构建约 15 分钟，几乎全花在最终阶段从 `deb.debian.org` 拉那几个 apt 包上；
   基础镜像按 digest 固定，该层之后永远命中缓存，所以只有第一次慢。
+- **在这台机器上构建会和生产抢内存。** 机器 7.7G，生产的 MySQL 也在上面，前端打包
+  那一步的 node 进程自己要 1.6G 以上。2026-10-02 一次测试环境构建触发了内核 OOM，
+  被杀的是生产的 `mysqld`（约 30 秒后自动恢复）。所以 `build.sh` 会先看可用内存加
+  空闲 swap，低于 `NEWAPI_BUILD_MIN_FREE_MB`（默认 3072）就直接放弃，watcher 下一轮
+  再试。看到"放弃这次构建"不是脚本坏了，是机器上没余量：腾内存或加 swap，别调低
+  阈值硬上。
 
 ## 七、生产 / 测试隔离
 
@@ -160,8 +166,15 @@ git push server tavern
 | 数据库 | 同一 MySQL 实例内的 `new_api` | 同实例内的 `new_api_staging` |
 | 应用密钥 | 生产 `.env` | staging `.env`，两个 secret 与生产不同 |
 
-staging 的 compose 在 `deploy/staging/docker-compose.yml`。两个注意点：
+staging 的 compose 在 `deploy/staging/docker-compose.yml`。三个注意点：
 
+- **服务名不能和生产一样叫 `new-api`。** 两个环境共用 `new-api_new-api-net` 这张
+  网络，compose 会把服务名注册成网络别名；同名时 `new-api` 同时解析到两个容器，
+  而 `/v1/` 的审计入口正是用 `http://new-api:3000` 找上游的 —— 线上请求就会有一部分
+  落到测试环境，用测试库鉴权、计费、记日志（新建的令牌在那边不存在，直接 401）。
+  2026-09-29 到 10-02 有 1955 个线上请求是这样被测试环境处理的。现在测试服务叫
+  `new-api-staging`，`release.sh` 起容器后还会再查一遍，发现重名就把测试容器停掉。
+  核对方法：`docker exec llm-evidence-audit-1 getent hosts new-api` 只应返回一个地址。
 - 测试环境**不能设 `SESSION_COOKIE_TRUSTED_URL`**：new-api 认为它与
   `SESSION_COOKIE_SECURE=false` 互斥，会直接拒绝启动（日志反复打印
   `SESSION_COOKIE_TRUSTED_URL requires SESSION_COOKIE_SECURE=true`）。隧道走 http，

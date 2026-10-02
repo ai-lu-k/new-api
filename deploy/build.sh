@@ -17,6 +17,17 @@ BRANCH=${1:-tavern}
 IMAGE=luk/new-api
 API=https://api.github.com/repos/$SLUG
 
+# 这台机器内存不宽裕，生产的 MySQL 又跑在同一台上。前端打包那一步的 node 进程
+# 自己就要 1.6G 以上；余量不够时内核会挑占内存最多的进程杀 —— 2026-10-02 被杀的
+# 是生产的 mysqld。所以先看余量（可用内存 + 空闲 swap），不够就不构建：宁可这次
+# 发不出去，也不拿线上数据库去换。
+MIN_FREE_MB=${NEWAPI_BUILD_MIN_FREE_MB:-3072}
+FREE_MB=$(awk '/^(MemAvailable|SwapFree):/ {kb += $2} END {print int(kb / 1024)}' /proc/meminfo)
+if [ "$FREE_MB" -lt "$MIN_FREE_MB" ]; then
+  echo "可用内存加空闲 swap 只有 ${FREE_MB}MB，低于构建需要的 ${MIN_FREE_MB}MB，放弃这次构建" >&2
+  exit 1
+fi
+
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/new-api-build.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
 
