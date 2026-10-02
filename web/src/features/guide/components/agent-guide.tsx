@@ -19,12 +19,11 @@ For commercial licensing, please contact support@quantumnous.com
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Link, useLocation } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
-import { useId, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { CopyButton } from '@/components/copy-button'
 import { Button } from '@/components/ui/button'
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { TitledCard } from '@/components/ui/titled-card'
 import { CCSwitchFields } from '@/features/keys/components/dialogs/cc-switch-dialog'
 import { buildCCSwitchURL } from '@/features/keys/lib/cc-switch'
@@ -45,8 +44,6 @@ import type { AgentClient } from '../lib/agents'
 
 const CC_SWITCH_DOWNLOAD = 'https://github.com/farion1231/cc-switch/releases'
 const KEY_PLACEHOLDER = 'YOUR_API_KEY'
-// The primary model is chosen once for the whole guide, above the form.
-const CHOSEN_ABOVE = ['model'] as const
 
 /** Enough of a key to recognise it by, never enough to use it. */
 function maskKey(key: string): string {
@@ -67,7 +64,8 @@ function Snippet(props: { code: string; copy: string }) {
 /**
  * Getting started with one coding agent. There are two ways in: the CC Switch
  * form hands the gateway over as a provider, or the user pastes the
- * configuration by hand. Both use a key the site prepares for this client.
+ * configuration by hand. Both use a key the site prepares for this client, and
+ * both use the primary model picked in the form.
  */
 export function AgentGuide(props: { client: AgentClient }) {
   const { t } = useTranslation()
@@ -75,7 +73,6 @@ export function AgentGuide(props: { client: AgentClient }) {
   const userId = useAuthStore((state) => state.auth.user?.id)
   const here = useLocation({ select: (location) => location.href })
   const { copyToClipboard } = useCopyToClipboard()
-  const modelFieldId = useId()
   const [chosenModel, setChosenModel] = useState('')
   const [apiKey, setApiKey] = useState('')
   // What the user typed into the CC Switch form; null until they touch the name.
@@ -195,12 +192,16 @@ export function AgentGuide(props: { client: AgentClient }) {
             app={client.ccSwitchApp}
             name={name}
             onNameChange={setProviderName}
-            models={otherModels}
-            onModelChange={(field, value) =>
+            models={{ ...otherModels, model }}
+            onModelChange={(field, value) => {
+              // The primary model also goes into the configuration below.
+              if (field === 'model') {
+                setChosenModel(value)
+                return
+              }
               setOtherModels((previous) => ({ ...previous, [field]: value }))
-            }
+            }}
             modelOptions={offeredIds}
-            omit={CHOSEN_ABOVE}
           />
         </div>
         <div className='flex flex-wrap items-center gap-x-4 gap-y-2'>
@@ -269,23 +270,6 @@ export function AgentGuide(props: { client: AgentClient }) {
 
   return (
     <div className='space-y-6'>
-      <div className='flex flex-wrap items-center gap-3'>
-        <label htmlFor={modelFieldId} className='text-sm font-medium'>
-          {t('Primary Model')}
-        </label>
-        <NativeSelect
-          id={modelFieldId}
-          value={model}
-          onChange={(event) => setChosenModel(event.target.value)}
-        >
-          {offered.map((item) => (
-            <NativeSelectOption key={item.id} value={item.id}>
-              {item.name ? `${item.name} (${item.id})` : item.id}
-            </NativeSelectOption>
-          ))}
-        </NativeSelect>
-      </div>
-
       <TitledCard
         title={t('Import with CC Switch')}
         description={t(

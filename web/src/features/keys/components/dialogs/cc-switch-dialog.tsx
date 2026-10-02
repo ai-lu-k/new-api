@@ -51,8 +51,6 @@ export function CCSwitchFields(props: {
   models: Record<string, string>
   onModelChange: (field: string, model: string) => void
   modelOptions: readonly string[]
-  /** Model fields the page fills in some other way. */
-  omit?: readonly string[]
 }) {
   const { t } = useTranslation()
   const id = useId()
@@ -74,24 +72,22 @@ export function CCSwitchFields(props: {
         />
       </div>
 
-      {config.modelFields
-        .filter((field) => !props.omit?.includes(field.key))
-        .map((field) => (
-          <div key={field.key} className='space-y-2'>
-            <Label htmlFor={`${id}-${field.key}`} required={field.required}>
-              {t(field.labelKey)}
-            </Label>
-            <Combobox
-              id={`${id}-${field.key}`}
-              aria-label={t(field.labelKey)}
-              options={options}
-              value={props.models[field.key] || ''}
-              onValueChange={(v) => props.onModelChange(field.key, v ?? '')}
-              placeholder={t('Select or enter model name')}
-              emptyText={t('No models found')}
-            />
-          </div>
-        ))}
+      {config.modelFields.map((field) => (
+        <div key={field.key} className='space-y-2'>
+          <Label htmlFor={`${id}-${field.key}`} required={field.required}>
+            {t(field.labelKey)}
+          </Label>
+          <Combobox
+            id={`${id}-${field.key}`}
+            aria-label={t(field.labelKey)}
+            options={options}
+            value={props.models[field.key] || ''}
+            onValueChange={(v) => props.onModelChange(field.key, v ?? '')}
+            placeholder={t('Select or enter model name')}
+            emptyText={t('No models found')}
+          />
+        </div>
+      ))}
     </>
   )
 }

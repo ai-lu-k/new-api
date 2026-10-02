@@ -137,35 +137,56 @@ async function renderGuide(client: AgentClient) {
       <RouterProvider router={router} />
     </QueryClientProvider>
   )
-  return screen.findByRole('combobox', { name: 'Primary Model' })
+  await screen.findByText('Import with CC Switch')
+}
+
+function primaryModel() {
+  return screen.getByRole('combobox', { name: 'Primary Model' })
 }
 
 it('offers the models the client can speak to, starting with its own family', async () => {
-  const select = await renderGuide(codex)
+  signIn()
+  const user = userEvent.setup()
+  await renderGuide(codex)
 
-  expect(select).toHaveValue('gpt-5.6-sol')
+  expect(primaryModel()).toHaveValue('gpt-5.6-sol')
+  await user.click(primaryModel())
   expect(
-    within(select)
-      .getAllByRole('option')
-      .map((option) => option.textContent)
-  ).toEqual([
-    'DeepSeek V4.1 Flash (deepseek/deepseek-v4.1-flash)',
-    'GPT-5.6 Sol (gpt-5.6-sol)',
-  ])
+    (await screen.findAllByRole('option')).map((option) => option.textContent)
+  ).toEqual(['deepseek/deepseek-v4.1-flash', 'gpt-5.6-sol'])
+})
+
+it('uses the primary model picked in the form for the manual configuration too', async () => {
+  signIn()
+  const user = userEvent.setup()
+  await renderGuide(codex)
+  expect(screen.getByText(/model = "gpt-5.6-sol"/)).toBeVisible()
+
+  await user.click(primaryModel())
+  await user.click(
+    await screen.findByRole('option', { name: 'deepseek/deepseek-v4.1-flash' })
+  )
+
+  expect(
+    await screen.findByText(/model = "deepseek\/deepseek-v4.1-flash"/)
+  ).toBeVisible()
 })
 
 it('shows the CC Switch form in place and hands over what was filled in', async () => {
   signIn()
   const user = userEvent.setup()
   const open = vi.spyOn(window, 'open').mockReturnValue(null)
-  const select = await renderGuide(codex)
+  await renderGuide(codex)
   const name = screen.getByRole('textbox', { name: 'Name' })
   expect(name).toHaveValue('LUK')
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   // The application is the guide's own, so the form does not ask for it.
   expect(screen.queryByRole('radio')).not.toBeInTheDocument()
 
-  await user.selectOptions(select, 'deepseek/deepseek-v4.1-flash')
+  await user.click(primaryModel())
+  await user.click(
+    await screen.findByRole('option', { name: 'deepseek/deepseek-v4.1-flash' })
+  )
   await user.clear(name)
   await user.type(name, 'LUK at work')
   await user.click(screen.getByRole('button', { name: 'Open CC Switch' }))
@@ -190,6 +211,7 @@ it('lets Claude Code map its model tiers and falls back to the site name', async
   const user = userEvent.setup()
   const open = vi.spyOn(window, 'open').mockReturnValue(null)
   await renderGuide(claudeCode)
+  expect(primaryModel()).toHaveValue('claude-sonnet-5-5')
 
   await user.click(screen.getByRole('combobox', { name: 'Haiku Model' }))
   await user.click(
@@ -250,6 +272,8 @@ it('asks a visitor to sign in and shows the config with a placeholder', async ()
   expect(
     screen.queryByRole('textbox', { name: 'Name' })
   ).not.toBeInTheDocument()
+  // With no form there is no model to pick: the configuration shows the default.
+  expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
   expect(
     screen.getByText(/"ANTHROPIC_AUTH_TOKEN": "YOUR_API_KEY"/)
   ).toBeVisible()
