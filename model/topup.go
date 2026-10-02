@@ -4,6 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"math"
+	"strconv"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -20,6 +23,7 @@ type TopUp struct {
 	TradeNo         string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
 	PaymentMethod   string  `json:"payment_method" gorm:"type:varchar(50)"`
 	PaymentProvider string  `json:"payment_provider" gorm:"type:varchar(50);default:''"`
+	EpayMerchantId  string  `json:"-" gorm:"type:varchar(64);default:''"`
 	CreateTime      int64   `json:"create_time"`
 	CompleteTime    int64   `json:"complete_time"`
 	Status          string  `json:"status"`
@@ -43,6 +47,9 @@ const (
 )
 
 var (
+	ErrPaymentAmountMismatch    = errors.New("payment amount mismatch")
+	ErrPaymentMerchantMismatch  = errors.New("payment merchant mismatch")
+	ErrInvalidPaymentAmount     = errors.New("invalid payment amount")
 	ErrPaymentMethodMismatch    = errors.New("payment method mismatch")
 	ErrTopUpNotFound            = errors.New("topup not found")
 	ErrTopUpStatusInvalid       = errors.New("topup status invalid")
@@ -169,11 +176,64 @@ func UpdatePendingTopUpStatus(tradeNo string, expectedPaymentProvider string, ta
 	})
 }
 
+// EpayMoneyCents accepts positive decimal amounts with exact cent precision.
+// Extra fractional zeros are harmless; signs, exponents and sub-cent values
+// are rejected. Arithmetic is checked before multiplying by 100.
+func EpayMoneyCents(money string) (int64, error) {
+	if money == "" || len(money) > 64 {
+		return 0, ErrInvalidPaymentAmount
+	}
+	parts := strings.Split(money, ".")
+	if len(parts) > 2 || parts[0] == "" || (len(parts) == 2 && parts[1] == "") {
+		return 0, ErrInvalidPaymentAmount
+	}
+	for _, part := range parts {
+		for _, digit := range part {
+			if digit < '0' || digit > '9' {
+				return 0, ErrInvalidPaymentAmount
+			}
+		}
+	}
+	whole := strings.TrimLeft(parts[0], "0")
+	if whole == "" {
+		whole = "0"
+	}
+	units, err := strconv.ParseInt(whole, 10, 64)
+	if err != nil {
+		return 0, ErrInvalidPaymentAmount
+	}
+	var cents int64
+	if len(parts) == 2 {
+		fraction := parts[1]
+		if len(fraction) > 2 && strings.Trim(fraction[2:], "0") != "" {
+			return 0, ErrInvalidPaymentAmount
+		}
+		cents = int64(fraction[0]-'0') * 10
+		if len(fraction) > 1 {
+			cents += int64(fraction[1] - '0')
+		}
+	}
+	if units > (math.MaxInt64-cents)/100 || (units == 0 && cents == 0) {
+		return 0, ErrInvalidPaymentAmount
+	}
+	return units*100 + cents, nil
+}
+
+// EpayNotification contains fields covered by the verified gateway signature.
+// LegacyMerchantId is the configured merchant for orders created before the
+// merchant snapshot column existed. Never infer it from the callback itself.
+type EpayNotification struct {
+	Money            string
+	MerchantId       string
+	LegacyMerchantId string
+	PaymentMethod    string
+}
+
 // RechargeEpay 原子完成易支付订单：订单行锁、状态校验、成功更新与用户额度增加
 // 在同一个事务内完成，因此同一订单的并发/重复回调（包括多实例部署下）最多充值一次。
 // alreadyDone=true 表示订单此前已完成，本次为幂等重复回调。
 // 进程内的 LockOrder 只是优化，正确性由本函数的数据库行锁保证。
-func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (alreadyDone bool, err error) {
+func RechargeEpay(tradeNo string, notification EpayNotification, callerIp string) (alreadyDone bool, err error) {
 	if tradeNo == "" {
 		return false, errors.New("未提供支付单号")
 	}
@@ -192,15 +252,31 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 		if topUp.PaymentProvider != PaymentProviderEpay {
 			return ErrPaymentMethodMismatch
 		}
+		// Bind every signed notification before the idempotency short circuit.
+		expectedMerchant := topUp.EpayMerchantId
+		if expectedMerchant == "" {
+			expectedMerchant = notification.LegacyMerchantId
+		}
+		if expectedMerchant == "" || notification.MerchantId != expectedMerchant {
+			return ErrPaymentMerchantMismatch
+		}
+		if notification.PaymentMethod == "" || notification.PaymentMethod != topUp.PaymentMethod {
+			return ErrPaymentMethodMismatch
+		}
+		paidCents, err := EpayMoneyCents(notification.Money)
+		if err != nil {
+			return err
+		}
+		expectedCents, err := EpayMoneyCents(strconv.FormatFloat(topUp.Money, 'f', 2, 64))
+		if err != nil || paidCents != expectedCents {
+			return ErrPaymentAmountMismatch
+		}
 		if topUp.Status == common.TopUpStatusSuccess {
 			alreadyDone = true
 			return nil
 		}
 		if topUp.Status != common.TopUpStatusPending {
 			return ErrTopUpStatusInvalid
-		}
-		if actualPaymentMethod != "" && topUp.PaymentMethod != actualPaymentMethod {
-			topUp.PaymentMethod = actualPaymentMethod
 		}
 		var quotaErr error
 		quotaToAdd, quotaErr = common.WalletQuotaFromDecimalStrict(
