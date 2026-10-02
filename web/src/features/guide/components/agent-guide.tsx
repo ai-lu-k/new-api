@@ -19,13 +19,15 @@ For commercial licensing, please contact support@quantumnous.com
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Link, useLocation } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
-import { useId, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { CopyButton } from '@/components/copy-button'
 import { Button } from '@/components/ui/button'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { TitledCard } from '@/components/ui/titled-card'
+import { CCSwitchFields } from '@/features/keys/components/dialogs/cc-switch-dialog'
+import { buildCCSwitchURL } from '@/features/keys/lib/cc-switch'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { useStatus } from '@/hooks/use-status'
 import { handleServerError } from '@/lib/handle-server-error'
@@ -36,7 +38,6 @@ import { getSetupCatalog } from '../api'
 import {
   agentModels,
   buildAgentConfig,
-  buildCcSwitchLink,
   pickAgentModel,
 } from '../lib/agent-configs'
 import { ensureAgentKey } from '../lib/agent-key'
@@ -44,6 +45,8 @@ import type { AgentClient } from '../lib/agents'
 
 const CC_SWITCH_DOWNLOAD = 'https://github.com/farion1231/cc-switch/releases'
 const KEY_PLACEHOLDER = 'YOUR_API_KEY'
+// The primary model is chosen once for the whole guide, above the form.
+const CHOSEN_ABOVE = ['model'] as const
 
 /** Enough of a key to recognise it by, never enough to use it. */
 function maskKey(key: string): string {
@@ -62,8 +65,8 @@ function Snippet(props: { code: string; copy: string }) {
 }
 
 /**
- * Getting started with one coding agent. There are two ways in: CC Switch
- * imports the gateway as a provider in one click, or the user pastes the
+ * Getting started with one coding agent. There are two ways in: the CC Switch
+ * form hands the gateway over as a provider, or the user pastes the
  * configuration by hand. Both use a key the site prepares for this client.
  */
 export function AgentGuide(props: { client: AgentClient }) {
@@ -75,6 +78,9 @@ export function AgentGuide(props: { client: AgentClient }) {
   const modelFieldId = useId()
   const [chosenModel, setChosenModel] = useState('')
   const [apiKey, setApiKey] = useState('')
+  // What the user typed into the CC Switch form; null until they touch the name.
+  const [providerName, setProviderName] = useState<string | null>(null)
+  const [otherModels, setOtherModels] = useState<Record<string, string>>({})
 
   const catalog = useQuery({
     queryKey: ['dsh-setup-models', userId ?? null],
@@ -89,12 +95,18 @@ export function AgentGuide(props: { client: AgentClient }) {
       handleServerError(error, t('Failed to prepare the API key')),
   })
 
+  const client = props.client
+  const models = catalog.data?.models
+  const offered = useMemo(
+    () => agentModels(client, models ?? []),
+    [client, models]
+  )
+  const offeredIds = useMemo(() => offered.map((item) => item.id), [offered])
+
   if (catalog.isPending) {
     return <p className='text-muted-foreground text-sm'>{t('Loading...')}</p>
   }
 
-  const client = props.client
-  const offered = agentModels(client, catalog.data?.models ?? [])
   if (offered.length === 0) {
     return (
       <p className='text-muted-foreground text-sm'>
@@ -122,11 +134,17 @@ export function AgentGuide(props: { client: AgentClient }) {
   const getKey = async () =>
     apiKey || (await prepareKey.mutateAsync().catch(() => ''))
 
+  const name = providerName ?? site.name
   const importToCcSwitch = async () => {
     const key = await getKey()
     if (!key) return
     window.open(
-      buildCcSwitchLink({ client, site, apiKey: key, model }),
+      buildCCSwitchURL(
+        client.ccSwitchApp,
+        name.trim() || site.name,
+        { ...otherModels, model },
+        key
+      ),
       '_self'
     )
   }
@@ -171,22 +189,37 @@ export function AgentGuide(props: { client: AgentClient }) {
   }
   if (canPrepareKey) {
     ccSwitchBody = (
-      <div className='flex flex-wrap items-center gap-x-4 gap-y-2'>
-        <Button onClick={importToCcSwitch} disabled={prepareKey.isPending}>
-          {spinner}
-          {t('Import to CC Switch')}
-        </Button>
-        <p className='text-muted-foreground text-sm'>
-          {t('No CC Switch yet?')}{' '}
-          <a
-            href={CC_SWITCH_DOWNLOAD}
-            target='_blank'
-            rel='noopener noreferrer'
-            className='text-foreground underline underline-offset-4'
-          >
-            {t('Download it')}
-          </a>
-        </p>
+      <div className='space-y-4'>
+        <div className='max-w-md space-y-4'>
+          <CCSwitchFields
+            app={client.ccSwitchApp}
+            name={name}
+            onNameChange={setProviderName}
+            models={otherModels}
+            onModelChange={(field, value) =>
+              setOtherModels((previous) => ({ ...previous, [field]: value }))
+            }
+            modelOptions={offeredIds}
+            omit={CHOSEN_ABOVE}
+          />
+        </div>
+        <div className='flex flex-wrap items-center gap-x-4 gap-y-2'>
+          <Button onClick={importToCcSwitch} disabled={prepareKey.isPending}>
+            {spinner}
+            {t('Open CC Switch')}
+          </Button>
+          <p className='text-muted-foreground text-sm'>
+            {t('No CC Switch yet?')}{' '}
+            <a
+              href={CC_SWITCH_DOWNLOAD}
+              target='_blank'
+              rel='noopener noreferrer'
+              className='text-foreground underline underline-offset-4'
+            >
+              {t('Download it')}
+            </a>
+          </p>
+        </div>
       </div>
     )
   }
@@ -238,7 +271,7 @@ export function AgentGuide(props: { client: AgentClient }) {
     <div className='space-y-6'>
       <div className='flex flex-wrap items-center gap-3'>
         <label htmlFor={modelFieldId} className='text-sm font-medium'>
-          {t('Model to start with')}
+          {t('Primary Model')}
         </label>
         <NativeSelect
           id={modelFieldId}

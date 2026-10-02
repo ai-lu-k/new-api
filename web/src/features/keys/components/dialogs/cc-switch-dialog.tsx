@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useId, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -30,64 +30,70 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { getUserModels } from '@/lib/api'
 import { requireServerSuccess } from '@/lib/server-error-message'
 
-const APP_CONFIGS = {
-  claude: {
-    label: 'Claude',
-    defaultName: 'My Claude',
-    modelFields: [
-      { key: 'model', labelKey: 'Primary Model', required: true },
-      { key: 'haikuModel', labelKey: 'Haiku Model', required: false },
-      { key: 'sonnetModel', labelKey: 'Sonnet Model', required: false },
-      { key: 'opusModel', labelKey: 'Opus Model', required: false },
-    ],
-  },
-  codex: {
-    label: 'Codex',
-    defaultName: 'My Codex',
-    modelFields: [{ key: 'model', labelKey: 'Primary Model', required: true }],
-  },
-  gemini: {
-    label: 'Gemini',
-    defaultName: 'My Gemini',
-    modelFields: [{ key: 'model', labelKey: 'Primary Model', required: true }],
-  },
-} as const
+import {
+  buildCCSwitchURL,
+  CC_SWITCH_APPS,
+  type CCSwitchApp,
+} from '../../lib/cc-switch'
 
-type AppType = keyof typeof APP_CONFIGS
+const APP_CONFIGS = CC_SWITCH_APPS
+type AppType = CCSwitchApp
 
-function getServerAddress(): string {
-  try {
-    const raw = localStorage.getItem('status')
-    if (raw) {
-      const status = JSON.parse(raw)
-      if (status.server_address) return status.server_address
-    }
-  } catch {
-    /* empty */
-  }
-  return window.location.origin
-}
+/**
+ * The fields of a CC Switch import: the provider name and the models the
+ * application asks for. The dialog shows them, and so does any page that puts
+ * the form in place.
+ */
+export function CCSwitchFields(props: {
+  app: AppType
+  name: string
+  onNameChange: (name: string) => void
+  models: Record<string, string>
+  onModelChange: (field: string, model: string) => void
+  modelOptions: readonly string[]
+  /** Model fields the page fills in some other way. */
+  omit?: readonly string[]
+}) {
+  const { t } = useTranslation()
+  const id = useId()
+  const config = APP_CONFIGS[props.app]
+  const options = useMemo(
+    () => props.modelOptions.map((m) => ({ value: m, label: m })),
+    [props.modelOptions]
+  )
 
-function buildCCSwitchURL(
-  app: string,
-  name: string,
-  models: Record<string, string>,
-  apiKey: string
-): string {
-  const serverAddress = getServerAddress()
-  const endpoint = app === 'codex' ? `${serverAddress}/v1` : serverAddress
-  const params = new URLSearchParams()
-  params.set('resource', 'provider')
-  params.set('app', app)
-  params.set('name', name)
-  params.set('endpoint', endpoint)
-  params.set('apiKey', apiKey)
-  for (const [k, v] of Object.entries(models)) {
-    if (v) params.set(k, v)
-  }
-  params.set('homepage', serverAddress)
-  params.set('enabled', 'true')
-  return `ccswitch://v1/import?${params.toString()}`
+  return (
+    <>
+      <div className='space-y-2'>
+        <Label htmlFor={`${id}-name`}>{t('Name')}</Label>
+        <Input
+          id={`${id}-name`}
+          value={props.name}
+          onChange={(event) => props.onNameChange(event.target.value)}
+          placeholder={config.defaultName}
+        />
+      </div>
+
+      {config.modelFields
+        .filter((field) => !props.omit?.includes(field.key))
+        .map((field) => (
+          <div key={field.key} className='space-y-2'>
+            <Label htmlFor={`${id}-${field.key}`} required={field.required}>
+              {t(field.labelKey)}
+            </Label>
+            <Combobox
+              id={`${id}-${field.key}`}
+              aria-label={t(field.labelKey)}
+              options={options}
+              value={props.models[field.key] || ''}
+              onValueChange={(v) => props.onModelChange(field.key, v ?? '')}
+              placeholder={t('Select or enter model name')}
+              emptyText={t('No models found')}
+            />
+          </div>
+        ))}
+    </>
+  )
 }
 
 interface Props {
@@ -109,10 +115,7 @@ export function CCSwitchDialog(props: Props) {
     staleTime: 5 * 60 * 1000,
   })
 
-  const modelOptions = useMemo(() => {
-    const items = modelsData?.data ?? []
-    return items.map((m) => ({ value: m, label: m }))
-  }, [modelsData?.data])
+  const modelOptions = useMemo(() => modelsData?.data ?? [], [modelsData?.data])
 
   useEffect(() => {
     if (props.open) {
@@ -124,8 +127,6 @@ export function CCSwitchDialog(props: Props) {
       setName(APP_CONFIGS.claude.defaultName)
     }
   }, [props.open])
-
-  const currentConfig = APP_CONFIGS[app]
 
   const handleAppChange = (val: string) => {
     const appVal = val as AppType
@@ -170,7 +171,7 @@ export function CCSwitchDialog(props: Props) {
           <RadioGroup
             value={app}
             onValueChange={handleAppChange}
-            className='flex gap-4'
+            className='flex flex-wrap gap-x-4 gap-y-2'
           >
             {(
               Object.entries(APP_CONFIGS) as [
@@ -188,34 +189,16 @@ export function CCSwitchDialog(props: Props) {
           </RadioGroup>
         </div>
 
-        <div className='space-y-2'>
-          <Label htmlFor='cc-switch-name'>{t('Name')}</Label>
-          <Input
-            id='cc-switch-name'
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder={currentConfig.defaultName}
-          />
-        </div>
-
-        {currentConfig.modelFields.map((field) => (
-          <div key={field.key} className='space-y-2'>
-            <Label htmlFor={`cc-switch-${field.key}`} required={field.required}>
-              {t(field.labelKey)}
-            </Label>
-            <Combobox
-              id={`cc-switch-${field.key}`}
-              aria-label={t(field.labelKey)}
-              options={modelOptions}
-              value={models[field.key] || ''}
-              onValueChange={(v) =>
-                setModels((prev) => ({ ...prev, [field.key]: v ?? '' }))
-              }
-              placeholder={t('Select or enter model name')}
-              emptyText={t('No models found')}
-            />
-          </div>
-        ))}
+        <CCSwitchFields
+          app={app}
+          name={name}
+          onNameChange={setName}
+          models={models}
+          onModelChange={(field, model) =>
+            setModels((prev) => ({ ...prev, [field]: model }))
+          }
+          modelOptions={modelOptions}
+        />
       </div>
     </Dialog>
   )

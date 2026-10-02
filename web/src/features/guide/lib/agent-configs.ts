@@ -83,30 +83,6 @@ export function pickAgentModel(
   return offered[0]?.id ?? ''
 }
 
-/**
- * The link that makes CC Switch import the gateway as a provider of one app
- * and switch to it. CC Switch shows what it is about to import and asks first.
- */
-export function buildCcSwitchLink(input: {
-  client: AgentClient
-  site: GatewaySite
-  apiKey: string
-  model: string
-}): string {
-  const base = baseAddress(input.site)
-  const params = new URLSearchParams({
-    resource: 'provider',
-    app: input.client.ccSwitchApp,
-    name: input.site.name,
-    endpoint: base + input.client.basePath,
-    apiKey: input.apiKey,
-    model: input.model,
-    homepage: base,
-    enabled: 'true',
-  })
-  return `ccswitch://v1/import?${params.toString()}`
-}
-
 function json(value: unknown): string {
   return JSON.stringify(value, null, 2)
 }

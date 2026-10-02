@@ -18,12 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { describe, expect, it } from 'vitest'
 
-import {
-  agentModels,
-  buildAgentConfig,
-  buildCcSwitchLink,
-  pickAgentModel,
-} from '../agent-configs'
+import { agentModels, buildAgentConfig, pickAgentModel } from '../agent-configs'
 import { AGENT_CLIENTS, type SetupModel } from '../agents'
 
 const models: SetupModel[] = [
@@ -83,35 +78,6 @@ describe('models offered to a client', () => {
       'deepseek/deepseek-v4.1-flash'
     )
     expect(pickAgentModel(client('codex'), [], siteDefault)).toBe('')
-  })
-})
-
-describe('CC Switch import link', () => {
-  it('hands each app the base URL form it expects', () => {
-    const link = (id: string, model: string) =>
-      new URL(
-        buildCcSwitchLink({ client: client(id), site, apiKey: 'sk-abc', model })
-      )
-
-    const claude = link('claude-code', 'claude-sonnet-5-5')
-    expect(claude.protocol).toBe('ccswitch:')
-    expect(Object.fromEntries(claude.searchParams)).toEqual({
-      resource: 'provider',
-      app: 'claude',
-      name: 'LUK',
-      endpoint: 'https://ai.example.test',
-      apiKey: 'sk-abc',
-      model: 'claude-sonnet-5-5',
-      homepage: 'https://ai.example.test',
-      enabled: 'true',
-    })
-    expect(link('codex', 'gpt-5.6-sol').searchParams.get('endpoint')).toBe(
-      'https://ai.example.test/v1'
-    )
-    expect(link('opencode', 'glm-5.3').searchParams.get('app')).toBe('opencode')
-    expect(link('openclaw', 'glm-5.3').searchParams.get('endpoint')).toBe(
-      'https://ai.example.test/v1'
-    )
   })
 })
 
