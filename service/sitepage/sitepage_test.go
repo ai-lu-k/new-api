@@ -59,7 +59,6 @@ func site() Site {
 		AboutContent:   "# 成本\n\n每一项成本都列在这里。",
 		PricingPublic:  true,
 		RankingsPublic: true,
-		AboutPublic:    true,
 		Models: func() []Model {
 			return []Model{
 				{Name: "deepseek-v4.1-flash-x0.25", Description: "DeepSeek 的通用模型", Vendor: "DeepSeek"},

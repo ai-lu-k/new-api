@@ -48,11 +48,11 @@ type Site struct {
 	HomeContent  string
 	AboutContent string
 
-	// PricingPublic, RankingsPublic and AboutPublic say whether a visitor who
-	// is not signed in can open that page.
+	// PricingPublic and RankingsPublic say whether a visitor who is not signed
+	// in can open that page. The about page is open whenever it has content:
+	// its navigation switch only hides the link.
 	PricingPublic  bool
 	RankingsPublic bool
-	AboutPublic    bool
 
 	// Models lists the models a visitor who is not signed in can see. It is
 	// called only for pages that name models.
@@ -87,7 +87,7 @@ func (s Site) models() []Model {
 }
 
 func (s Site) aboutShown() bool {
-	return s.AboutPublic && strings.TrimSpace(s.AboutContent) != ""
+	return strings.TrimSpace(s.AboutContent) != ""
 }
 
 // titled puts the site's name after a page's own title.

@@ -24,7 +24,6 @@ func currentSitePage() sitepage.Site {
 		HomeDescription: settings.HomeDescription,
 		PricingPublic:   middleware.HeaderNavModuleOpen("pricing"),
 		RankingsPublic:  middleware.HeaderNavModuleOpen("rankings"),
-		AboutPublic:     middleware.HeaderNavModuleOpen("about"),
 		Models:          publicSitePageModels,
 	}
 
