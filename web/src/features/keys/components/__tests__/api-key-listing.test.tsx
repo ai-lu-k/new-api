@@ -356,15 +356,14 @@ async function renderKeysPage(
   return { post, put }
 }
 
-it('combines creation and last use while keeping expiry, models and IP restrictions separate', async () => {
+it('lists what tells keys apart and leaves limits and expiry to the View menu', async () => {
   await renderKeysPage()
-  for (const name of ['Name', 'API Key', 'Group', 'Models', 'IP Restriction']) {
+  for (const name of ['Name', 'Status', 'API Key', 'Group', 'Time']) {
     expect(screen.getByRole('columnheader', { name })).toBeInTheDocument()
   }
-  expect(screen.getByRole('columnheader', { name: 'Time' })).toBeInTheDocument()
-  expect(
-    screen.getByRole('columnheader', { name: 'Expires' })
-  ).toBeInTheDocument()
+  for (const name of ['Models', 'IP Restriction', 'Expires']) {
+    expect(screen.queryByRole('columnheader', { name })).not.toBeInTheDocument()
+  }
   const timeCell = screen.getByRole('cell', { name: /Created.*Last Used/ })
   expect(within(timeCell).getByText('Last Used')).toBeInTheDocument()
   const quotaHeader = screen.getByRole('columnheader', { name: 'Quota ($)' })
@@ -375,9 +374,24 @@ it('combines creation and last use while keeping expiry, models and IP restricti
   expect(quotaTrigger.closest('td')).not.toHaveClass('pr-8')
 })
 
+it('puts quick import on the row itself, not inside the menu', async () => {
+  await renderKeysPage()
+  expect(screen.getByRole('button', { name: 'Quick import' })).toBeVisible()
+
+  await userEvent.click(screen.getByRole('button', { name: 'Open menu' }))
+  expect(
+    await screen.findByRole('menuitem', { name: /Copy Key/ })
+  ).toBeVisible()
+  expect(
+    screen.queryByRole('menuitem', { name: /CC Switch/ })
+  ).not.toBeInTheDocument()
+})
+
 it('leaves the group column out when the site has a single group', async () => {
   await renderKeysPage(1, {}, { default: { ratio: 1 } })
-  expect(await screen.findByText('Models')).toBeInTheDocument()
+  expect(
+    await screen.findByRole('columnheader', { name: 'Time' })
+  ).toBeInTheDocument()
   expect(
     screen.queryByRole('columnheader', { name: 'Group' })
   ).not.toBeInTheDocument()

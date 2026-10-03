@@ -48,15 +48,18 @@ const CC_SWITCH_DOWNLOAD = 'https://github.com/farion1231/cc-switch/releases'
  * form hands the gateway over as a provider, or the user pastes the
  * configuration by hand. Both use a key the site prepares for this client, and
  * both use the primary model picked in the form.
+ *
+ * Given `apiKey`, the guide sets the client up with that key instead of
+ * preparing one of its own: the API keys page opens it for a chosen key.
  */
-export function AgentGuide(props: { client: AgentClient }) {
+export function AgentGuide(props: { client: AgentClient; apiKey?: string }) {
   const { t } = useTranslation()
   const { status } = useStatus()
   const userId = useAuthStore((state) => state.auth.user?.id)
   const here = useLocation({ select: (location) => location.href })
   const { copyToClipboard } = useCopyToClipboard()
   const [chosenModel, setChosenModel] = useState('')
-  const [apiKey, setApiKey] = useState('')
+  const [apiKey, setApiKey] = useState(props.apiKey ?? '')
   // What the user typed into the CC Switch form; null until they touch the name.
   const [providerName, setProviderName] = useState<string | null>(null)
   const [otherModels, setOtherModels] = useState<Record<string, string>>({})
@@ -107,9 +110,11 @@ export function AgentGuide(props: { client: AgentClient }) {
   const model =
     chosenModel ||
     pickAgentModel(client, offered, catalog.data?.default_model ?? '')
-  const signedIn = userId !== undefined
+  const hasOwnKey = Boolean(props.apiKey)
+  const signedIn = hasOwnKey || userId !== undefined
   const canPrepareKey =
-    signedIn && Boolean(catalog.data?.key_ready ?? catalog.data?.auto_group)
+    hasOwnKey ||
+    (signedIn && Boolean(catalog.data?.key_ready ?? catalog.data?.auto_group))
 
   // A failed attempt has already been reported by the mutation's onError.
   const getKey = async () =>
@@ -238,9 +243,9 @@ export function AgentGuide(props: { client: AgentClient }) {
           disabled={prepareKey.isPending}
         >
           {spinner}
-          {t('Create and copy API key')}
+          {hasOwnKey ? t('Copy Key') : t('Create and copy API key')}
         </Button>
-        {apiKey && (
+        {apiKey && !hasOwnKey && (
           <p className='min-w-0 flex-1'>
             {t(
               'Your key {{key}} is on the clipboard, and the configuration below now carries it.',

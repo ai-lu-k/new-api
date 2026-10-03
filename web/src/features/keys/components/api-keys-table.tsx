@@ -215,6 +215,12 @@ function ApiKeysMobileList({
   )
 }
 
+const HIDDEN_BY_DEFAULT = {
+  model_limits: false,
+  allow_ips: false,
+  expired_time: false,
+}
+
 export function ApiKeysTable() {
   const { t } = useTranslation()
   const { refreshTrigger } = useApiKeys()
@@ -309,6 +315,9 @@ export function ApiKeysTable() {
     columns,
     enableRowSelection: true,
     columnFilters,
+    // The list shows what tells keys apart at a glance. Limits and expiry
+    // are in the edit form, and can be switched on under View.
+    initialColumnVisibility: HIDDEN_BY_DEFAULT,
     columnVisibilityStorageKey: API_KEYS_COLUMN_VISIBILITY_STORAGE_KEY,
     globalFilter,
     pagination,

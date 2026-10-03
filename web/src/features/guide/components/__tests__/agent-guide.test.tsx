@@ -114,7 +114,7 @@ function signIn() {
   useAuthStore.getState().auth.setUser({ id: 7, username: 'ada', role: 1 })
 }
 
-async function renderGuide(client: AgentClient) {
+async function renderGuide(client: AgentClient, apiKey?: string) {
   const queries = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   })
@@ -127,7 +127,7 @@ async function renderGuide(client: AgentClient) {
   window.localStorage.setItem('status', JSON.stringify(status))
   const router = createRouter({
     routeTree: createRootRoute({
-      component: () => <AgentGuide client={client} />,
+      component: () => <AgentGuide client={client} apiKey={apiKey} />,
     }),
     history: createMemoryHistory({ initialEntries: ['/#codex'] }),
   })
@@ -321,4 +321,24 @@ it('says so when the site has no model the client can use', async () => {
   expect(
     await screen.findByText('This site has no model that Codex can use yet.')
   ).toBeVisible()
+})
+
+it('sets the client up with a key it is handed, without preparing another', async () => {
+  signIn()
+  catalog.auto_group = false
+  const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+  const user = userEvent.setup()
+  await renderGuide(codex, 'sk-row-key-0042')
+
+  // The configuration carries the key from the start, masked on screen.
+  expect(screen.getAllByText(/sk-ro…0042/).length).toBeGreaterThan(0)
+  expect(screen.getByRole('button', { name: 'Copy Key' })).toBeVisible()
+  expect(
+    screen.queryByRole('button', { name: 'Create and copy API key' })
+  ).not.toBeInTheDocument()
+
+  await user.click(screen.getByRole('button', { name: 'Open CC Switch' }))
+  expect(open).toHaveBeenCalledTimes(1)
+  expect(String(open.mock.calls[0][0])).toContain('sk-row-key-0042')
+  expect(api.post).not.toHaveBeenCalled()
 })

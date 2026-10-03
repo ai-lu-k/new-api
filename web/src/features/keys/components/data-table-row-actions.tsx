@@ -23,7 +23,6 @@ import {
   Power,
   PowerOff,
   ExternalLink,
-  ArrowRightLeft,
   Copy,
   Link,
   Loader2,
@@ -174,6 +173,23 @@ export function DataTableRowActions<TData>({
 
   return (
     <div className='-ml-1.5 flex items-center gap-1'>
+      {/* The way into a coding client: CC Switch, or the configuration to
+          paste by hand, for this key. */}
+      <Button
+        variant='outline'
+        size='sm'
+        className='me-1 h-7'
+        disabled={isRealKeyLoading || !isEnabled}
+        onClick={async () => {
+          const realKey = await resolveRealKey(apiKey.id)
+          if (!realKey) return
+          setResolvedKey(realKey)
+          setCurrentRow(apiKey)
+          setOpen('quick-import')
+        }}
+      >
+        {t('Quick import')}
+      </Button>
       <Tooltip>
         <TooltipTrigger
           render={
@@ -252,21 +268,7 @@ export function DataTableRowActions<TData>({
             <Link size={16} />
           </DropdownMenuShortcut>
         </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onClick={async () => {
-            const realKey = await resolveRealKey(apiKey.id)
-            if (!realKey) return
-            setResolvedKey(realKey)
-            setCurrentRow(apiKey)
-            setOpen('cc-switch')
-          }}
-        >
-          {t('CC Switch')}
-          <DropdownMenuShortcut>
-            <ArrowRightLeft size={16} />
-          </DropdownMenuShortcut>
-        </DropdownMenuItem>
+        {hasChatPresets && <DropdownMenuSeparator />}
         {hasChatPresets && (
           <DropdownMenuSub>
             <DropdownMenuSubTrigger>{t('Chat')}</DropdownMenuSubTrigger>
