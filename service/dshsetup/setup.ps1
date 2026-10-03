@@ -438,9 +438,9 @@
         }
         if ($settingsDone -and $credentialsDone) {
             if ($hadDefault) {
-                Write-Host "DSH 不用重启。新建一个会话，在模型列表里选 $Site 下的模型就能用了。"
+                Write-Host "请重启 DSH，重启后才会生效。然后在模型列表里选 $Site 下的模型就能用了。"
             } else {
-                Write-Host 'DSH 不用重启，默认模型也已经设好，新建一个会话就能用了。'
+                Write-Host '请重启 DSH，重启后才会生效。默认模型也已经设好，重启后新建一个会话就能用了。'
             }
         }
     } catch {

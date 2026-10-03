@@ -176,38 +176,40 @@ it('shows a signed-in user the prompt at once, with the command for each system'
   expect(screen.queryByRole('tab')).not.toBeInTheDocument()
 })
 
-it('has DSH ask which model to use and match it to the official model itself', async () => {
+it('has DSH do no more than run the command and say to restart', async () => {
   signIn()
   await renderQuickSetup({ dsh_setup_enabled: true })
 
   const prompt = await screen.findByText(/Please connect the LUK models to DSH/)
   const text = prompt.textContent ?? ''
-  // The question comes first, with the models as its choices.
-  expect(text).toMatch(
-    /Step 1\. Ask me which model I want to use\..*ask_user_question.*\n- deepseek\/deepseek-v4\.1-flash — DeepSeek V4\.1 Flash\n- glm-5\.3\n/
-  )
-  expect(text.indexOf('Step 1.')).toBeLessThan(text.indexOf('Step 2.'))
+  expect(text).toMatch(/exactly as written/)
+  expect(text).toContain('Do not read or print .credentials.yaml')
   expect(text.indexOf(shellCommand('code-1'))).toBeLessThan(
-    text.indexOf('Step 3.')
+    text.indexOf('tell me to restart DSH')
   )
-  // The site keeps no limits per model: DSH is sent to look them up.
-  expect(text).toMatch(
-    /Step 3\..*agent-default-model.*look up its official specifications yourself.*contextWindow, maxTokens, input and reasoningEfforts/
-  )
-  expect(text).toContain('do not read or print .credentials.yaml')
-  // Declared levels do nothing until one is selected, so the default is set too.
-  expect(text).toMatch(/set reasoningEffort in agent-default-model/)
-  expect(text).toMatch(/docs\S+user\S+guide\S+providers\.md/)
+  // The script writes the models, their limits and the default model: DSH is
+  // not asked to choose a model, to look anything up or to edit the files.
+  for (const gone of [
+    'Ask me which model',
+    'ask_user_question',
+    'agent-default-model',
+    'official specifications',
+    'reasoningEfforts',
+  ]) {
+    expect(text).not.toContain(gone)
+  }
+  expect(text).not.toMatch(/\n- /)
 })
 
-it('still gives a prompt when the models cannot be listed', async () => {
-  models = null
+it('says on both ways in that DSH has to be restarted', async () => {
   signIn()
   await renderQuickSetup({ dsh_setup_enabled: true })
 
-  const prompt = await screen.findByText(/Please connect the LUK models to DSH/)
-  expect(prompt).toHaveTextContent(shellCommand('code-1'))
-  expect(prompt.textContent).not.toMatch(/\n- /)
+  await screen.findByText(/Please connect the LUK models to DSH/)
+  expect(screen.getByText(/Restart DSH afterwards\./)).toBeVisible()
+  expect(
+    screen.getByText(/Then restart DSH and pick a LUK model in its model list\./)
+  ).toBeVisible()
 })
 
 it('gives the bare command to run by hand, one per system', async () => {

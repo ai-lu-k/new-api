@@ -417,9 +417,9 @@ fi
 
 if [ "$settings_done" = 1 ] && [ "$credentials_done" = 1 ]; then
 	if [ "$had_default" = 1 ]; then
-		printf '%s\n' "DSH 不用重启。新建一个会话，在模型列表里选 $SITE 下的模型就能用了。"
+		printf '%s\n' "请重启 DSH，重启后才会生效。然后在模型列表里选 $SITE 下的模型就能用了。"
 	else
-		printf '%s\n' "DSH 不用重启，默认模型也已经设好，新建一个会话就能用了。"
+		printf '%s\n' "请重启 DSH，重启后才会生效。默认模型也已经设好，重启后新建一个会话就能用了。"
 	fi
 	exit 0
 fi

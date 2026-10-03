@@ -37,50 +37,27 @@ export function buildDshSetupCommands(
   }
 }
 
-const DSH_MODEL_GUIDE =
-  'https://raw.githubusercontent.com/deepseek-ai/deepseek-harness/master/docs/user/guide/providers'
-
-/**
- * DSH's own guide to model entries, in the reader's language where it has
- * one. The prompt sends DSH there for the exact fields rather than repeating
- * them, so the prompt does not go stale when DSH changes.
- */
-export function dshModelGuideUrl(language: string): string {
-  return `${DSH_MODEL_GUIDE}${language.toLowerCase().startsWith('zh') ? '.zh' : ''}.md`
-}
-
-/** The prose of the setup prompt, one paragraph per step. */
+/** The prose of the setup prompt. */
 export type DshSetupPromptText = {
   intro: string
-  /** Ask the user which model to use; the model list follows it. */
-  ask: string
   /** Run the command; the commands follow it. */
   run: string
-  /** Make the chosen model the default and match it to the official model. */
-  align: string
+  /** Say what happened and that DSH has to be restarted. */
   report: string
 }
 
 /**
- * The prompt a user sends to DSH. It has DSH ask which model to use, run the
- * setup command, and then look the model's official limits up itself, so the
- * site does not have to keep them for every model it serves. It carries the
- * one-time setup code, never the API key.
+ * The prompt a user sends to DSH. DSH is only the hand that runs the setup
+ * command: the script writes the provider, every model with its limits and
+ * reasoning levels, the default model and the API key. It carries the one-time
+ * setup code, never the API key.
  */
 export function buildDshSetupPrompt(
   text: DshSetupPromptText,
-  models: readonly { id: string; name?: string }[],
   commands: DshSetupCommands
 ): string {
   return [
     text.intro,
-    '',
-    text.ask,
-    ...models.map((model) =>
-      model.name && model.name !== model.id
-        ? `- ${model.id} — ${model.name}`
-        : `- ${model.id}`
-    ),
     '',
     text.run,
     '',
@@ -89,8 +66,6 @@ export function buildDshSetupPrompt(
     '',
     'Windows (PowerShell):',
     commands.powershell,
-    '',
-    text.align,
     '',
     text.report,
   ].join('\n')

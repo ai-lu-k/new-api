@@ -32,11 +32,10 @@ import {
 } from '@/lib/server-error-message'
 import { useAuthStore } from '@/stores/auth-store'
 
-import { createDshSetupCode, getSetupCatalog } from '../api'
+import { createDshSetupCode } from '../api'
 import {
   buildDshSetupCommands,
   buildDshSetupPrompt,
-  dshModelGuideUrl,
 } from '../lib/dsh-setup'
 
 // A code on screen is replaced this long before it runs out, so that a prompt
@@ -155,15 +154,14 @@ function CommandLine(props: {
 /**
  * Setting up the DSH client. The gateway hands out a short-lived code and a
  * script trades it for the configuration, so the API key never passes through
- * a chat. The script is run either by DSH itself, told to by a prompt that
- * also has it ask which model to use and match that model to the official
- * one, or by the user in a terminal.
+ * a chat. The user runs the script in a terminal, or sends DSH a prompt that
+ * has it run the same command. Either way DSH has to be restarted afterwards.
  *
  * Given `tokenId`, the script writes that key of the account instead of the
  * one the site keeps for DSH.
  */
 export function DshQuickSetup(props: { tokenId?: number }) {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const { status } = useStatus()
   const userId = useAuthStore((state) => state.auth.user?.id)
   const here = useLocation({ select: (location) => location.href })
@@ -171,22 +169,6 @@ export function DshQuickSetup(props: { tokenId?: number }) {
   const offered = Boolean(status?.dsh_setup_enabled)
   const signedIn = userId !== undefined
   const code = useSetupCode(userId, offered && signedIn, props.tokenId)
-  // The prompt names the models to choose from. It is still usable without
-  // them, so a failed listing only leaves the choices out.
-  const catalog = useQuery({
-    queryKey: ['dsh-setup-models', userId ?? null],
-    queryFn: async () => {
-      const response = await getSetupCatalog()
-      if (!response.success || !response.data) {
-        throw createServerError(response, t('Failed to load models'))
-      }
-      return response.data
-    },
-    enabled: offered && signedIn,
-    staleTime: 5 * 60 * 1000,
-    meta: { errorToast: false },
-  })
-
   if (!offered) return null
 
   const site =
@@ -236,31 +218,23 @@ export function DshQuickSetup(props: { tokenId?: number }) {
         </Button>
       </div>
     )
-  } else if (code.setup && !catalog.isPending) {
+  } else if (code.setup) {
     const commands = buildDshSetupCommands(serverAddress, code.setup.code)
     const prompt = buildDshSetupPrompt(
       {
         intro: t(
-          'Please connect the {{site}} models to DSH for me. Do these steps in order.',
+          'Please connect the {{site}} models to DSH for me by running one command.',
           { site }
-        ),
-        ask: t(
-          'Step 1. Ask me which model I want to use. If you have the ask_user_question tool, use it and offer the models below as the choices; otherwise ask me in plain text and wait for my answer.'
         ),
         run: t(
-          'Step 2. Run one of the two commands below in a terminal, the one for the system you are running on. It writes the {{site}} provider, every model and my API key into settings.yaml and .credentials.yaml in the DSH home directory (~/.dsh), which is outside the workspace, so it needs permission to write there. If the first attempt is refused for that reason, ask me for that permission and then run exactly the same command again: a refused attempt does not use up the setup code.',
+          'Run one of the two commands below in a terminal, the one for the system you are running on, exactly as written. It writes the {{site}} provider, every model and my API key into settings.yaml and .credentials.yaml in the DSH home directory (~/.dsh), which is outside the workspace, so it needs permission to write there. If the first attempt is refused for that reason, ask me for that permission and then run exactly the same command again: a refused attempt does not use up the setup code. Do not read or print .credentials.yaml, and do not edit either file yourself.',
           { site }
         ),
-        align: t(
-          "Step 3. When the command has succeeded, edit ~/.dsh/settings.yaml, after making a copy of it. Change only these two things, and do not read or print .credentials.yaml. First, set the top-level agent-default-model to the model I chose: provider is the id of the entry under llm-pi-ai.providers that lists this model and whose displayName starts with {{site}}, and model is the model id. Second, bring that model's entry in line with the official model. A model added by hand starts out in DSH as text-only and without reasoning levels, so look up its official specifications yourself (context window, maximum output, whether it accepts images, which reasoning levels it has) and write them into the entry as contextWindow, maxTokens, input and reasoningEfforts, adding compat where the guide calls for it, with only the switches that the entry's api takes. Take the exact fields from DSH's model configuration guide: {{guide}} If you wrote reasoning levels, also set reasoningEffort in agent-default-model to the model's official default level, so that it reasons from the first message. Leave out anything you cannot confirm.",
-          { site, guide: dshModelGuideUrl(i18n.language) }
-        ),
         report: t(
-          'Step 4. Tell me what the command printed, which model is now the default, and which specifications you wrote and where you found them. Then have me check that the {{site}} models still show in the DSH model list: if they are gone, the entry is not valid, so put the copy back or correct the entry with the troubleshooting section of the same guide. Do the same if requests to this model fail.',
+          'When the command has succeeded, show me what it printed and tell me to restart DSH: the {{site}} models only appear after a restart.',
           { site }
         ),
       },
-      catalog.data?.models ?? [],
       commands
     )
     // Whatever has been copied is as good as used, so the next code is lined
@@ -302,7 +276,7 @@ export function DshQuickSetup(props: { tokenId?: number }) {
       <TitledCard
         title={t('Set it up by hand')}
         description={t(
-          'Run the command yourself in a terminal: it writes the same provider, models and API key. Afterwards pick a {{site}} model in the DSH model list.',
+          'Run the command yourself in a terminal: it writes the provider, every model and your API key. Then restart DSH and pick a {{site}} model in its model list.',
           { site }
         )}
         disableHoverEffect
@@ -328,7 +302,7 @@ export function DshQuickSetup(props: { tokenId?: number }) {
       <TitledCard
         title={t('Set up DSH with one prompt')}
         description={t(
-          'Send DSH the prompt below. It asks which model you want, sets up the provider, every model and your API key, and matches the model you chose to its official limits. There is no group or key to pick.'
+          'Not at home in a terminal? Send DSH the prompt below and it runs the setup command for you: the provider, every model and your API key are written in one go. Restart DSH afterwards.'
         )}
         disableHoverEffect
       >
