@@ -83,7 +83,13 @@ describe('security sidebar visibility', () => {
       result.current
         .find((group) => group.id === 'personal')
         ?.items.map((item) => item.title)
-    ).toEqual(['Wallet', 'Profile', 'Security & Access'])
+    ).toEqual(['Profile', 'Security & Access'])
+    // Top-up sits with the everyday pages, and still follows its own switch.
+    expect(
+      result.current
+        .find((group) => group.id === 'general')
+        ?.items.map((item) => item.title)
+    ).toContain('Top-up')
     expect(
       result.current
         .flatMap((group) => group.items)

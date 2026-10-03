@@ -89,6 +89,11 @@ export function useSidebarData(): SidebarData {
             icon: Key,
           },
           {
+            title: t('Top-up'),
+            url: '/wallet',
+            icon: Wallet,
+          },
+          {
             title: t('Usage Logs'),
             url: '/usage-logs/common',
             icon: FileText,
@@ -111,11 +116,6 @@ export function useSidebarData(): SidebarData {
         id: 'personal',
         title: t('Personal'),
         items: [
-          {
-            title: t('Wallet'),
-            url: '/wallet',
-            icon: Wallet,
-          },
           {
             title: t('Profile'),
             url: '/profile',

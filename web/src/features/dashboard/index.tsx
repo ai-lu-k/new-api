@@ -324,6 +324,11 @@ export function Dashboard() {
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>{t(meta.titleKey)}</SectionPageLayout.Title>
+      {activeSection === 'models' && (
+        <SectionPageLayout.Description>
+          {t('Aggregated usage metrics and trend charts.')}
+        </SectionPageLayout.Description>
+      )}
       <SectionPageLayout.Content>
         <div className='space-y-3 sm:space-y-4'>
           <div className='flex flex-wrap items-center justify-between gap-1.5 sm:gap-2'>

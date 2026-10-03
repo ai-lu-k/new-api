@@ -128,6 +128,11 @@ function UsageLogsContent() {
         <SectionPageLayout.Title>
           {t(pageMeta.titleKey)}
         </SectionPageLayout.Title>
+        {activeCategory === 'common' && (
+          <SectionPageLayout.Description>
+            {t('Detailed request logs for investigations.')}
+          </SectionPageLayout.Description>
+        )}
         <SectionPageLayout.Actions>
           {canManageScope && (
             <Tabs value={viewScope} onValueChange={handleViewScopeChange}>

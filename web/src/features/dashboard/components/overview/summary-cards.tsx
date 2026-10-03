@@ -253,42 +253,9 @@ export function SummaryCards() {
   })
 
   return (
-    <div className='bg-card overflow-hidden rounded-2xl border shadow-xs'>
-      <div className='grid xl:grid-cols-[minmax(0,1fr)_19rem]'>
-        <div className='flex flex-col gap-2.5 p-3 sm:gap-3 sm:p-5'>
-          <div className='flex flex-wrap items-start justify-between gap-3'>
-            <div className='flex flex-col gap-1'>
-              <h3 className='text-sm font-semibold sm:text-base'>
-                {t('Usage at a glance')}
-              </h3>
-              <p className='text-muted-foreground text-xs sm:text-sm'>
-                {t('Monitor balance, usage, and request volume')}
-              </p>
-            </div>
-          </div>
-          <StaggerContainer className='grid grid-cols-3 gap-1.5 sm:gap-3'>
-            {items.map((it) => (
-              <StaggerItem
-                key={it.key}
-                className='bg-background/60 rounded-lg border px-2 py-1.5 sm:rounded-xl sm:p-3'
-              >
-                <StatCard
-                  title={it.title}
-                  value={it.value}
-                  description={it.desc}
-                  icon={it.icon}
-                  tone={it.tone}
-                  sparkline={it.sparkline}
-                  sparklineVariant={it.sparklineVariant}
-                  loading={loading}
-                  compactMobile
-                />
-              </StaggerItem>
-            ))}
-          </StaggerContainer>
-        </div>
-
-        <div className='bg-muted/40 flex flex-col justify-between gap-3 border-t p-3 sm:gap-4 sm:p-5 xl:border-t-0 xl:border-l'>
+    <div className='bg-card overflow-hidden rounded-lg border'>
+      <div className='grid xl:grid-cols-[19rem_minmax(0,1fr)]'>
+        <div className='bg-muted/40 flex flex-col justify-between gap-3 border-b p-3 sm:gap-4 sm:p-5 xl:border-r xl:border-b-0'>
           <div className='flex flex-col gap-2 sm:gap-3'>
             <div className='flex items-center justify-between'>
               <span className='text-muted-foreground text-xs font-medium'>
@@ -348,9 +315,39 @@ export function SummaryCards() {
           </div>
 
           <Button className='justify-between' render={<Link to='/wallet' />}>
-            <span>{t('Wallet')}</span>
+            <span>{t('Top-up')}</span>
             <ArrowRight data-icon='inline-end' />
           </Button>
+        </div>
+
+        <div className='flex flex-col gap-2.5 p-3 sm:gap-3 sm:p-5'>
+          <div className='flex flex-wrap items-start justify-between gap-3'>
+            <div className='flex flex-col gap-1'>
+              <h3 className='text-sm font-semibold sm:text-base'>
+                {t('Usage at a glance')}
+              </h3>
+            </div>
+          </div>
+          <StaggerContainer className='grid grid-cols-3 gap-1.5 sm:gap-3'>
+            {items.map((it) => (
+              <StaggerItem
+                key={it.key}
+                className='bg-background/60 rounded-lg border px-2 py-1.5 sm:rounded-xl sm:p-3'
+              >
+                <StatCard
+                  title={it.title}
+                  value={it.value}
+                  description={it.desc}
+                  icon={it.icon}
+                  tone={it.tone}
+                  sparkline={it.sparkline}
+                  sparklineVariant={it.sparklineVariant}
+                  loading={loading}
+                  compactMobile
+                />
+              </StaggerItem>
+            ))}
+          </StaggerContainer>
         </div>
       </div>
     </div>

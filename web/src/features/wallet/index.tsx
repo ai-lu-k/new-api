@@ -285,7 +285,10 @@ export function Wallet(props: WalletProps) {
   return (
     <>
       <SectionPageLayout>
-        <SectionPageLayout.Title>{t('Wallet')}</SectionPageLayout.Title>
+        <SectionPageLayout.Title>{t('Top-up')}</SectionPageLayout.Title>
+        <SectionPageLayout.Description>
+          {t('Top up balance and view billing history.')}
+        </SectionPageLayout.Description>
         <SectionPageLayout.Content>
           <div className='mx-auto flex w-full max-w-7xl flex-col gap-4 sm:gap-5'>
             <WalletStatsCard user={user} loading={userLoading} />

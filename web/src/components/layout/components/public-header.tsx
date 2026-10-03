@@ -61,6 +61,10 @@ export interface PublicHeaderProps {
   showSearch?: boolean
   showAuthButtons?: boolean
   showNotifications?: boolean
+  /** Shown before the logo: the console puts its menu button here. */
+  leading?: ReactNode
+  /** The link to mark as the current one when the page is under it. */
+  activeHref?: string
   className?: string
 }
 
@@ -198,6 +202,7 @@ export function PublicHeader(props: PublicHeaderProps) {
           <nav className='flex h-14 items-center justify-between gap-2'>
             {/* Logo */}
             <div className='@container/system-brand flex min-w-0 flex-1 items-center gap-4 lg:min-w-36'>
+              {props.leading}
               <Link
                 to={homeUrl}
                 className='group flex min-w-0 items-center gap-2.5'
@@ -224,7 +229,7 @@ export function PublicHeader(props: PublicHeaderProps) {
             {/* Desktop nav */}
             <div className='hidden min-w-0 items-center gap-0.5 lg:flex'>
               {links.map((link) => {
-                const isActive = pathname === link.href
+                const isActive = link.href === (props.activeHref ?? pathname)
                 if (link.external) {
                   return (
                     <a
@@ -346,7 +351,7 @@ export function PublicHeader(props: PublicHeaderProps) {
         <div className='flex h-full flex-col justify-between px-8 pt-20 pb-10'>
           <nav className='flex flex-col gap-1'>
             {links.map((link, i) => {
-              const isActive = pathname === link.href
+              const isActive = link.href === (props.activeHref ?? pathname)
               const linkClassName = cn(
                 'flex items-center gap-3 py-3 text-base font-medium tracking-tight transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]',
                 mobileOpen

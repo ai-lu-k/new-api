@@ -23,16 +23,20 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { cleanup, render, screen } from '@testing-library/react'
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
-import { SidebarProvider } from '@/components/ui/sidebar'
-import { SearchProvider } from '@/context/search-provider'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth-store'
 
-import { AppHeader } from '../components/app-header'
+import { AuthenticatedLayout } from '../components/authenticated-layout'
 import { PublicLayout } from '../components/public-layout'
 
 beforeEach(() => {
@@ -72,26 +76,40 @@ function precedes(first: HTMLElement, second: HTMLElement) {
   )
 }
 
-it('keeps the console search box next to the brand, ahead of the navigation', async () => {
-  await renderPage(() => (
-    <SearchProvider>
-      <SidebarProvider>
-        <AppHeader
-          showNotifications={false}
-          showConfigDrawer={false}
-          showProfileDropdown={false}
-        />
-      </SidebarProvider>
-    </SearchProvider>
+it('gives the console the header of the public pages, with the search box next to the brand', async () => {
+  useAuthStore.getState().auth.setUser({ id: 7, username: 'ada', role: 1 })
+  const header = await renderPage(() => (
+    <AuthenticatedLayout>page</AuthenticatedLayout>
   ))
 
-  const search = screen.getByRole('button', { name: 'Search' })
-  const brand = screen.getByRole('link', { name: 'Go to home' })
-  const navigation = screen.getByRole('link', { name: 'Console' })
+  const search = await within(header).findByRole('button', { name: 'Search' })
+  const brand = within(header).getAllByRole('link')[0]
+  expect(brand).toHaveAttribute('href', '/')
+  const navigation = within(header).getAllByRole('link', { name: 'Console' })[0]
 
   expect(precedes(brand, search)).toBe(true)
   expect(precedes(search, navigation)).toBe(true)
   expect(brand.parentElement).toBe(search.parentElement)
+  // Light or dark, and nothing else to customise.
+  expect(
+    within(header).getAllByRole('button', { name: 'Toggle theme' }).length
+  ).toBeGreaterThan(0)
+})
+
+it('keeps the console sidebar open, with a menu button only for narrow screens', async () => {
+  useAuthStore.getState().auth.setUser({ id: 7, username: 'ada', role: 1 })
+  const header = await renderPage(() => (
+    <AuthenticatedLayout>page</AuthenticatedLayout>
+  ))
+
+  const sidebar = document.querySelector('[data-slot="sidebar"]')
+  expect(sidebar).toHaveAttribute('data-state', 'expanded')
+  expect(document.querySelector('[data-slot="sidebar-rail"]')).toBeNull()
+
+  const menu = within(header).getByRole('button', { name: 'Toggle Sidebar' })
+  expect(menu).toHaveClass('md:hidden')
+  fireEvent.keyDown(window, { key: 'b', ctrlKey: true })
+  expect(sidebar).toHaveAttribute('data-state', 'expanded')
 })
 
 it('shows the same search box on public pages to someone who is signed in', async () => {
