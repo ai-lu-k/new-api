@@ -39,8 +39,6 @@ import type { PricingModel, PricingVendor } from '../types'
 import { PricingSidebar } from './pricing-sidebar'
 
 export interface PricingToolbarProps {
-  filteredCount: number
-  totalCount?: number
   quotaTypeFilter: string
   endpointTypeFilter: string
   vendorFilter: string
@@ -62,45 +60,29 @@ export interface PricingToolbarProps {
 }
 
 /**
- * The line above the model list: how many models match, and on narrow
- * screens the way into the filters. Sorting is on the table's headings.
+ * The way into the filters on screens too narrow for the sidebar: a button
+ * that opens them in a drawer. Wider screens show nothing here.
  */
 export function PricingToolbar(props: PricingToolbarProps) {
   const { t } = useTranslation()
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
 
   return (
-    <div>
-      <div className='flex items-center gap-2'>
-        <Button
-          type='button'
-          variant='outline'
-          size='sm'
-          onClick={() => setMobileFiltersOpen(true)}
-          className='gap-1.5 xl:hidden'
-        >
-          <Filter className='size-4' />
-          {t('Filter')}
-          {props.activeFilterCount > 0 && (
-            <Badge className='ml-0.5 size-5 justify-center p-0 text-[10px]'>
-              {props.activeFilterCount}
-            </Badge>
-          )}
-        </Button>
-
-        <div className='text-muted-foreground flex items-baseline gap-1 text-sm'>
-          <span className='text-foreground font-semibold tabular-nums'>
-            {props.filteredCount.toLocaleString()}
-          </span>
-          <span>{props.filteredCount === 1 ? t('model') : t('models')}</span>
-          {props.totalCount != null &&
-            props.filteredCount !== props.totalCount && (
-              <span className='text-muted-foreground/60 text-xs'>
-                / {props.totalCount.toLocaleString()}
-              </span>
-            )}
-        </div>
-      </div>
+    <>
+      <Button
+        type='button'
+        variant='outline'
+        onClick={() => setMobileFiltersOpen(true)}
+        className='h-10 shrink-0 gap-1.5 xl:hidden'
+      >
+        <Filter className='size-4' />
+        {t('Filter')}
+        {props.activeFilterCount > 0 && (
+          <Badge className='ml-0.5 size-5 justify-center p-0 text-[10px]'>
+            {props.activeFilterCount}
+          </Badge>
+        )}
+      </Button>
 
       <Sheet open={mobileFiltersOpen} onOpenChange={setMobileFiltersOpen}>
         <SheetContent
@@ -141,6 +123,6 @@ export function PricingToolbar(props: PricingToolbarProps) {
           </div>
         </SheetContent>
       </Sheet>
-    </div>
+    </>
   )
 }

@@ -52,14 +52,6 @@ export function LoadingSkeleton(props: LoadingSkeletonProps) {
           ))}
         </div>
         <div className='flex min-w-0 flex-col gap-4'>
-          <div className='flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3'>
-            <Skeleton className='h-7 w-20' />
-            <div className='flex flex-wrap gap-2'>
-              <Skeleton className='h-7 w-32' />
-              <Skeleton className='h-7 w-20' />
-              <Skeleton className='h-7 w-24' />
-            </div>
-          </div>
           {props.viewMode === VIEW_MODES.TABLE ? (
             <div className='overflow-hidden rounded-xl border'>
               {Array.from({ length: 10 }, (_, index) => (

@@ -39,8 +39,6 @@ import type { PricingModel } from '../types'
 
 function toolbarProps(): PricingToolbarProps {
   return {
-    filteredCount: 2,
-    totalCount: 2,
     quotaTypeFilter: 'all',
     endpointTypeFilter: 'all',
     vendorFilter: 'all',
@@ -141,21 +139,13 @@ describe('pricing controls', () => {
     ).toBeVisible()
   })
 
-  it('shows how many models match and leaves display modes, sorting and views out of the toolbar', () => {
-    render(<PricingToolbar {...toolbarProps()} filteredCount={1} />)
-    expect(screen.getByText('1')).toBeVisible()
-    expect(screen.getByText('/ 2')).toBeVisible()
-    for (const name of [
-      'Standard',
-      'Recharge',
-      '/1M',
-      '/1K',
-      'Name',
-      'Card view',
-      'Table view',
-    ]) {
-      expect(screen.queryByRole('button', { name })).toBeNull()
-    }
+  it('offers nothing but the way into the filters', () => {
+    render(<PricingToolbar {...toolbarProps()} activeFilterCount={2} />)
+    const buttons = screen.getAllByRole('button')
+    expect(buttons).toHaveLength(1)
+    expect(buttons[0]).toHaveAccessibleName(/^Filter\s*2$/)
+    // No count of models, display modes, sort menu or view switch.
+    expect(screen.queryByText(/models?$/)).toBeNull()
   })
 
   it('opens mobile filters from the left, selects a group, and restores focus on close', async () => {

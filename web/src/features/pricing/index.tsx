@@ -174,36 +174,37 @@ export function Pricing() {
                   })}
                 </p>
               </header>
-              <SearchBar
-                value={searchInput}
-                onChange={setSearchInput}
-                onClear={clearSearch}
-                placeholder={t(
-                  'Search model name, provider, endpoint, or tag...'
-                )}
-              />
-              <PricingToolbar
-                filteredCount={filteredModels.length}
-                totalCount={models?.length}
-                quotaTypeFilter={quotaTypeFilter}
-                endpointTypeFilter={endpointTypeFilter}
-                vendorFilter={vendorFilter}
-                groupFilter={groupFilter}
-                tagFilter={tagFilter}
-                onQuotaTypeChange={setQuotaTypeFilter}
-                onEndpointTypeChange={setEndpointTypeFilter}
-                onVendorChange={setVendorFilter}
-                onGroupChange={setGroupFilter}
-                onTagChange={setTagFilter}
-                vendors={vendors || []}
-                groups={availableGroups}
-                groupRatios={groupRatio}
-                tags={availableTags}
-                models={models || []}
-                hasActiveFilters={hasActiveFilters}
-                activeFilterCount={activeFilterCount}
-                onClearFilters={clearFilters}
-              />
+              <div className='flex items-center gap-2'>
+                <SearchBar
+                  className='min-w-0 flex-1'
+                  value={searchInput}
+                  onChange={setSearchInput}
+                  onClear={clearSearch}
+                  placeholder={t(
+                    'Search model name, provider, endpoint, or tag...'
+                  )}
+                />
+                <PricingToolbar
+                  quotaTypeFilter={quotaTypeFilter}
+                  endpointTypeFilter={endpointTypeFilter}
+                  vendorFilter={vendorFilter}
+                  groupFilter={groupFilter}
+                  tagFilter={tagFilter}
+                  onQuotaTypeChange={setQuotaTypeFilter}
+                  onEndpointTypeChange={setEndpointTypeFilter}
+                  onVendorChange={setVendorFilter}
+                  onGroupChange={setGroupFilter}
+                  onTagChange={setTagFilter}
+                  vendors={vendors || []}
+                  groups={availableGroups}
+                  groupRatios={groupRatio}
+                  tags={availableTags}
+                  models={models || []}
+                  hasActiveFilters={hasActiveFilters}
+                  activeFilterCount={activeFilterCount}
+                  onClearFilters={clearFilters}
+                />
+              </div>
 
               {renderPricingContent()}
             </main>
