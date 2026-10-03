@@ -83,7 +83,7 @@ describe('security sidebar visibility', () => {
       result.current
         .find((group) => group.id === 'personal')
         ?.items.map((item) => item.title)
-    ).toEqual(['Profile', 'Security & Access'])
+    ).toEqual(['Settings', 'Security & Access'])
     // Top-up sits with the everyday pages, and still follows its own switch.
     expect(
       result.current

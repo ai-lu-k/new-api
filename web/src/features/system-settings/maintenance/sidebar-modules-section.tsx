@@ -129,7 +129,7 @@ export function SidebarModulesSection({
         description: t('Top up balance and view billing history.'),
       },
       personal: {
-        title: t('Profile'),
+        title: t('Settings'),
         description: t('Personal settings and profile management.'),
       },
       security: {

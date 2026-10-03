@@ -61,7 +61,7 @@ export function ProfileSettingsCard({
 
   return (
     <TitledCard
-      title={t('Settings')}
+      title={t('Notifications')}
       description={t('Settings & Preferences')}
       icon={<Settings className='h-4 w-4' />}
       iconTone='info'

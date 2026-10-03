@@ -117,7 +117,7 @@ export function useSidebarData(): SidebarData {
         title: t('Personal'),
         items: [
           {
-            title: t('Profile'),
+            title: t('Settings'),
             url: '/profile',
             icon: User,
           },

@@ -28,16 +28,21 @@ import {
   CardStaggerItem,
 } from '@/components/page-transition'
 import { getApiKeys } from '@/features/keys/api'
+import { CheckinCalendarCard } from '@/features/profile/components/checkin-calendar-card'
+import { useStatus } from '@/hooks/use-status'
 import { ROLE } from '@/lib/roles'
 import { requireServerSuccess } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { useDashboardContentVisibility } from '../../hooks/use-status-data'
+import { AccountIdentity } from './account-identity'
 import { AnnouncementsPanel } from './announcements-panel'
 import { ApiInfoPanel } from './api-info-panel'
 import { FAQPanel } from './faq-panel'
+import { MyKeys } from './my-keys'
 import { PerformanceHealthPanel } from './performance-health-panel'
+import { RecentRequests } from './recent-requests'
 import { SummaryCards } from './summary-cards'
 import { UptimePanel } from './uptime-panel'
 
@@ -120,11 +125,22 @@ export function OverviewDashboard() {
     queryKey: ['dashboard', 'overview', 'api-keys'],
     queryFn: async () => {
       const result = requireServerSuccess(await getApiKeys({ p: 1, size: 10 }))
-      return result.success ? (result.data?.items ?? []) : []
+      return {
+        items: result.data?.items ?? [],
+        total: result.data?.total ?? 0,
+      }
     },
     staleTime: 60 * 1000,
   })
-  const hasKey = (apiKeysQuery.data?.length ?? 0) > 0
+  const apiKeys = apiKeysQuery.data?.items ?? []
+  const hasKey = apiKeys.length > 0
+
+  const { status } = useStatus()
+  const checkinEnabled = status?.checkin_enabled === true
+  const turnstileSiteKey =
+    typeof status?.turnstile_site_key === 'string'
+      ? status.turnstile_site_key
+      : ''
 
   const startSteps = useMemo<StartStep[]>(
     () => [
@@ -161,9 +177,40 @@ export function OverviewDashboard() {
       </SectionPageLayout.Description>
       <SectionPageLayout.Content>
         <div className='flex flex-col gap-4'>
+          <AccountIdentity />
           {showSetupBanner && <SetupBanner steps={startSteps} />}
 
           <SummaryCards />
+
+          <div
+            className={cn(
+              'grid gap-4',
+              checkinEnabled && 'xl:grid-cols-[minmax(0,1fr)_22rem]'
+            )}
+          >
+            <div
+              className={cn(
+                'grid content-start gap-4',
+                !checkinEnabled && 'lg:grid-cols-2'
+              )}
+            >
+              <RecentRequests />
+              <MyKeys
+                keys={apiKeys}
+                total={apiKeysQuery.data?.total ?? 0}
+                loading={apiKeysQuery.isPending}
+              />
+            </div>
+            {checkinEnabled && (
+              <CheckinCalendarCard
+                checkinEnabled
+                turnstileEnabled={Boolean(
+                  status?.turnstile_check && turnstileSiteKey
+                )}
+                turnstileSiteKey={turnstileSiteKey}
+              />
+            )}
+          </div>
 
           {showContentPanels && (
             <CardStaggerContainer

@@ -41,6 +41,7 @@ import { OverviewDashboard } from '../overview-dashboard'
 
 let client: QueryClient
 let keyLookupError: Error | null
+let logRequests: string[]
 
 beforeEach(() => {
   window.localStorage.clear()
@@ -57,6 +58,7 @@ beforeEach(() => {
     defaultOptions: { queries: { retry: false } },
   })
   keyLookupError = null
+  logRequests = []
   vi.spyOn(api, 'get').mockImplementation(async (url) => {
     switch (url) {
       case '/api/token/?p=1&size=10':
@@ -66,6 +68,7 @@ beforeEach(() => {
             success: true,
             data: {
               items: [{ id: 1, name: 'App key', key: 'masked', status: 1 }],
+              total: 1,
             },
           },
         }
@@ -85,6 +88,28 @@ beforeEach(() => {
       case '/api/data/self':
         return { data: { success: true, data: [] } }
       default:
+        if (String(url).startsWith('/api/log/self?')) {
+          logRequests.push(String(url))
+          return {
+            data: {
+              success: true,
+              data: {
+                items: [
+                  {
+                    id: 9,
+                    created_at: 1790000000,
+                    type: 2,
+                    model_name: 'glm-5.3-x0.25',
+                    quota: 5000,
+                    prompt_tokens: 1200,
+                    completion_tokens: 300,
+                  },
+                ],
+                total: 1,
+              },
+            },
+          }
+        }
         throw new Error(`Unexpected dashboard request: ${url}`)
     }
   })
@@ -119,7 +144,7 @@ describe('overview setup banner', () => {
     await waitFor(() => expect(client.isFetching()).toBe(0))
     expect(
       screen.getAllByRole('heading').map((heading) => heading.textContent)
-    ).toEqual(['Overview', 'Usage at a glance'])
+    ).toEqual(['Overview', 'Usage at a glance', 'Recent requests', 'API Keys1'])
     expect(
       screen.queryByRole('region', { name: 'Get started' })
     ).not.toBeInTheDocument()
@@ -210,5 +235,38 @@ describe('overview setup banner', () => {
     ]) {
       expect(screen.queryByText(gone)).not.toBeInTheDocument()
     }
+  })
+
+  it('says who is signed in, and lists the latest requests and the keys', async () => {
+    useAuthStore.getState().auth.setUser({
+      id: 42,
+      username: 'ada',
+      display_name: 'Ada L',
+      role: 1,
+      group: 'default',
+      quota: 1000000,
+      used_quota: 1000,
+      request_count: 1,
+    })
+    await renderOverview()
+
+    const account = await screen.findByRole('region', { name: 'Account' })
+    expect(within(account).getByText('Ada L')).toBeVisible()
+    expect(within(account).getByText('User ID 42')).toBeVisible()
+    expect(within(account).getByText('@ada · default')).toBeVisible()
+
+    expect(await screen.findByText('glm-5.3-x0.25')).toBeVisible()
+    // Only requests that were served and billed, and only a handful.
+    expect(logRequests).toHaveLength(1)
+    expect(logRequests[0]).toContain('page_size=5')
+    expect(logRequests[0]).toContain('type=2')
+
+    expect(await screen.findByText('App key')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Quick import' })).toBeEnabled()
+    expect(
+      screen
+        .getAllByRole('link', { name: 'View all' })
+        .map((link) => link.getAttribute('href'))
+    ).toEqual(['/usage-logs/common', '/keys'])
   })
 })
