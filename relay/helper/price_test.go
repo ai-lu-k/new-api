@@ -824,6 +824,16 @@ func TestModelPriceHelperPriceTierInModelName(t *testing.T) {
 		assert.Equal(t, 450, actual.ActualQuotaAfterGroup)
 	})
 
+	// The model list (/v1/models) leaves out names that cannot be billed.
+	t.Run("a tier name counts as priced when its model is", func(t *testing.T) {
+		assert.True(t, HasModelBillingConfig("tier-expr-model-x0.2"))
+		assert.True(t, HasModelBillingConfig("tier-ratio-model-x0.5"))
+		assert.True(t, HasModelBillingConfig("tier-call-model-x0.5"))
+		assert.True(t, HasModelBillingConfig("upscaler-x4"), "a real model whose name ends like a tier")
+		assert.False(t, HasModelBillingConfig("no-such-model-x0.5"))
+		assert.False(t, HasModelBillingConfig("no-such-model"))
+	})
+
 	t.Run("ratio price is scaled and request modifiers stay on the model", func(t *testing.T) {
 		base, _, err := price(t, "tier-ratio-model")
 		require.NoError(t, err)
@@ -864,6 +874,7 @@ func TestModelPriceHelperPriceTierInModelName(t *testing.T) {
 	t.Run("the suffix means nothing while the feature is off", func(t *testing.T) {
 		load("false")
 		t.Cleanup(func() { load("true") })
+		assert.False(t, HasModelBillingConfig("tier-expr-model-x0.2"), "with tiers off the name is a model of its own, without a price")
 		_, _, err := price(t, "tier-ratio-model-x0.5")
 		require.Error(t, err)
 		assert.Equal(t, 1.0, naming_setting.PriceMultiplier("tier-ratio-model-x0.5"))

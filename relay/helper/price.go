@@ -286,7 +286,11 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (hostt
 	return priceData, nil
 }
 
+// HasModelBillingConfig reports whether a model can be billed. A name that
+// carries a price tier is billed as the model it is a tier of, so it counts
+// when that model has a price.
 func HasModelBillingConfig(modelName string) bool {
+	modelName = naming_setting.BillingName(modelName)
 	if _, ok := ratio_setting.GetModelPrice(modelName, false); ok {
 		return true
 	}
