@@ -25,6 +25,7 @@ import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { ExpenseLedger } from '../components/expense-ledger'
+import { formatExpenseAmount, formatExpenseMonth } from '../lib'
 
 const MONTHS = [
   {
@@ -112,4 +113,11 @@ it('refuses a line without a name', async () => {
   await user.click(within(dialog).getByRole('button', { name: 'Save' }))
 
   expect(put).not.toHaveBeenCalled()
+})
+
+it('formats for the interface language codes, which are not Intl tags', () => {
+  expect(formatExpenseMonth('2026-10', 'zhCN')).toBe('2026年10月')
+  expect(formatExpenseMonth('2026-10', 'zhTW')).toBe('2026年10月')
+  expect(formatExpenseAmount(1210, 'zhCN')).toBe('¥1,210.00')
+  expect(formatExpenseMonth('2026-10', 'not a tag')).toContain('2026')
 })

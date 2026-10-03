@@ -24,18 +24,32 @@ export function expenseMonthTotal(month: ExpenseMonth): number {
   return month.items.reduce((sum, item) => sum + item.amount, 0)
 }
 
+/**
+ * The interface language as a tag Intl accepts: the project's own "zhCN" and
+ * "zhTW" are not valid tags, and Intl throws on an invalid one.
+ */
+function intlLocale(language: string): string | undefined {
+  if (language === 'zhCN') return 'zh-CN'
+  if (language === 'zhTW') return 'zh-TW'
+  try {
+    return Intl.getCanonicalLocales(language)[0]
+  } catch {
+    return undefined
+  }
+}
+
 /** "2026-10" as the reader's language writes a month, e.g. "October 2026". */
 export function formatExpenseMonth(month: string, language: string): string {
   const [year, index] = month.split('-').map(Number)
   if (!year || !index) return month
-  return new Intl.DateTimeFormat(language, {
+  return new Intl.DateTimeFormat(intlLocale(language), {
     year: 'numeric',
     month: 'long',
   }).format(new Date(year, index - 1, 1))
 }
 
 export function formatExpenseAmount(amount: number, language: string): string {
-  return new Intl.NumberFormat(language, {
+  return new Intl.NumberFormat(intlLocale(language), {
     style: 'currency',
     currency: 'CNY',
     currencyDisplay: 'narrowSymbol',
