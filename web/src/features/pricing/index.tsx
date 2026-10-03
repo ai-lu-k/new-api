@@ -29,13 +29,11 @@ import {
   PricingTable,
   PricingSidebar,
   PricingToolbar,
-  ModelCardGrid,
   ModelDetailsDrawer,
 } from './components'
-import { EXCLUDED_GROUPS, VIEW_MODES } from './constants'
+import { DEFAULT_TOKEN_UNIT, EXCLUDED_GROUPS, VIEW_MODES } from './constants'
 import { useFilters } from './hooks/use-filters'
 import { usePricingData } from './hooks/use-pricing-data'
-import { hasSelectableGroups } from './lib/model-helpers'
 
 export function Pricing() {
   const { t } = useTranslation()
@@ -57,25 +55,19 @@ export function Pricing() {
 
   const {
     searchInput,
-    sortBy,
+    sort,
     vendorFilter,
     groupFilter,
     quotaTypeFilter,
     endpointTypeFilter,
     tagFilter,
-    tokenUnit,
-    viewMode,
-    showRechargePrice,
     setSearchInput,
-    setSortBy,
+    setSort,
     setVendorFilter,
     setGroupFilter,
     setQuotaTypeFilter,
     setEndpointTypeFilter,
     setTagFilter,
-    setTokenUnit,
-    setViewMode,
-    setShowRechargePrice,
     filteredModels,
     hasActiveFilters,
     activeFilterCount,
@@ -105,7 +97,6 @@ export function Pricing() {
       ),
     [usableGroup]
   )
-  const showGroups = hasSelectableGroups(usableGroup || {})
 
   const handleClearAll = useCallback(() => {
     clearFilters()
@@ -123,29 +114,14 @@ export function Pricing() {
       )
     }
 
-    if (viewMode === VIEW_MODES.CARD) {
-      return (
-        <ModelCardGrid
-          models={filteredModels}
-          onModelClick={handleModelClick}
-          priceRate={priceRate}
-          usdExchangeRate={usdExchangeRate}
-          tokenUnit={tokenUnit}
-          showRechargePrice={showRechargePrice}
-          selectedGroup={groupFilter}
-          showGroups={showGroups}
-        />
-      )
-    }
-
     return (
       <PricingTable
         models={filteredModels}
         priceRate={priceRate}
         usdExchangeRate={usdExchangeRate}
-        tokenUnit={tokenUnit}
-        showRechargePrice={showRechargePrice}
         selectedGroup={groupFilter}
+        sort={sort}
+        onSortChange={setSort}
         onModelClick={handleModelClick}
       />
     )
@@ -155,7 +131,7 @@ export function Pricing() {
     return (
       <PublicLayout showMainContainer={false}>
         <div className='mx-auto w-full max-w-[1800px] px-3 pt-16 pb-8 sm:px-6 sm:pt-20 sm:pb-10 xl:px-8'>
-          <LoadingSkeleton viewMode={viewMode} />
+          <LoadingSkeleton viewMode={VIEW_MODES.TABLE} />
         </div>
       </PublicLayout>
     )
@@ -209,14 +185,6 @@ export function Pricing() {
               <PricingToolbar
                 filteredCount={filteredModels.length}
                 totalCount={models?.length}
-                sortBy={sortBy}
-                onSortChange={setSortBy}
-                tokenUnit={tokenUnit}
-                onTokenUnitChange={setTokenUnit}
-                showRechargePrice={showRechargePrice}
-                onRechargePriceChange={setShowRechargePrice}
-                viewMode={viewMode}
-                onViewModeChange={setViewMode}
                 quotaTypeFilter={quotaTypeFilter}
                 endpointTypeFilter={endpointTypeFilter}
                 vendorFilter={vendorFilter}
@@ -259,8 +227,8 @@ export function Pricing() {
               autoGroups={autoGroups || []}
               priceRate={priceRate ?? 1}
               usdExchangeRate={usdExchangeRate ?? 1}
-              tokenUnit={tokenUnit}
-              showRechargePrice={showRechargePrice}
+              tokenUnit={DEFAULT_TOKEN_UNIT}
+              showRechargePrice={false}
             />
           )}
         </PageTransition>

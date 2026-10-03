@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { Row, PaginationState } from '@tanstack/react-table'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -29,6 +29,14 @@ import {
 
 import { DEFAULT_PRICING_PAGE_SIZE, DEFAULT_TOKEN_UNIT } from '../constants'
 import { ModelStatsContext, useModelStats } from '../hooks/use-model-stats'
+import { PricingSortContext } from '../hooks/use-pricing-sort'
+import {
+  DEFAULT_MODEL_SORT,
+  nextModelSort,
+  sortModelsBy,
+  type ModelSort,
+  type ModelSortKey,
+} from '../lib/model-sort'
 import type { PricingModel, TokenUnit } from '../types'
 import { usePricingColumns } from './pricing-columns'
 
@@ -40,6 +48,9 @@ export interface PricingTableProps {
   tokenUnit?: TokenUnit
   showRechargePrice?: boolean
   selectedGroup?: string
+  /** The column the list is sorted by; clicking a heading changes it. */
+  sort?: ModelSort
+  onSortChange?: (sort: ModelSort) => void
   onModelClick?: (modelName: string) => void
 }
 
@@ -53,6 +64,8 @@ export function PricingTable(props: PricingTableProps) {
     tokenUnit = DEFAULT_TOKEN_UNIT,
     showRechargePrice = false,
     selectedGroup,
+    sort = DEFAULT_MODEL_SORT,
+    onSortChange,
     onModelClick,
   } = props
 
@@ -62,6 +75,23 @@ export function PricingTable(props: PricingTableProps) {
   })
 
   const stats = useModelStats()
+  // The usage and speed figures arrive after the list does; the order follows.
+  const sortedModels = useMemo(
+    () =>
+      sortModelsBy(models, sort, {
+        weeklyTokens: stats.weeklyTokens,
+        perf: stats.perf,
+        selectedGroup,
+      }),
+    [models, sort, stats, selectedGroup]
+  )
+  const handleSort = useCallback(
+    (key: ModelSortKey) => {
+      onSortChange?.(nextModelSort(sort, key))
+      setPagination((current) => ({ ...current, pageIndex: 0 }))
+    },
+    [onSortChange, sort]
+  )
   const columns = usePricingColumns({
     tokenUnit,
     priceRate,
@@ -69,11 +99,15 @@ export function PricingTable(props: PricingTableProps) {
     showRechargePrice,
     selectedGroup,
   })
+  const sortState = useMemo(
+    () => ({ sort, onSort: handleSort }),
+    [sort, handleSort]
+  )
 
   const { table } = useDataTable({
-    data: models,
+    data: sortedModels,
     columns,
-    pageCount: Math.ceil(models.length / pagination.pageSize),
+    pageCount: Math.ceil(sortedModels.length / pagination.pageSize),
     pagination,
     onPaginationChange: setPagination,
     manualPagination: false,
@@ -91,31 +125,35 @@ export function PricingTable(props: PricingTableProps) {
 
   return (
     <ModelStatsContext value={stats}>
-      <div className='space-y-4'>
-        <DataTableView
-          table={table}
-          isLoading={isLoading}
-          emptyTitle={t('No Models Found')}
-          emptyDescription={t('No models match your current filters.')}
-          skeletonKeyPrefix='pricing-skeleton'
-          applyHeaderSize
-          getColumnClassName={(_columnId, kind) =>
-            kind === 'header' ? 'text-muted-foreground font-medium' : undefined
-          }
-          renderRow={(row: Row<PricingModel>) => (
-            <DataTableRow
-              key={row.id}
-              row={row}
-              className='hover:bg-muted/30 cursor-pointer transition-colors'
-              onClick={() => handleRowClick(row.original)}
-            />
-          )}
-        />
+      <PricingSortContext value={sortState}>
+        <div className='space-y-4'>
+          <DataTableView
+            table={table}
+            isLoading={isLoading}
+            emptyTitle={t('No Models Found')}
+            emptyDescription={t('No models match your current filters.')}
+            skeletonKeyPrefix='pricing-skeleton'
+            applyHeaderSize
+            getColumnClassName={(_columnId, kind) =>
+              kind === 'header'
+                ? 'text-muted-foreground font-medium'
+                : undefined
+            }
+            renderRow={(row: Row<PricingModel>) => (
+              <DataTableRow
+                key={row.id}
+                row={row}
+                className='hover:bg-muted/30 cursor-pointer transition-colors'
+                onClick={() => handleRowClick(row.original)}
+              />
+            )}
+          />
 
-        {!isLoading && models.length > 0 && (
-          <DataTablePagination table={table} />
-        )}
-      </div>
+          {!isLoading && models.length > 0 && (
+            <DataTablePagination table={table} />
+          )}
+        </div>
+      </PricingSortContext>
     </ModelStatsContext>
   )
 }

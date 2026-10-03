@@ -16,34 +16,36 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { render, screen, within } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { useState } from 'react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+import { api } from '@/lib/api'
 
 import { PricingSidebar } from '../components/pricing-sidebar'
+import { PricingTable } from '../components/pricing-table'
 import {
   PricingToolbar,
   type PricingToolbarProps,
 } from '../components/pricing-toolbar'
+import {
+  DEFAULT_MODEL_SORT,
+  parseModelSort,
+  type ModelSort,
+} from '../lib/model-sort'
 import type { PricingModel } from '../types'
 
 function toolbarProps(): PricingToolbarProps {
   return {
     filteredCount: 2,
     totalCount: 2,
-    sortBy: 'name',
-    tokenUnit: 'M',
-    showRechargePrice: false,
-    viewMode: 'card',
     quotaTypeFilter: 'all',
     endpointTypeFilter: 'all',
     vendorFilter: 'all',
     groupFilter: 'all',
     tagFilter: 'all',
-    onSortChange: vi.fn(),
-    onTokenUnitChange: vi.fn(),
-    onRechargePriceChange: vi.fn(),
-    onViewModeChange: vi.fn(),
     onQuotaTypeChange: vi.fn(),
     onEndpointTypeChange: vi.fn(),
     onVendorChange: vi.fn(),
@@ -139,62 +141,21 @@ describe('pricing controls', () => {
     ).toBeVisible()
   })
 
-  it('changes the token unit and keeps the selected unit pressed when clicked again', async () => {
-    const props = toolbarProps()
-    const user = userEvent.setup()
-    const { rerender } = render(<PricingToolbar {...props} />)
-    await user.click(screen.getByRole('button', { name: '/1K' }))
-    expect(props.onTokenUnitChange).toHaveBeenCalledWith('K')
-    rerender(<PricingToolbar {...props} tokenUnit='K' />)
-    const selected = screen.getByRole('button', { name: '/1K' })
-    expect(selected).toHaveAttribute('aria-pressed', 'true')
-    await user.click(selected)
-    expect(selected).toHaveAttribute('aria-pressed', 'true')
-    expect(props.onTokenUnitChange).toHaveBeenCalledTimes(1)
-  })
-
-  it('changes the recharge display mode with an accessible selected state', async () => {
-    const props = toolbarProps()
-    const user = userEvent.setup()
-    const { rerender } = render(<PricingToolbar {...props} />)
-    await user.click(screen.getByRole('button', { name: 'Recharge' }))
-    expect(props.onRechargePriceChange).toHaveBeenCalledWith(true)
-    rerender(<PricingToolbar {...props} showRechargePrice />)
-    expect(screen.getByRole('button', { name: 'Recharge' })).toHaveAttribute(
-      'aria-pressed',
-      'true'
-    )
-    expect(screen.getByRole('button', { name: 'Standard' })).toHaveAttribute(
-      'aria-pressed',
-      'false'
-    )
-  })
-
-  it('switches to table view with the keyboard and exposes the selected view', async () => {
-    const props = toolbarProps()
-    const user = userEvent.setup()
-    const { rerender } = render(<PricingToolbar {...props} />)
-    const tableButton = screen.getByRole('button', { name: 'Table view' })
-    tableButton.focus()
-    await user.keyboard('{Enter}')
-    expect(props.onViewModeChange).toHaveBeenCalledWith('table')
-    rerender(<PricingToolbar {...props} viewMode='table' />)
-    expect(tableButton).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByRole('button', { name: 'Card view' })).toHaveAttribute(
-      'aria-pressed',
-      'false'
-    )
-  })
-
-  it('selects price sorting from the shared dropdown', async () => {
-    const props = toolbarProps()
-    const user = userEvent.setup()
-    render(<PricingToolbar {...props} />)
-    await user.click(screen.getByRole('button', { name: 'Name' }))
-    await user.click(
-      screen.getByRole('menuitem', { name: 'Price: Low to High' })
-    )
-    expect(props.onSortChange).toHaveBeenCalledWith('price-low')
+  it('shows how many models match and leaves display modes, sorting and views out of the toolbar', () => {
+    render(<PricingToolbar {...toolbarProps()} filteredCount={1} />)
+    expect(screen.getByText('1')).toBeVisible()
+    expect(screen.getByText('/ 2')).toBeVisible()
+    for (const name of [
+      'Standard',
+      'Recharge',
+      '/1M',
+      '/1K',
+      'Name',
+      'Card view',
+      'Table view',
+    ]) {
+      expect(screen.queryByRole('button', { name })).toBeNull()
+    }
   })
 
   it('opens mobile filters from the left, selects a group, and restores focus on close', async () => {
@@ -222,5 +183,168 @@ describe('pricing controls', () => {
     expect(props.onClearFilters).toHaveBeenCalledOnce()
     await user.keyboard('{Escape}')
     expect(await screen.findByRole('button', { name: /Filter/ })).toHaveFocus()
+  })
+})
+
+describe('sorting the model list from its headings', () => {
+  const base: PricingModel = {
+    id: 1,
+    model_name: 'alpha',
+    quota_type: 0,
+    model_ratio: 1,
+    completion_ratio: 3,
+    enable_groups: ['default'],
+    group_ratio: { default: 1 },
+  }
+  // bravo is the cheapest, the most used and the fastest; charlie has no
+  // usage or speed figures yet and is sold at half its listed price.
+  const models: PricingModel[] = [
+    base,
+    { ...base, id: 2, model_name: 'bravo', model_ratio: 0.5 },
+    {
+      ...base,
+      id: 3,
+      model_name: 'charlie',
+      model_ratio: 4,
+      group_ratio: { default: 0.75 },
+    },
+  ]
+
+  function SortableTable(props: { initial?: ModelSort }) {
+    const [sort, setSort] = useState(props.initial ?? DEFAULT_MODEL_SORT)
+    return <PricingTable models={models} sort={sort} onSortChange={setSort} />
+  }
+
+  function renderTable(initial?: ModelSort) {
+    vi.spyOn(api, 'get').mockImplementation(async (url: string) => {
+      if (url.startsWith('/api/perf-metrics/summary')) {
+        return {
+          data: {
+            success: true,
+            data: {
+              models: [
+                { model_name: 'alpha', avg_latency_ms: 900, avg_tps: 20 },
+                { model_name: 'bravo', avg_latency_ms: 300, avg_tps: 60 },
+              ],
+            },
+          },
+        }
+      }
+      return {
+        data: {
+          success: true,
+          data: {
+            models: [
+              { model_name: 'alpha', total_tokens: 1_000 },
+              { model_name: 'bravo', total_tokens: 3_000 },
+            ],
+          },
+        },
+      }
+    })
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <SortableTable initial={initial} />
+      </QueryClientProvider>
+    )
+  }
+
+  function order(): string[] {
+    return screen
+      .getAllByRole('row')
+      .map((row) => row.textContent?.match(/alpha|bravo|charlie/)?.[0])
+      .filter((name): name is string => Boolean(name))
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('sorts by the clicked column and reverses it on the second click', async () => {
+    const user = userEvent.setup()
+    renderTable()
+    expect(order()).toEqual(['alpha', 'bravo', 'charlie'])
+    await screen.findByText('300ms')
+
+    const cases: Array<[RegExp, string[], string[]]> = [
+      // Most used first; a model with no figure stays last either way.
+      [
+        /^Weekly tokens/,
+        ['bravo', 'alpha', 'charlie'],
+        ['alpha', 'bravo', 'charlie'],
+      ],
+      // Cheapest first, by the price shown: charlie is 4 x 0.75.
+      [/^Input/, ['bravo', 'alpha', 'charlie'], ['charlie', 'alpha', 'bravo']],
+      [/^Output/, ['bravo', 'alpha', 'charlie'], ['charlie', 'alpha', 'bravo']],
+      [
+        /^Latency/,
+        ['bravo', 'alpha', 'charlie'],
+        ['alpha', 'bravo', 'charlie'],
+      ],
+      [
+        /^Throughput/,
+        ['bravo', 'alpha', 'charlie'],
+        ['alpha', 'bravo', 'charlie'],
+      ],
+      [/^Model/, ['alpha', 'bravo', 'charlie'], ['charlie', 'bravo', 'alpha']],
+    ]
+    for (const [heading, first, second] of cases) {
+      await user.click(screen.getByRole('button', { name: heading }))
+      await waitFor(() => expect(order()).toEqual(first))
+      await user.click(screen.getByRole('button', { name: heading }))
+      await waitFor(() => expect(order()).toEqual(second))
+    }
+  })
+
+  it('names the direction on the sorted heading only and keeps it focused', async () => {
+    const user = userEvent.setup()
+    renderTable()
+    expect(screen.getByRole('button', { name: /^Model\s*Asc$/ })).toBeVisible()
+    await user.click(screen.getByRole('button', { name: /^Weekly tokens/ }))
+    // The heading keeps focus, so the keyboard can reverse it straight away.
+    expect(
+      screen.getByRole('button', { name: /^Weekly tokens\s*Desc$/ })
+    ).toHaveFocus()
+    expect(screen.getByRole('button', { name: 'Model' })).toBeVisible()
+    await user.keyboard('{Enter}')
+    expect(
+      screen.getByRole('button', { name: /^Weekly tokens\s*Asc$/ })
+    ).toHaveFocus()
+  })
+
+  it('reorders when the usage figures arrive after the list', async () => {
+    renderTable({ key: 'tokens', descending: true })
+    expect(order()).toEqual(['alpha', 'bravo', 'charlie'])
+    await waitFor(() => expect(order()).toEqual(['bravo', 'alpha', 'charlie']))
+  })
+
+  it('reads a sort from the address bar, including the old menu values', () => {
+    expect(parseModelSort(undefined)).toEqual({
+      key: 'name',
+      descending: false,
+    })
+    expect(parseModelSort('tokens')).toEqual({
+      key: 'tokens',
+      descending: true,
+    })
+    expect(parseModelSort('latency-desc')).toEqual({
+      key: 'latency',
+      descending: true,
+    })
+    expect(parseModelSort('price-low')).toEqual({
+      key: 'input',
+      descending: false,
+    })
+    expect(parseModelSort('price-high')).toEqual({
+      key: 'input',
+      descending: true,
+    })
+    expect(parseModelSort('nonsense')).toEqual({
+      key: 'name',
+      descending: false,
+    })
   })
 })

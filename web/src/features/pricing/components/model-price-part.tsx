@@ -29,6 +29,7 @@ import {
   getDynamicPricingSummary,
 } from '../lib/dynamic-price'
 import { isTokenBasedModel } from '../lib/model-helpers'
+import { dynamicPartEntry } from '../lib/model-sort'
 import { formatPrice, formatRequestPrice } from '../lib/price'
 import { taskUsageUnitLabel } from '../lib/task-price-display'
 import type { PricingModel } from '../types'
@@ -85,12 +86,7 @@ export function ModelPricePart(props: {
     if (dynamic.isSpecialExpression) {
       if (props.part === 'input') value = t('Special billing expression')
     } else {
-      const field = props.part === 'input' ? 'inputPrice' : 'outputPrice'
-      const entry =
-        dynamic.primaryEntries.find((item) => item.field === field) ??
-        (props.part === 'input'
-          ? dynamic.primaryEntries.find((item) => item.unit !== 'token')
-          : undefined)
+      const entry = dynamicPartEntry(dynamic, props.part)
       if (entry) {
         value = entry.formattedRange ?? entry.formatted
         if (entry.unit !== 'token' || entry.variable) {

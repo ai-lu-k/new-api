@@ -26,61 +26,40 @@ import {
   SORT_OPTIONS,
   QUOTA_TYPES,
   ENDPOINT_TYPES,
-  DEFAULT_TOKEN_UNIT,
-  VIEW_MODES,
-  type ViewMode,
 } from '../constants'
 import { filterAndSortModels, extractAllTags } from '../lib/filters'
-import type { PricingModel, TokenUnit } from '../types'
+import { parseModelSort, type ModelSort } from '../lib/model-sort'
+import type { PricingModel } from '../types'
 
 type FilterState = {
   search?: string
-  sort?: string
   vendor?: string
   group?: string
   quotaType?: string
   endpointType?: string
   tag?: string
-  tokenUnit?: TokenUnit
-  view?: ViewMode
-  rechargePrice?: boolean
-}
-
-// The list opens as a table, the way OpenRouter shows its models.
-function normalizeViewMode(value: unknown): ViewMode {
-  if (value === VIEW_MODES.CARD) {
-    return VIEW_MODES.CARD
-  }
-  return VIEW_MODES.TABLE
 }
 
 export function useFilters(models: PricingModel[]) {
   const search = useSearch({ from: '/pricing/' })
   const [filterState, setFilterState] = useState<FilterState>(() => ({
     search: search.search,
-    sort: search.sort,
     vendor: search.vendor,
     group: search.group,
     quotaType: search.quotaType,
     endpointType: search.endpointType,
     tag: search.tag,
-    tokenUnit: search.tokenUnit,
-    view: search.view,
-    rechargePrice: search.rechargePrice,
   }))
+  // The list is a table sorted from its headings (see lib/model-sort).
+  const [sort, setSort] = useState<ModelSort>(() => parseModelSort(search.sort))
 
   const searchInput = filterState.search || ''
   const debouncedSearchInput = useDebounce(searchInput, 200)
-  const sortBy = filterState.sort || SORT_OPTIONS.NAME
   const vendorFilter = filterState.vendor || FILTER_ALL
   const groupFilter = filterState.group || FILTER_ALL
   const quotaTypeFilter = filterState.quotaType || QUOTA_TYPES.ALL
   const endpointTypeFilter = filterState.endpointType || ENDPOINT_TYPES.ALL
   const tagFilter = filterState.tag || FILTER_ALL
-  const tokenUnit: TokenUnit =
-    filterState.tokenUnit === 'K' ? 'K' : DEFAULT_TOKEN_UNIT
-  const viewMode = normalizeViewMode(filterState.view)
-  const showRechargePrice = filterState.rechargePrice === true
 
   const updateFilters = useCallback((updates: Record<string, unknown>) => {
     setFilterState((prev) => {
@@ -96,11 +75,6 @@ export function useFilters(models: PricingModel[]) {
 
   const setSearchInput = useCallback(
     (v: string) => updateFilters({ search: v || undefined }),
-    [updateFilters]
-  )
-  const setSortBy = useCallback(
-    (v: string) =>
-      updateFilters({ sort: v === SORT_OPTIONS.NAME ? undefined : v }),
     [updateFilters]
   )
   const setVendorFilter = useCallback(
@@ -127,20 +101,6 @@ export function useFilters(models: PricingModel[]) {
     (v: string) => updateFilters({ tag: v === FILTER_ALL ? undefined : v }),
     [updateFilters]
   )
-  const setTokenUnit = useCallback(
-    (v: TokenUnit) =>
-      updateFilters({ tokenUnit: v === DEFAULT_TOKEN_UNIT ? undefined : v }),
-    [updateFilters]
-  )
-  const setViewMode = useCallback(
-    (v: ViewMode) =>
-      updateFilters({ view: v === VIEW_MODES.TABLE ? undefined : v }),
-    [updateFilters]
-  )
-  const setShowRechargePrice = useCallback(
-    (v: boolean) => updateFilters({ rechargePrice: v || undefined }),
-    [updateFilters]
-  )
 
   const availableTags = useMemo(() => {
     if (!models || models.length === 0) return []
@@ -157,7 +117,7 @@ export function useFilters(models: PricingModel[]) {
       quotaType: quotaTypeFilter,
       endpointType: endpointTypeFilter,
       tag: tagFilter,
-      sortBy,
+      sortBy: SORT_OPTIONS.NAME,
     })
   }, [
     models,
@@ -167,7 +127,6 @@ export function useFilters(models: PricingModel[]) {
     quotaTypeFilter,
     endpointTypeFilter,
     tagFilter,
-    sortBy,
   ])
 
   const hasActiveFilters = useMemo(
@@ -206,25 +165,19 @@ export function useFilters(models: PricingModel[]) {
 
   return {
     searchInput,
-    sortBy,
+    sort,
     vendorFilter,
     groupFilter,
     quotaTypeFilter,
     endpointTypeFilter,
     tagFilter,
-    tokenUnit,
-    viewMode,
-    showRechargePrice,
     setSearchInput,
-    setSortBy,
+    setSort,
     setVendorFilter,
     setGroupFilter,
     setQuotaTypeFilter,
     setEndpointTypeFilter,
     setTagFilter,
-    setTokenUnit,
-    setViewMode,
-    setShowRechargePrice,
     filteredModels,
     hasActiveFilters,
     activeFilterCount,
