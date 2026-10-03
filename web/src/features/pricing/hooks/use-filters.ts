@@ -46,11 +46,12 @@ type FilterState = {
   rechargePrice?: boolean
 }
 
+// The list opens as a table, the way OpenRouter shows its models.
 function normalizeViewMode(value: unknown): ViewMode {
-  if (value === VIEW_MODES.TABLE) {
-    return VIEW_MODES.TABLE
+  if (value === VIEW_MODES.CARD) {
+    return VIEW_MODES.CARD
   }
-  return VIEW_MODES.CARD
+  return VIEW_MODES.TABLE
 }
 
 export function useFilters(models: PricingModel[]) {
@@ -133,7 +134,7 @@ export function useFilters(models: PricingModel[]) {
   )
   const setViewMode = useCallback(
     (v: ViewMode) =>
-      updateFilters({ view: v === VIEW_MODES.CARD ? undefined : v }),
+      updateFilters({ view: v === VIEW_MODES.TABLE ? undefined : v }),
     [updateFilters]
   )
   const setShowRechargePrice = useCallback(

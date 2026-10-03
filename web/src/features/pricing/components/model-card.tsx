@@ -43,6 +43,7 @@ import { taskPriceLabel, taskUsageUnitLabel } from '../lib/task-price-display'
 import type { PricingModel, PriceType, TokenUnit } from '../types'
 import { ModelBillingModeBadge } from './model-billing-mode-badge'
 import { ModelPerfBadge, type ModelPerfBadgeData } from './model-perf-badge'
+import { PriceTierBadge } from './price-tier-badge'
 
 export interface ModelCardProps {
   model: PricingModel
@@ -52,6 +53,8 @@ export interface ModelCardProps {
   tokenUnit?: TokenUnit
   showRechargePrice?: boolean
   selectedGroup?: string
+  /** False on a site with a single group, where groups are not shown. */
+  showGroups?: boolean
   perf?: ModelPerfBadgeData
 }
 
@@ -64,7 +67,8 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   const isTokenBased = isTokenBasedModel(props.model)
   const tokenUnitLabel = tokenUnit === 'K' ? '1K' : '1M'
   const tags = parseTags(props.model.tags)
-  const groups = props.model.enable_groups || []
+  const groups =
+    props.showGroups === false ? [] : props.model.enable_groups || []
   const endpoints = props.model.supported_endpoint_types || []
   const modelIconKey = props.model.icon || props.model.vendor_icon
   const modelIcon = modelIconKey ? getLobeIcon(modelIconKey, 28) : null
@@ -273,13 +277,22 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
           >
             {props.model.model_name}
           </h3>
-          {props.model.vendor_name && (
-            <p
-              className='text-muted-foreground mt-1 truncate text-xs'
-              title={props.model.vendor_name}
-            >
-              {props.model.vendor_name}
-            </p>
+          {(props.model.vendor_name ||
+            props.model.price_multiplier !== undefined) && (
+            <div className='mt-1 flex min-w-0 items-center gap-2'>
+              {props.model.vendor_name && (
+                <p
+                  className='text-muted-foreground truncate text-xs'
+                  title={props.model.vendor_name}
+                >
+                  {props.model.vendor_name}
+                </p>
+              )}
+              <PriceTierBadge
+                multiplier={props.model.price_multiplier}
+                className='shrink-0'
+              />
+            </div>
           )}
         </div>
         <CopyButton

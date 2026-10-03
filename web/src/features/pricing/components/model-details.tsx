@@ -78,7 +78,12 @@ import {
   type DynamicPriceEntry,
 } from '../lib/dynamic-price'
 import { parseTags } from '../lib/filters'
-import { getAvailableGroups, isTokenBasedModel } from '../lib/model-helpers'
+import {
+  getAvailableGroups,
+  getDisplayGroupRatio,
+  hasSelectableGroups,
+  isTokenBasedModel,
+} from '../lib/model-helpers'
 import { withPluginPricing } from '../lib/plugin-pricing'
 import { formatFixedPrice, formatGroupPrice } from '../lib/price'
 import {
@@ -514,10 +519,15 @@ function ModelBackendSignalsSection(props: { model: PricingModel }) {
   )
 }
 
-function ModelBackendProviderSection(props: { model: PricingModel }) {
+function ModelBackendProviderSection(props: {
+  model: PricingModel
+  showGroups: boolean
+}) {
   const { t } = useTranslation()
   const model = props.model
-  const groups = normalizeCatalogItems(model.enable_groups)
+  const groups = props.showGroups
+    ? normalizeCatalogItems(model.enable_groups)
+    : []
   const endpoints = normalizeCatalogItems(model.supported_endpoint_types)
   const tags = parseTags(model.tags)
   const cells: React.ReactNode[] = []
@@ -580,12 +590,18 @@ function ModelBackendProviderSection(props: { model: PricingModel }) {
   )
 }
 
-function ModelBackendDetailsSection(props: { model: PricingModel }) {
+function ModelBackendDetailsSection(props: {
+  model: PricingModel
+  showGroups: boolean
+}) {
   return (
     <>
       <ModelBackendQuickStats model={props.model} />
       <ModelBackendSignalsSection model={props.model} />
-      <ModelBackendProviderSection model={props.model} />
+      <ModelBackendProviderSection
+        model={props.model}
+        showGroups={props.showGroups}
+      />
     </>
   )
 }
@@ -643,12 +659,16 @@ function PriceSection(props: {
   usdExchangeRate: number
   tokenUnit: TokenUnit
   showRechargePrice: boolean
+  /** Shows the price this site charges instead of the base price. */
+  multiplier?: number
 }) {
   const { t, i18n } = useTranslation()
   const isTokenBased = isTokenBasedModel(props.model)
   const tokenUnitLabel = props.tokenUnit === 'K' ? '1K' : '1M'
+  const multiplier = props.multiplier ?? 1
   const baseGroupKey = '_base'
-  const baseGroupRatioMap = { [baseGroupKey]: 1 }
+  const baseGroupRatioMap = { [baseGroupKey]: multiplier }
+  const title = <PriceSectionTitle multiplier={multiplier} />
   const currency = useSystemConfigStore((state) => state.config.currency)
   const billingTime = useBillingTime(props.model.billing_expr)
   const dynamicSummary = useMemo(
@@ -659,12 +679,13 @@ function PriceSection(props: {
         showRechargePrice: props.showRechargePrice,
         priceRate: props.priceRate,
         usdExchangeRate: props.usdExchangeRate,
-        groupRatioMultiplier: 1,
+        groupRatioMultiplier: multiplier,
       }),
     // Currency is read indirectly by the price formatter.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       props.model,
+      multiplier,
       props.tokenUnit,
       props.showRechargePrice,
       props.priceRate,
@@ -716,7 +737,7 @@ function PriceSection(props: {
     if (dynamicSummary.isSpecialExpression) {
       return (
         <section>
-          <SectionTitle>{t('Base Price')}</SectionTitle>
+          {title}
           <div className='rounded-lg border border-amber-200/70 bg-amber-50/70 p-3 dark:border-amber-500/20 dark:bg-amber-500/10'>
             <div className='text-sm font-medium text-amber-800 dark:text-amber-200'>
               {t('Special billing expression')}
@@ -744,7 +765,7 @@ function PriceSection(props: {
 
     return (
       <section>
-        <SectionTitle>{t('Base Price')}</SectionTitle>
+        {title}
         {dynamicSummary.providerCount && (
           <p className='text-muted-foreground mb-2 text-xs'>
             {t('{{count}} providers', { count: dynamicSummary.providerCount })}
@@ -833,7 +854,7 @@ function PriceSection(props: {
   if (isUnconfiguredTaskUsageModel(props.model)) {
     return (
       <section>
-        <SectionTitle>{t('Base Price')}</SectionTitle>
+        {title}
         <UnconfiguredTaskPricingNotice model={props.model} />
       </section>
     )
@@ -842,7 +863,7 @@ function PriceSection(props: {
   if (!isTokenBased) {
     return (
       <section>
-        <SectionTitle>{t('Base Price')}</SectionTitle>
+        {title}
         <div className='flex items-baseline justify-between'>
           <span className='text-muted-foreground text-sm'>
             {t('Per request')}
@@ -883,7 +904,7 @@ function PriceSection(props: {
 
   return (
     <section>
-      <SectionTitle>{t('Base Price')}</SectionTitle>
+      {title}
       <div className='grid grid-cols-2 gap-2'>
         {primaryPriceTypes.map((item) => (
           <div key={item.type} className='bg-muted/20 rounded-lg border p-3'>
@@ -914,6 +935,23 @@ function PriceSection(props: {
         </div>
       )}
     </section>
+  )
+}
+
+function PriceSectionTitle(props: { multiplier: number }) {
+  const { t } = useTranslation()
+  if (props.multiplier === 1) {
+    return <SectionTitle>{t('Base Price')}</SectionTitle>
+  }
+  return (
+    <>
+      <SectionTitle>{t('Price')}</SectionTitle>
+      <p className='text-muted-foreground -mt-1 mb-2 text-xs'>
+        {t('{{percent}}% of the official price', {
+          percent: Number((props.multiplier * 100).toFixed(4)),
+        })}
+      </p>
+    </>
   )
 }
 
@@ -1485,6 +1523,10 @@ export function ModelDetailsContent(props: ModelDetailsContentProps) {
     !props.model.billing_usage_schema ||
     simpleTaskPricing ||
     taskTiers.length === 0
+  // On a site with one group there is nothing to compare: the price section
+  // shows what this model costs here, and the per-group table is left out.
+  const showGroups = hasSelectableGroups(props.usableGroup)
+  const groupRatio = props.model.group_ratio ?? props.groupRatio
 
   return (
     <div className='@container/details space-y-4'>
@@ -1519,6 +1561,7 @@ export function ModelDetailsContent(props: ModelDetailsContentProps) {
                 usdExchangeRate={props.usdExchangeRate}
                 tokenUnit={props.tokenUnit}
                 showRechargePrice={showRechargePrice}
+                multiplier={showGroups ? 1 : getDisplayGroupRatio(props.model)}
               />
             )}
             {isDynamic && !simpleTaskPricing && (
@@ -1532,19 +1575,24 @@ export function ModelDetailsContent(props: ModelDetailsContentProps) {
                 }}
               />
             )}
-            <GroupPricingSection
-              model={props.model}
-              groupRatio={props.groupRatio}
-              usableGroup={props.usableGroup}
-              autoGroups={props.autoGroups}
-              priceRate={props.priceRate}
-              usdExchangeRate={props.usdExchangeRate}
-              tokenUnit={props.tokenUnit}
-              showRechargePrice={showRechargePrice}
-            />
+            {showGroups && (
+              <GroupPricingSection
+                model={props.model}
+                groupRatio={groupRatio}
+                usableGroup={props.usableGroup}
+                autoGroups={props.autoGroups}
+                priceRate={props.priceRate}
+                usdExchangeRate={props.usdExchangeRate}
+                tokenUnit={props.tokenUnit}
+                showRechargePrice={showRechargePrice}
+              />
+            )}
           </section>
 
-          <ModelBackendDetailsSection model={props.model} />
+          <ModelBackendDetailsSection
+            model={props.model}
+            showGroups={showGroups}
+          />
         </TabsContent>
 
         <TabsContent value='performance' className='outline-none'>

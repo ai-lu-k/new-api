@@ -270,7 +270,9 @@ export const PricingSidebar = memo(function PricingSidebar(
         <div>
           <h2 className='text-foreground text-sm font-bold'>{t('Filter')}</h2>
           <p className='text-muted-foreground mt-1 text-xs'>
-            {t('Refine models by provider, group, type, and tags.')}
+            {props.groups.length > 1
+              ? t('Refine models by provider, group, type, and tags.')
+              : t('Refine models by provider, type, and tags.')}
           </p>
         </div>
         <Button
@@ -293,12 +295,14 @@ export const PricingSidebar = memo(function PricingSidebar(
       )}
 
       <div className='space-y-1'>
-        <FilterSection
-          title={t('Groups')}
-          value={props.groupFilter}
-          options={groupOptions}
-          onChange={props.onGroupChange}
-        />
+        {props.groups.length > 1 && (
+          <FilterSection
+            title={t('Groups')}
+            value={props.groupFilter}
+            options={groupOptions}
+            onChange={props.onGroupChange}
+          />
+        )}
         <FilterSection
           title={t('All Vendors')}
           value={props.vendorFilter}

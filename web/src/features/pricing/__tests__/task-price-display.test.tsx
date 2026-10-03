@@ -44,6 +44,13 @@ import type { PricingModel, BillingUsageSchema } from '../types'
 
 vi.mock('@visactor/react-vchart', () => ({ VChart: () => null }))
 
+// Group prices are only shown where visitors can choose between groups; the
+// model itself is offered in the default group only.
+const TWO_GROUPS = {
+  default: { desc: '', ratio: 2 },
+  other: { desc: '', ratio: 1 },
+}
+
 it('shows an explicit free request price alongside token prices with distinct units', () => {
   render(
     <DynamicPricingBreakdown
@@ -122,7 +129,7 @@ it('shows nested task conditions and prices in detail and group tables without a
       <ModelDetailsContent
         model={nestedModel}
         groupRatio={{ default: 2 }}
-        usableGroup={{ default: { desc: '', ratio: 2 } }}
+        usableGroup={TWO_GROUPS}
         endpointMap={{}}
         autoGroups={[]}
         priceRate={1}
@@ -204,7 +211,7 @@ it.each([false, true])(
             billing_expr: configured ? imageModel.billing_expr : undefined,
           }}
           groupRatio={{ default: 2 }}
-          usableGroup={{ default: { desc: '', ratio: 2 } }}
+          usableGroup={TWO_GROUPS}
           endpointMap={{}}
           autoGroups={[]}
           priceRate={1}
@@ -317,7 +324,7 @@ it('shows one standard task price and a localized group price without duplicate 
       <ModelDetailsContent
         model={model}
         groupRatio={{ default: 2 }}
-        usableGroup={{ default: { desc: '', ratio: 2 } }}
+        usableGroup={TWO_GROUPS}
         endpointMap={{}}
         autoGroups={[]}
         priceRate={1}
@@ -576,7 +583,7 @@ it('switches provider group prices, localized conditions and examples, and shows
       <ModelDetailsContent
         model={shared}
         groupRatio={{ default: 2 }}
-        usableGroup={{ default: { desc: '', ratio: 2 } }}
+        usableGroup={TWO_GROUPS}
         endpointMap={{}}
         autoGroups={[]}
         priceRate={1}

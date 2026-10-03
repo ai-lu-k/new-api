@@ -69,6 +69,11 @@ export type PricingModel = {
   model_ratio: number
   completion_ratio: number
   model_price?: number
+  /**
+   * The price tier spelled in the model name ("-x0.25"). The ratios and
+   * expressions above are those of the model without it.
+   */
+  price_multiplier?: number
   cache_ratio?: number | null
   create_cache_ratio?: number | null
   image_ratio?: number | null

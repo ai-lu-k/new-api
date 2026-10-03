@@ -76,6 +76,8 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
   const shouldReduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const justNowLabel = t('Just now')
+  const showGroups =
+    Object.keys(groupRatios).filter((group) => group !== 'auto').length > 1
   return useMemo<ColumnDef<ApiKey>[]>(
     () => [
       {
@@ -148,24 +150,29 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
         size: 260,
         minSize: 260,
       },
-      {
-        accessorKey: 'group',
-        header: t('Group'),
-        cell: ({ row }) => {
-          const apiKey = row.original
-          const group = row.getValue('group') as string
-          return (
-            <ApiKeyGroupCell
-              group={group}
-              ratio={groupRatios[group]}
-              crossGroupRetry={apiKey.cross_group_retry}
-              shouldReduceMotion={shouldReduceMotion}
-            />
-          )
-        },
-        size: 220,
-        meta: { mobileHidden: true },
-      },
+      // With a single group every key is in it, so the column says nothing.
+      ...(showGroups
+        ? [
+            {
+              accessorKey: 'group',
+              header: t('Group'),
+              cell: ({ row }) => {
+                const apiKey = row.original
+                const group = row.getValue('group') as string
+                return (
+                  <ApiKeyGroupCell
+                    group={group}
+                    ratio={groupRatios[group]}
+                    crossGroupRetry={apiKey.cross_group_retry}
+                    shouldReduceMotion={shouldReduceMotion}
+                  />
+                )
+              },
+              size: 220,
+              meta: { mobileHidden: true },
+            } satisfies ColumnDef<ApiKey>,
+          ]
+        : []),
       {
         id: 'model_limits',
         accessorKey: 'model_limits',
@@ -233,6 +240,15 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
         meta: { pinned: 'right' as const },
       },
     ],
-    [t, quotaUnit, now, groupRatios, shouldReduceMotion, locale, justNowLabel]
+    [
+      t,
+      quotaUnit,
+      now,
+      groupRatios,
+      showGroups,
+      shouldReduceMotion,
+      locale,
+      justNowLabel,
+    ]
   )
 }

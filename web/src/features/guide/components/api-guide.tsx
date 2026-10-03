@@ -71,7 +71,8 @@ export function ApiGuide() {
   })
 
   const prepareKey = useMutation({
-    mutationFn: () => ensureAgentKey(KEY_NAME),
+    mutationFn: () =>
+      ensureAgentKey(KEY_NAME, catalog.data?.key_group ?? 'auto'),
     onSuccess: setApiKey,
     onError: (error) =>
       handleServerError(error, t('Failed to prepare the API key')),
@@ -101,7 +102,8 @@ export function ApiGuide() {
   const style = apiStyleOf(model)
   const baseUrl = apiBaseUrl(style, address)
   const signedIn = userId !== undefined
-  const canPrepareKey = signedIn && Boolean(catalog.data?.auto_group)
+  const canPrepareKey =
+    signedIn && Boolean(catalog.data?.key_ready ?? catalog.data?.auto_group)
 
   const copyKey = async () => {
     // A failed attempt has already been reported by the mutation's onError.

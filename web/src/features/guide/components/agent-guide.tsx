@@ -68,7 +68,8 @@ export function AgentGuide(props: { client: AgentClient }) {
   })
 
   const prepareKey = useMutation({
-    mutationFn: () => ensureAgentKey(props.client.name),
+    mutationFn: () =>
+      ensureAgentKey(props.client.name, catalog.data?.key_group ?? 'auto'),
     onSuccess: setApiKey,
     onError: (error) =>
       handleServerError(error, t('Failed to prepare the API key')),
@@ -107,7 +108,8 @@ export function AgentGuide(props: { client: AgentClient }) {
     chosenModel ||
     pickAgentModel(client, offered, catalog.data?.default_model ?? '')
   const signedIn = userId !== undefined
-  const canPrepareKey = signedIn && Boolean(catalog.data?.auto_group)
+  const canPrepareKey =
+    signedIn && Boolean(catalog.data?.key_ready ?? catalog.data?.auto_group)
 
   // A failed attempt has already been reported by the mutation's onError.
   const getKey = async () =>

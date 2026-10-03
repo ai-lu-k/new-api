@@ -39,6 +39,13 @@ export async function createDshSetupCode(): Promise<{
 export type SetupCatalog = {
   /** Whether this account can use the Auto group, i.e. one key for every model. */
   auto_group: boolean
+  /**
+   * The group of the one key a guide prepares: "auto", or "" for a key that
+   * follows the account's own group (a site with a single group).
+   */
+  key_group?: string
+  /** Whether one key in that group reaches the models listed here. */
+  key_ready?: boolean
   default_model: string
   models: SetupModel[]
 }

@@ -38,7 +38,11 @@ import {
 import { CachedPriceCell } from '../components/cached-price-cell'
 import { ModelCard } from '../components/model-card'
 import { ModelCardGrid } from '../components/model-card-grid'
+import { ModelDetailsContent } from '../components/model-details'
+import { PricingTable } from '../components/pricing-table'
 import type { PricingModel } from '../types'
+
+vi.mock('@visactor/react-vchart', () => ({ VChart: () => null }))
 
 function pricingModel(overrides: Partial<PricingModel> = {}): PricingModel {
   return {
@@ -615,5 +619,81 @@ describe('model cards', () => {
       expect(slot.classList.contains('bg-muted-foreground/15')).toBe(true)
     })
     vi.useRealTimers()
+  })
+
+  it('lists a model sold at a price tier the way OpenRouter does, without groups', async () => {
+    const model = pricingModel({
+      model_name: 'deepseek-v4.1-flash-x0.25',
+      price_multiplier: 0.25,
+      enable_groups: ['default'],
+      group_ratio: { default: 0.25 },
+      billing_mode: 'tiered_expr',
+      billing_expr: 'tier("base", p * 2 + c * 8)',
+    })
+    vi.spyOn(api, 'get').mockImplementation(async (url: string) => {
+      if (url.startsWith('/api/perf-metrics/summary')) {
+        return {
+          data: {
+            success: true,
+            data: {
+              models: [
+                {
+                  model_name: model.model_name,
+                  avg_latency_ms: 1500,
+                  avg_tps: 50,
+                  success_rate: 99,
+                },
+              ],
+            },
+          },
+        }
+      }
+      return {
+        data: {
+          success: true,
+          data: {
+            models: [
+              { model_name: model.model_name, total_tokens: 811_478_879 },
+            ],
+          },
+        },
+      }
+    })
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <PricingTable models={[model]} tokenUnit='M' />
+      </QueryClientProvider>
+    )
+    const row = screen.getByText(model.model_name).closest('tr')
+    expect(row).not.toBeNull()
+    const cells = within(row as HTMLElement)
+    expect(cells.getByText('75% off')).toBeInTheDocument()
+    expect(cells.getByText('$0.5')).toBeInTheDocument()
+    expect(cells.getByText('$2')).toBeInTheDocument()
+    expect(await cells.findByText('811.5M')).toBeInTheDocument()
+    expect(await cells.findByText('1.50s')).toBeInTheDocument()
+    expect(cells.getByText('50.0 t/s')).toBeInTheDocument()
+    expect(screen.queryByText('Groups')).not.toBeInTheDocument()
+
+    render(<ModelCard model={model} onClick={vi.fn()} showGroups={false} />)
+    expect(screen.queryByText('Groups')).not.toBeInTheDocument()
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ModelDetailsContent
+          model={model}
+          groupRatio={{ default: 1 }}
+          usableGroup={{ default: { desc: '', ratio: 1 } }}
+          endpointMap={{}}
+          autoGroups={[]}
+          priceRate={1}
+          usdExchangeRate={1}
+          tokenUnit='M'
+        />
+      </QueryClientProvider>
+    )
+    expect(screen.getByText('25% of the official price')).toBeInTheDocument()
+    expect(screen.queryByText('Pricing by Group')).not.toBeInTheDocument()
   })
 })

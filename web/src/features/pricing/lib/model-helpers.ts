@@ -40,6 +40,57 @@ export function getAvailableGroups(
 }
 
 /**
+ * Whether visitors can choose between groups. With a single group there is
+ * nothing to choose, and groups are not shown at all.
+ */
+export function hasSelectableGroups(
+  usableGroup: Record<string, unknown>
+): boolean {
+  return (
+    Object.keys(usableGroup).filter((g) => !EXCLUDED_GROUPS.includes(g))
+      .length > 1
+  )
+}
+
+/**
+ * Group ratios as they apply to one model: a price tier in the model name
+ * multiplies every group's ratio.
+ */
+export function scaleGroupRatios(
+  groupRatio: Record<string, number>,
+  multiplier: number | undefined
+): Record<string, number> {
+  if (multiplier === undefined || multiplier === 1) return groupRatio
+  return Object.fromEntries(
+    Object.entries(groupRatio).map(([group, ratio]) => [
+      group,
+      ratio * multiplier,
+    ])
+  )
+}
+
+/**
+ * How far below the official price a price tier sells, or null when it does
+ * not: `percent` off and the same in tenths ("2.5 折" for 0.25).
+ */
+export function priceTierDiscount(
+  multiplier: number | undefined
+): { percent: number; tenths: number } | null {
+  if (
+    multiplier === undefined ||
+    !Number.isFinite(multiplier) ||
+    multiplier < 0 ||
+    multiplier >= 1
+  ) {
+    return null
+  }
+  return {
+    percent: Number(((1 - multiplier) * 100).toFixed(2)),
+    tenths: Number((multiplier * 10).toFixed(4)),
+  }
+}
+
+/**
  * Read a configured group ratio while preserving valid zero ratios.
  */
 export function getConfiguredGroupRatio(

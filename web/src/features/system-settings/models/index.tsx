@@ -64,6 +64,8 @@ const defaultModelSettings: ModelSettings = {
   MaxTokenAutoGroups: 5,
   DefaultUseAutoGroup: false,
   'group_ratio_setting.group_special_usable_group': '{}',
+  'model_naming.price_suffix_enabled': false,
+  'model_naming.aliases': '{}',
   'model_deployment.ionet.api_key': '',
   'model_deployment.ionet.enabled': false,
 }

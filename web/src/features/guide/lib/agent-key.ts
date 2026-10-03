@@ -31,8 +31,11 @@ export function maskKey(key: string): string {
   return `${key.slice(0, 5)}…${key.slice(-4)}`
 }
 
-/** The account's enabled, unrestricted Auto-group key of this exact name. */
-async function findAgentKey(name: string): Promise<ApiKey | undefined> {
+/** The account's enabled, unrestricted key of this exact name and group. */
+async function findAgentKey(
+  name: string,
+  group: string
+): Promise<ApiKey | undefined> {
   const result = await searchApiKeys({ keyword: name, p: 1, size: 50 })
   if (!result.success) {
     throw createServerError(result, t('Failed to load API keys'))
@@ -41,7 +44,7 @@ async function findAgentKey(name: string): Promise<ApiKey | undefined> {
     (key) =>
       key.name === name &&
       key.status === API_KEY_STATUS.ENABLED &&
-      key.group === 'auto' &&
+      (key.group ?? '') === group &&
       key.unlimited_quota &&
       key.expired_time === -1 &&
       !key.model_limits_enabled &&
@@ -51,11 +54,16 @@ async function findAgentKey(name: string): Promise<ApiKey | undefined> {
 
 /**
  * Return the key a coding client should use, creating it on first use. The
- * key sits in the Auto group so that it reaches every model, and is named
- * after the client so that the account owner can find and revoke it.
+ * key sits in the group that reaches every model (the Auto group, or on a
+ * site with a single group no group at all, so that it follows the account),
+ * and is named after the client so that the account owner can find and
+ * revoke it.
  */
-export async function ensureAgentKey(name: string): Promise<string> {
-  let key = await findAgentKey(name)
+export async function ensureAgentKey(
+  name: string,
+  group = 'auto'
+): Promise<string> {
+  let key = await findAgentKey(name, group)
   if (!key) {
     const created = await createApiKey({
       name,
@@ -65,14 +73,14 @@ export async function ensureAgentKey(name: string): Promise<string> {
       model_limits_enabled: false,
       model_limits: '',
       allow_ips: '',
-      group: 'auto',
+      group,
       auto_groups: [],
-      cross_group_retry: true,
+      cross_group_retry: group === 'auto',
     })
     if (!created.success) {
       throw createServerError(created, t('Failed to prepare the API key'))
     }
-    key = await findAgentKey(name)
+    key = await findAgentKey(name, group)
   }
   if (!key) throw new Error(t('Failed to prepare the API key'))
 

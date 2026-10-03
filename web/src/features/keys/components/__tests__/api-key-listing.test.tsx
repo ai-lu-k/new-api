@@ -303,7 +303,14 @@ function KeysPage() {
   )
 }
 
-async function renderKeysPage(status = 1, overrides: Partial<ApiKey> = {}) {
+// The key's own group and one more: with a single group the column is left out.
+const TWO_GROUPS = { default: { ratio: 1 }, vip: { ratio: 2 } }
+
+async function renderKeysPage(
+  status = 1,
+  overrides: Partial<ApiKey> = {},
+  groups: Record<string, { ratio: number }> = TWO_GROUPS
+) {
   let currentKey = { ...key, status, ...overrides }
   vi.mocked(api.get).mockImplementation(async (url) => {
     if (url.startsWith('/api/token/')) {
@@ -311,7 +318,7 @@ async function renderKeysPage(status = 1, overrides: Partial<ApiKey> = {}) {
         data: { success: true, data: { items: [currentKey], total: 1 } },
       }
     }
-    return { data: { success: true, data: { default: { ratio: 1 } } } }
+    return { data: { success: true, data: groups } }
   })
   const post = vi.spyOn(api, 'post').mockResolvedValue({
     data: { success: true, data: { key: 'fake-key-for-test-only' } },
@@ -366,6 +373,15 @@ it('combines creation and last use while keeping expiry, models and IP restricti
   })
   expect(quotaHeader).not.toHaveClass('pr-8')
   expect(quotaTrigger.closest('td')).not.toHaveClass('pr-8')
+})
+
+it('leaves the group column out when the site has a single group', async () => {
+  await renderKeysPage(1, {}, { default: { ratio: 1 } })
+  expect(await screen.findByText('Models')).toBeInTheDocument()
+  expect(
+    screen.queryByRole('columnheader', { name: 'Group' })
+  ).not.toBeInTheDocument()
+  expect(screen.queryByText('1x')).not.toBeInTheDocument()
 })
 
 it('restores dates hidden by the old default and preserves unrelated column preferences', async () => {
