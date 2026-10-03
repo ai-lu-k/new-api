@@ -56,22 +56,13 @@ export function Pricing() {
   const {
     searchInput,
     sort,
-    vendorFilter,
-    groupFilter,
-    quotaTypeFilter,
-    endpointTypeFilter,
-    tagFilter,
+    filters,
     setSearchInput,
     setSort,
-    setVendorFilter,
-    setGroupFilter,
-    setQuotaTypeFilter,
-    setEndpointTypeFilter,
-    setTagFilter,
+    setFilters,
     filteredModels,
     hasActiveFilters,
     activeFilterCount,
-    availableTags,
     clearFilters,
     clearSearch,
   } = useFilters(models || [])
@@ -119,7 +110,7 @@ export function Pricing() {
         models={filteredModels}
         priceRate={priceRate}
         usdExchangeRate={usdExchangeRate}
-        selectedGroup={groupFilter}
+        selectedGroup={filters.group}
         sort={sort}
         onSortChange={setSort}
         onModelClick={handleModelClick}
@@ -143,24 +134,14 @@ export function Pricing() {
         <PageTransition className='relative mx-auto w-full max-w-[1800px] px-3 pt-16 pb-8 sm:px-6 sm:pt-20 sm:pb-10 xl:px-8'>
           <div className='grid gap-4 pt-4 sm:pt-6 xl:grid-cols-[280px_minmax(0,1fr)]'>
             <PricingSidebar
-              quotaTypeFilter={quotaTypeFilter}
-              endpointTypeFilter={endpointTypeFilter}
-              vendorFilter={vendorFilter}
-              groupFilter={groupFilter}
-              tagFilter={tagFilter}
-              onQuotaTypeChange={setQuotaTypeFilter}
-              onEndpointTypeChange={setEndpointTypeFilter}
-              onVendorChange={setVendorFilter}
-              onGroupChange={setGroupFilter}
-              onTagChange={setTagFilter}
+              models={models || []}
               vendors={vendors || []}
               groups={availableGroups}
-              groupRatios={groupRatio}
-              tags={availableTags}
-              models={models || []}
+              filters={filters}
+              onFiltersChange={setFilters}
               hasActiveFilters={hasActiveFilters}
               onClearFilters={clearFilters}
-              className='hover-scrollbar sticky top-20 hidden max-h-[calc(100dvh-6rem)] self-start overflow-y-auto xl:block'
+              className='hover-scrollbar sticky top-20 hidden max-h-[calc(100dvh-6rem)] self-start overflow-y-auto pr-1 xl:block'
             />
 
             <main className='min-w-0 space-y-4'>
@@ -185,21 +166,11 @@ export function Pricing() {
                   )}
                 />
                 <PricingToolbar
-                  quotaTypeFilter={quotaTypeFilter}
-                  endpointTypeFilter={endpointTypeFilter}
-                  vendorFilter={vendorFilter}
-                  groupFilter={groupFilter}
-                  tagFilter={tagFilter}
-                  onQuotaTypeChange={setQuotaTypeFilter}
-                  onEndpointTypeChange={setEndpointTypeFilter}
-                  onVendorChange={setVendorFilter}
-                  onGroupChange={setGroupFilter}
-                  onTagChange={setTagFilter}
+                  models={models || []}
                   vendors={vendors || []}
                   groups={availableGroups}
-                  groupRatios={groupRatio}
-                  tags={availableTags}
-                  models={models || []}
+                  filters={filters}
+                  onFiltersChange={setFilters}
                   hasActiveFilters={hasActiveFilters}
                   activeFilterCount={activeFilterCount}
                   onClearFilters={clearFilters}

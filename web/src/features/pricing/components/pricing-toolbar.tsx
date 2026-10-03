@@ -35,25 +35,16 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 
+import type { ModelFilters } from '../lib/model-filters'
 import type { PricingModel, PricingVendor } from '../types'
 import { PricingSidebar } from './pricing-sidebar'
 
 export interface PricingToolbarProps {
-  quotaTypeFilter: string
-  endpointTypeFilter: string
-  vendorFilter: string
-  groupFilter: string
-  tagFilter: string
-  onQuotaTypeChange: (value: string) => void
-  onEndpointTypeChange: (value: string) => void
-  onVendorChange: (value: string) => void
-  onGroupChange: (value: string) => void
-  onTagChange: (value: string) => void
+  models: PricingModel[]
   vendors: PricingVendor[]
   groups: string[]
-  groupRatios?: Record<string, number>
-  tags: string[]
-  models: PricingModel[]
+  filters: ModelFilters
+  onFiltersChange: (changes: Partial<ModelFilters>) => void
   hasActiveFilters: boolean
   activeFilterCount: number
   onClearFilters: () => void
@@ -91,34 +82,19 @@ export function PricingToolbar(props: PricingToolbarProps) {
         >
           <SheetHeader className={sideDrawerHeaderClassName()}>
             <SheetTitle>{t('Filter')}</SheetTitle>
-            <SheetDescription>
-              {props.groups.length > 1
-                ? t(
-                    'Filter models by provider, group, type, endpoint, and tags.'
-                  )
-                : t('Filter models by provider, type, endpoint, and tags.')}
+            <SheetDescription className='sr-only'>
+              {t('Filter')}
             </SheetDescription>
           </SheetHeader>
           <div className={sideDrawerFormClassName('gap-0')}>
             <PricingSidebar
-              quotaTypeFilter={props.quotaTypeFilter}
-              endpointTypeFilter={props.endpointTypeFilter}
-              vendorFilter={props.vendorFilter}
-              groupFilter={props.groupFilter}
-              tagFilter={props.tagFilter}
-              onQuotaTypeChange={props.onQuotaTypeChange}
-              onEndpointTypeChange={props.onEndpointTypeChange}
-              onVendorChange={props.onVendorChange}
-              onGroupChange={props.onGroupChange}
-              onTagChange={props.onTagChange}
+              models={props.models}
               vendors={props.vendors}
               groups={props.groups}
-              groupRatios={props.groupRatios}
-              tags={props.tags}
-              models={props.models}
+              filters={props.filters}
+              onFiltersChange={props.onFiltersChange}
               hasActiveFilters={props.hasActiveFilters}
               onClearFilters={props.onClearFilters}
-              className='border-0 bg-transparent p-0 shadow-none'
             />
           </div>
         </SheetContent>

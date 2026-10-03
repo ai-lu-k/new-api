@@ -307,3 +307,10 @@ site_page.model_vendor: "Provider: {{.Vendor}}"
 site_page.rankings: "Rankings"
 site_page.rankings_description: "The models on {{.Site}} ranked by usage."
 site_page.about: "About"
+
+# Catalogue facts a model must carry when it is saved by hand
+model_catalog.input_modalities: "Select at least one input modality (text, image, file, audio, video)."
+model_catalog.context_length: "Enter the context length in tokens (greater than 0)."
+model_catalog.supported_parameters: "The supported parameters include an item that is not recognised."
+model_catalog.release_date: "Enter the release date as year and month, such as 2026-09."
+model_catalog.series: "Enter the model series (at most 64 characters)."

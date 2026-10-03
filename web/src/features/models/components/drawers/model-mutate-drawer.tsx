@@ -74,13 +74,31 @@ import { createModel, updateModel, getModel, getVendors } from '../../api'
 import { getNameRuleOptions, ENDPOINT_TEMPLATES } from '../../constants'
 import { modelsQueryKeys, vendorsQueryKeys } from '../../lib'
 import {
+  MODEL_INPUT_MODALITIES,
+  MODEL_SUPPORTED_PARAMETERS,
   modelFormSchema,
   transformModelToFormDefaults,
   transformFormDataToModelPayload,
   type ModelFormValues,
 } from '../../lib/model-form'
 import type { Model } from '../../types'
+import { ModelCatalogChoices } from '../model-catalog-choices'
 import { ModelConnections } from '../model-connections'
+
+/** Display names of the catalogue choices; keys of the interface strings. */
+const MODALITY_LABELS: Record<string, string> = {
+  text: 'Text',
+  image: 'Image',
+  file: 'File',
+  audio: 'Audio',
+  video: 'Video',
+}
+const PARAMETER_LABELS: Record<string, string> = {
+  tools: 'Tool calling',
+  reasoning: 'Reasoning',
+  structured_outputs: 'Structured outputs',
+  response_format: 'JSON mode',
+}
 
 export function ModelMutateDrawer(props: {
   open: boolean
@@ -429,6 +447,127 @@ export function ModelMutateDrawer(props: {
                             </FormControl>
                             <FormDescription>
                               {t('Press Enter or comma to add tags')}
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </SideDrawerSection>
+
+                    {/* Catalogue facts */}
+                    <SideDrawerSection>
+                      <div className='flex flex-col gap-1'>
+                        <h3 className='text-sm font-semibold'>
+                          {t('Specifications')}
+                        </h3>
+                        <p className='text-muted-foreground text-xs'>
+                          {t(
+                            'What this model name actually offers. The model list filters on these, so every name needs its own, including each price tier of the same model.'
+                          )}
+                        </p>
+                      </div>
+
+                      <FormField
+                        control={form.control}
+                        name='input_modalities'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel required>
+                              {t('Input modalities')}
+                            </FormLabel>
+                            <ModelCatalogChoices
+                              choices={MODEL_INPUT_MODALITIES.map((value) => ({
+                                value,
+                                label: t(MODALITY_LABELS[value]),
+                              }))}
+                              chosen={field.value || []}
+                              onChange={field.onChange}
+                            />
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name='context_length'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel required>
+                              {t('Context length')}
+                            </FormLabel>
+                            <FormControl>
+                              <Input
+                                inputMode='numeric'
+                                placeholder='1000000'
+                                {...field}
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              {t('In tokens, as the provider states it.')}
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name='supported_parameters'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t('Supported parameters')}</FormLabel>
+                            <ModelCatalogChoices
+                              choices={MODEL_SUPPORTED_PARAMETERS.map(
+                                (value) => ({
+                                  value,
+                                  label: t(PARAMETER_LABELS[value]),
+                                })
+                              )}
+                              chosen={field.value || []}
+                              onChange={field.onChange}
+                            />
+                            <FormDescription>
+                              {t(
+                                'Tick what works through this channel. Leave all unticked if none does.'
+                              )}
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name='release_date'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel required>{t('Release date')}</FormLabel>
+                            <FormControl>
+                              <Input
+                                type='month'
+                                placeholder='2026-09'
+                                {...field}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name='series'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel required>{t('Series')}</FormLabel>
+                            <FormControl>
+                              <Input placeholder='DeepSeek' {...field} />
+                            </FormControl>
+                            <FormDescription>
+                              {t(
+                                'The model family, such as GPT, Claude or DeepSeek.'
+                              )}
                             </FormDescription>
                             <FormMessage />
                           </FormItem>

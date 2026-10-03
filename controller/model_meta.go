@@ -1,12 +1,14 @@
 package controller
 
 import (
+	"errors"
 	"net/http"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-gonic/gin"
@@ -104,6 +106,29 @@ func GetModelMeta(c *gin.Context) {
 }
 
 // CreateModelMeta 新建模型
+// requireModelCatalog checks that a model saved by hand carries its catalogue
+// facts, and answers the request when it does not.
+func requireModelCatalog(c *gin.Context, m *model.Model) bool {
+	err := m.NormalizeCatalog()
+	if err == nil {
+		return true
+	}
+	var missing *model.CatalogError
+	if !errors.As(err, &missing) {
+		common.ApiError(c, err)
+		return false
+	}
+	key := map[string]string{
+		"input_modalities":     i18n.MsgModelCatalogInputModalities,
+		"context_length":       i18n.MsgModelCatalogContextLength,
+		"supported_parameters": i18n.MsgModelCatalogSupportedParameters,
+		"release_date":         i18n.MsgModelCatalogReleaseDate,
+		"series":               i18n.MsgModelCatalogSeries,
+	}[missing.Field]
+	common.ApiErrorI18n(c, key)
+	return false
+}
+
 func CreateModelMeta(c *gin.Context) {
 	var m model.Model
 	if err := c.ShouldBindJSON(&m); err != nil {
@@ -116,6 +141,9 @@ func CreateModelMeta(c *gin.Context) {
 	}
 	if err := model.ValidateMetadataValues(model.MetadataValues{Endpoints: m.Endpoints, Status: m.Status, NameRule: m.NameRule}); err != nil {
 		common.ApiError(c, err)
+		return
+	}
+	if !requireModelCatalog(c, &m) {
 		return
 	}
 	// 名称冲突检查
@@ -167,6 +195,9 @@ func UpdateModelMeta(c *gin.Context) {
 		}
 		if err := model.ValidateMetadataValues(model.MetadataValues{Endpoints: m.Endpoints, Status: m.Status, NameRule: m.NameRule}); err != nil {
 			common.ApiError(c, err)
+			return
+		}
+		if !requireModelCatalog(c, &m) {
 			return
 		}
 		// 名称冲突检查

@@ -106,6 +106,10 @@ export type PricingModel = {
   input_modalities?: Modality[]
   output_modalities?: Modality[]
   capabilities?: ModelCapability[]
+  /** Request features the model supports, from a short fixed list. */
+  supported_parameters?: string[]
+  /** The family the model belongs to, such as "DeepSeek" or "GPT". */
+  series?: string
 }
 
 /** Input/output modalities supported by a model. */

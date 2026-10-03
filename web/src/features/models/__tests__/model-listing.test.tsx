@@ -31,6 +31,7 @@ import {
   cleanup,
   waitFor,
   act,
+  fireEvent,
 } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import i18n from 'i18next'
@@ -322,11 +323,24 @@ it('prefills and creates metadata only when the user explicitly saves it', async
     'channel-only'
   )
   expect(post).not.toHaveBeenCalled()
+  // The name comes prefilled; what the model offers has to be entered.
+  await user.click(screen.getByRole('checkbox', { name: 'Text' }))
+  await user.type(screen.getByLabelText('Context length *'), '64000')
+  fireEvent.change(screen.getByLabelText('Release date *'), {
+    target: { value: '2026-05' },
+  })
+  await user.type(screen.getByLabelText('Series *'), 'Channel')
   await user.click(screen.getByRole('button', { name: 'Save metadata' }))
   await waitFor(() =>
     expect(post).toHaveBeenCalledWith(
       '/api/models/',
-      expect.objectContaining({ model_name: 'channel-only' }),
+      expect.objectContaining({
+        model_name: 'channel-only',
+        input_modalities: 'text',
+        context_length: 64000,
+        release_date: '2026-05',
+        series: 'Channel',
+      }),
       expect.anything()
     )
   )

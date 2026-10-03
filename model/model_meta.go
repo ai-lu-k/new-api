@@ -52,6 +52,14 @@ type Model struct {
 	QuotaTypes    []int          `json:"quota_types,omitempty" gorm:"-"`
 	NameRule      int            `json:"name_rule" gorm:"default:0"`
 
+	// Catalogue facts, entered by hand (see model_catalog.go). The two lists
+	// are stored comma-separated, like Tags.
+	InputModalities     string `json:"input_modalities" gorm:"type:varchar(64)"`
+	ContextLength       int    `json:"context_length" gorm:"default:0"`
+	SupportedParameters string `json:"supported_parameters" gorm:"type:varchar(255)"`
+	ReleaseDate         string `json:"release_date" gorm:"type:varchar(16)"`
+	Series              string `json:"series" gorm:"type:varchar(64)"`
+
 	MatchedModels []string `json:"matched_models,omitempty" gorm:"-"`
 	MatchedCount  int      `json:"matched_count,omitempty" gorm:"-"`
 
@@ -265,7 +273,8 @@ func (mi *Model) Update() error {
 		}
 		mi.UpdatedTime = common.GetTimestamp()
 		return tx.Model(&Model{}).Where("id = ?", mi.Id).
-			Select("model_name", "description", "icon", "tags", "vendor_id", "endpoints", "status", "sync_official", "name_rule", "updated_time").Updates(mi).Error
+			Select("model_name", "description", "icon", "tags", "vendor_id", "endpoints", "status", "sync_official", "name_rule", "updated_time",
+				"input_modalities", "context_length", "supported_parameters", "release_date", "series").Updates(mi).Error
 	})
 }
 

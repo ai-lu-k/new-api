@@ -21,167 +21,72 @@ import { useMemo, useCallback, useState } from 'react'
 
 import { useDebounce } from '@/hooks/use-debounce'
 
+import { FILTER_ALL } from '../constants'
 import {
-  FILTER_ALL,
-  SORT_OPTIONS,
-  QUOTA_TYPES,
-  ENDPOINT_TYPES,
-} from '../constants'
-import { filterAndSortModels, extractAllTags } from '../lib/filters'
+  EMPTY_MODEL_FILTERS,
+  countActiveFilters,
+  filterModels,
+  type ModelFilters,
+} from '../lib/model-filters'
 import { parseModelSort, type ModelSort } from '../lib/model-sort'
 import type { PricingModel } from '../types'
 
-type FilterState = {
-  search?: string
-  vendor?: string
-  group?: string
-  quotaType?: string
-  endpointType?: string
-  tag?: string
-}
-
+/**
+ * The state of the model list: what is searched for, which filters narrow it
+ * and which column sorts it. An address with ?search=, ?vendor=, ?group=,
+ * ?endpointType= or ?sort= opens the list that way.
+ */
 export function useFilters(models: PricingModel[]) {
   const search = useSearch({ from: '/pricing/' })
-  const [filterState, setFilterState] = useState<FilterState>(() => ({
-    search: search.search,
-    vendor: search.vendor,
-    group: search.group,
-    quotaType: search.quotaType,
-    endpointType: search.endpointType,
-    tag: search.tag,
+  const [filters, setFilterState] = useState<ModelFilters>(() => ({
+    ...EMPTY_MODEL_FILTERS,
+    search: search.search ?? '',
+    group: search.group || FILTER_ALL,
+    authors: search.vendor ? [search.vendor] : [],
+    endpointTypes: search.endpointType ? [search.endpointType] : [],
   }))
   // The list is a table sorted from its headings (see lib/model-sort).
   const [sort, setSort] = useState<ModelSort>(() => parseModelSort(search.sort))
 
-  const searchInput = filterState.search || ''
-  const debouncedSearchInput = useDebounce(searchInput, 200)
-  const vendorFilter = filterState.vendor || FILTER_ALL
-  const groupFilter = filterState.group || FILTER_ALL
-  const quotaTypeFilter = filterState.quotaType || QUOTA_TYPES.ALL
-  const endpointTypeFilter = filterState.endpointType || ENDPOINT_TYPES.ALL
-  const tagFilter = filterState.tag || FILTER_ALL
+  const debouncedSearch = useDebounce(filters.search, 200)
 
-  const updateFilters = useCallback((updates: Record<string, unknown>) => {
-    setFilterState((prev) => {
-      const next: Record<string, unknown> = { ...prev, ...updates }
-      for (const key of Object.keys(next)) {
-        if (next[key] === undefined || next[key] === null) {
-          delete next[key]
-        }
-      }
-      return next as FilterState
-    })
+  const setFilters = useCallback((changes: Partial<ModelFilters>) => {
+    setFilterState((previous) => ({ ...previous, ...changes }))
+  }, [])
+  const setSearchInput = useCallback(
+    (value: string) => setFilters({ search: value }),
+    [setFilters]
+  )
+  const clearSearch = useCallback(
+    () => setFilters({ search: '' }),
+    [setFilters]
+  )
+  const clearFilters = useCallback(() => {
+    setFilterState((previous) => ({
+      ...EMPTY_MODEL_FILTERS,
+      search: previous.search,
+    }))
   }, [])
 
-  const setSearchInput = useCallback(
-    (v: string) => updateFilters({ search: v || undefined }),
-    [updateFilters]
+  const filteredModels = useMemo(
+    () => filterModels(models, { ...filters, search: debouncedSearch }),
+    [models, filters, debouncedSearch]
   )
-  const setVendorFilter = useCallback(
-    (v: string) => updateFilters({ vendor: v === FILTER_ALL ? undefined : v }),
-    [updateFilters]
-  )
-  const setGroupFilter = useCallback(
-    (v: string) => updateFilters({ group: v === FILTER_ALL ? undefined : v }),
-    [updateFilters]
-  )
-  const setQuotaTypeFilter = useCallback(
-    (v: string) =>
-      updateFilters({ quotaType: v === QUOTA_TYPES.ALL ? undefined : v }),
-    [updateFilters]
-  )
-  const setEndpointTypeFilter = useCallback(
-    (v: string) =>
-      updateFilters({
-        endpointType: v === ENDPOINT_TYPES.ALL ? undefined : v,
-      }),
-    [updateFilters]
-  )
-  const setTagFilter = useCallback(
-    (v: string) => updateFilters({ tag: v === FILTER_ALL ? undefined : v }),
-    [updateFilters]
-  )
-
-  const availableTags = useMemo(() => {
-    if (!models || models.length === 0) return []
-    return extractAllTags(models)
-  }, [models])
-
-  const filteredModels = useMemo(() => {
-    if (!models || models.length === 0) return []
-
-    return filterAndSortModels(models, {
-      search: debouncedSearchInput,
-      vendor: vendorFilter,
-      group: groupFilter,
-      quotaType: quotaTypeFilter,
-      endpointType: endpointTypeFilter,
-      tag: tagFilter,
-      sortBy: SORT_OPTIONS.NAME,
-    })
-  }, [
-    models,
-    debouncedSearchInput,
-    vendorFilter,
-    groupFilter,
-    quotaTypeFilter,
-    endpointTypeFilter,
-    tagFilter,
-  ])
-
-  const hasActiveFilters = useMemo(
-    () =>
-      vendorFilter !== FILTER_ALL ||
-      groupFilter !== FILTER_ALL ||
-      quotaTypeFilter !== QUOTA_TYPES.ALL ||
-      endpointTypeFilter !== ENDPOINT_TYPES.ALL ||
-      tagFilter !== FILTER_ALL,
-    [vendorFilter, groupFilter, quotaTypeFilter, endpointTypeFilter, tagFilter]
-  )
-
   const activeFilterCount = useMemo(
-    () =>
-      (vendorFilter !== FILTER_ALL ? 1 : 0) +
-      (groupFilter !== FILTER_ALL ? 1 : 0) +
-      (quotaTypeFilter !== QUOTA_TYPES.ALL ? 1 : 0) +
-      (endpointTypeFilter !== ENDPOINT_TYPES.ALL ? 1 : 0) +
-      (tagFilter !== FILTER_ALL ? 1 : 0),
-    [vendorFilter, groupFilter, quotaTypeFilter, endpointTypeFilter, tagFilter]
+    () => countActiveFilters(filters),
+    [filters]
   )
-
-  const clearFilters = useCallback(() => {
-    updateFilters({
-      vendor: undefined,
-      group: undefined,
-      quotaType: undefined,
-      endpointType: undefined,
-      tag: undefined,
-    })
-  }, [updateFilters])
-
-  const clearSearch = useCallback(() => {
-    updateFilters({ search: undefined })
-  }, [updateFilters])
 
   return {
-    searchInput,
+    searchInput: filters.search,
     sort,
-    vendorFilter,
-    groupFilter,
-    quotaTypeFilter,
-    endpointTypeFilter,
-    tagFilter,
+    filters,
     setSearchInput,
     setSort,
-    setVendorFilter,
-    setGroupFilter,
-    setQuotaTypeFilter,
-    setEndpointTypeFilter,
-    setTagFilter,
+    setFilters,
     filteredModels,
-    hasActiveFilters,
+    hasActiveFilters: activeFilterCount > 0,
     activeFilterCount,
-    availableTags,
     clearFilters,
     clearSearch,
   }

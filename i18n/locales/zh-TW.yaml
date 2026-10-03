@@ -308,3 +308,10 @@ site_page.model_vendor: "供應商：{{.Vendor}}"
 site_page.rankings: "排行榜"
 site_page.rankings_description: "{{.Site}} 上各模型按呼叫量的排行。"
 site_page.about: "關於"
+
+# Catalogue facts a model must carry when it is saved by hand
+model_catalog.input_modalities: "請至少選擇一種輸入模態（文字、圖片、檔案、音訊、影片）"
+model_catalog.context_length: "請填寫上下文長度（token 數，大於 0）"
+model_catalog.supported_parameters: "支援的參數裡有無法識別的項目"
+model_catalog.release_date: "請填寫發佈時間，格式為年-月，例如 2026-09"
+model_catalog.series: "請填寫模型系列（不超過 64 個字元）"

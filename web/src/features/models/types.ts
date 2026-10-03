@@ -52,6 +52,12 @@ export interface Model {
   created_time: number
   updated_time: number
   name_rule: number
+  // Catalogue facts, entered by hand; the two lists are comma-separated
+  input_modalities?: string
+  context_length?: number
+  supported_parameters?: string
+  release_date?: string
+  series?: string
   // Runtime fields
   bound_channels?: BoundChannel[]
   enable_groups?: string[]

@@ -51,6 +51,11 @@ type Pricing struct {
 	BillingUsageSchema     map[string]jsplugin.UsageFieldSchema `json:"billing_usage_schema,omitempty"`
 	BillingUsageExamples   []jsplugin.UsageExample              `json:"billing_usage_examples,omitempty"`
 	PricingVersion         string                               `json:"pricing_version,omitempty"`
+	InputModalities        []string                             `json:"input_modalities,omitempty"`
+	ContextLength          int                                  `json:"context_length,omitempty"`
+	SupportedParameters    []string                             `json:"supported_parameters,omitempty"`
+	ReleaseDate            string                               `json:"release_date,omitempty"`
+	Series                 string                               `json:"series,omitempty"`
 }
 
 type PricingVendor struct {
@@ -211,13 +216,16 @@ func updatePricing() {
 	}
 	metaMap := resolveModelMetadata(allMeta, names)
 	// A name that carries a price tier ("-x0.25") is described as the model
-	// it is a tier of, unless it has metadata of its own.
+	// it is a tier of, unless it has metadata of its own. Its catalogue facts
+	// are not borrowed that way: another price means other channels.
+	borrowed := map[string]bool{}
 	for _, ability := range enableAbilities {
 		if _, exists := metaMap[ability.Model]; exists {
 			continue
 		}
 		if meta, ok := metaMap[naming_setting.BillingName(ability.Model)]; ok {
 			metaMap[ability.Model] = meta
+			borrowed[ability.Model] = true
 		}
 	}
 
@@ -366,6 +374,13 @@ func updatePricing() {
 			pricing.Icon = meta.Icon
 			pricing.Tags = meta.Tags
 			pricing.VendorID = meta.VendorID
+			if !borrowed[model] {
+				pricing.InputModalities = SplitCatalogList(meta.InputModalities)
+				pricing.ContextLength = meta.ContextLength
+				pricing.SupportedParameters = SplitCatalogList(meta.SupportedParameters)
+				pricing.ReleaseDate = meta.ReleaseDate
+				pricing.Series = meta.Series
+			}
 		}
 		modelPrice, findPrice := ratio_setting.GetModelPrice(priced, false)
 		if findPrice {

@@ -16,265 +16,329 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { ChevronDown, RotateCcw } from 'lucide-react'
+import {
+  BadgePercent,
+  CalendarDays,
+  CircleDollarSign,
+  CodeXml,
+  Layers,
+  Plug,
+  RotateCcw,
+  Ruler,
+  Shapes,
+  UserRound,
+  Users,
+  type LucideIcon,
+} from 'lucide-react'
 import { memo, useMemo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible'
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion'
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Slider } from '@/components/ui/slider'
+import { formatBillingCurrencyFromUSD } from '@/lib/currency'
 import { getLobeIcon } from '@/lib/lobe-icon'
 import { cn } from '@/lib/utils'
 
+import { ENDPOINT_TYPES, FILTER_ALL, getEndpointTypeLabels } from '../constants'
 import {
-  ENDPOINT_TYPES,
-  FILTER_ALL,
-  QUOTA_TYPES,
-  getEndpointTypeLabels,
-  getQuotaTypeLabels,
-} from '../constants'
-import { hasTaskUsageSchema } from '../lib/dynamic-price'
-import { parseTags } from '../lib/filters'
+  AGE_STOPS,
+  CONTEXT_STOPS,
+  INPUT_MODALITIES,
+  NO_PRICE_RANGE,
+  SUPPORTED_PARAMETERS,
+  activeChoices,
+  priceStops,
+  type ModelFilterGroup,
+  type ModelFilters,
+  type PriceRange,
+} from '../lib/model-filters'
 import type { PricingModel, PricingVendor } from '../types'
 
-type FilterOption = {
-  value: string
-  label: string
-  count?: number
-  suffix?: string
-  icon?: ReactNode
-}
-
-type FilterSectionProps = {
-  title: string
-  value: string
-  options: FilterOption[]
-  onChange: (value: string) => void
-}
-
 export interface PricingSidebarProps {
-  quotaTypeFilter: string
-  endpointTypeFilter: string
-  vendorFilter: string
-  groupFilter: string
-  tagFilter: string
-  onQuotaTypeChange: (value: string) => void
-  onEndpointTypeChange: (value: string) => void
-  onVendorChange: (value: string) => void
-  onGroupChange: (value: string) => void
-  onTagChange: (value: string) => void
+  models: PricingModel[]
   vendors: PricingVendor[]
   groups: string[]
-  groupRatios?: Record<string, number>
-  tags: string[]
-  models: PricingModel[]
+  filters: ModelFilters
+  onFiltersChange: (changes: Partial<ModelFilters>) => void
   hasActiveFilters: boolean
   onClearFilters: () => void
   className?: string
 }
 
-function formatGroupRatio(ratio: number | undefined): string | undefined {
-  if (ratio == null) return undefined
-  const formatted = Number.isInteger(ratio)
-    ? ratio.toString()
-    : ratio.toFixed(3).replace(/0+$/, '').replace(/\.$/, '')
-  return `x${formatted}`
+type Choice = { value: string; label: string; icon?: ReactNode }
+
+/** One collapsible row of the filter list: an icon, a name, what is chosen. */
+function FilterGroup(props: {
+  group: ModelFilterGroup
+  icon: LucideIcon
+  title: string
+  filters: ModelFilters
+  children: ReactNode
+}) {
+  const chosen = activeChoices(props.filters, props.group)
+  const Icon = props.icon
+  return (
+    <AccordionItem value={props.group} className='not-last:border-b-0'>
+      <AccordionTrigger className='items-center py-2.5 hover:no-underline'>
+        <span className='flex min-w-0 items-center gap-2.5'>
+          <Icon
+            className='text-muted-foreground size-4 shrink-0'
+            aria-hidden='true'
+          />
+          <span className='truncate'>{props.title}</span>
+          {chosen > 0 && (
+            <span className='bg-primary/15 text-foreground rounded-full px-1.5 text-[11px] leading-4 tabular-nums'>
+              {chosen}
+            </span>
+          )}
+        </span>
+      </AccordionTrigger>
+      <AccordionContent className='pt-1 pr-1 pb-3 pl-6.5'>
+        {props.children}
+      </AccordionContent>
+    </AccordionItem>
+  )
 }
 
-function FilterChip(props: {
-  option: FilterOption
-  active: boolean
-  onClick: () => void
+/** Checkboxes for a list of choices, any number of which can be ticked. */
+function CheckList(props: {
+  choices: Choice[]
+  chosen: string[]
+  onChange: (chosen: string[]) => void
 }) {
   return (
-    <Button
-      type='button'
-      variant={props.active ? 'secondary' : 'outline'}
-      size='sm'
-      onClick={props.onClick}
-      aria-pressed={props.active}
-      className='h-auto max-w-full gap-1.5 px-2 py-1 text-xs'
-      title={props.option.label}
-    >
-      {props.option.icon && (
-        <span className='shrink-0'>{props.option.icon}</span>
-      )}
-      <span className='truncate'>{props.option.label}</span>
-      {(props.option.suffix || props.option.count != null) && (
-        <span
-          className={cn(
-            'rounded-md px-1.5 py-0.5 text-[12px]',
-            props.active
-              ? 'bg-background text-foreground'
-              : 'bg-muted text-muted-foreground'
-          )}
-        >
-          {props.option.suffix ?? props.option.count}
-        </span>
-      )}
-    </Button>
-  )
-}
-
-function FilterSection(props: FilterSectionProps) {
-  return (
-    <Collapsible
-      defaultOpen
-      className='border-border/70 border-b pb-3 last:border-b-0'
-    >
-      <CollapsibleTrigger className='group flex w-full items-center justify-between py-2.5 text-left'>
-        <span className='text-foreground text-sm font-semibold'>
-          {props.title}
-        </span>
-        <ChevronDown className='text-muted-foreground size-4 transition-transform group-data-[panel-open]:rotate-180' />
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className='flex flex-wrap gap-1.5'>
-          {props.options.map((option) => (
-            <FilterChip
-              key={option.value}
-              option={option}
-              active={props.value === option.value}
-              onClick={() => props.onChange(option.value)}
+    <ul className='flex flex-col gap-2'>
+      {props.choices.map((choice) => (
+        <li key={choice.value}>
+          <label className='flex min-w-0 cursor-pointer items-center gap-2 text-sm'>
+            <Checkbox
+              checked={props.chosen.includes(choice.value)}
+              onCheckedChange={(next) =>
+                props.onChange(
+                  next
+                    ? [...props.chosen, choice.value]
+                    : props.chosen.filter((value) => value !== choice.value)
+                )
+              }
             />
-          ))}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
+            {choice.icon && <span className='shrink-0'>{choice.icon}</span>}
+            <span className='truncate'>{choice.label}</span>
+          </label>
+        </li>
+      ))}
+    </ul>
   )
 }
 
+/** A slider over a list of stops, with what is chosen and the ends named. */
+function StopSlider(props: {
+  label: string
+  /** Positions of the thumbs on the list of stops. */
+  positions: number[]
+  stops: number
+  summary: string
+  ticks: string[]
+  onChange: (positions: number[]) => void
+}) {
+  return (
+    <div className='flex flex-col gap-2'>
+      <div className='text-muted-foreground text-xs'>{props.summary}</div>
+      <Slider
+        aria-label={props.label}
+        min={0}
+        max={props.stops - 1}
+        step={1}
+        value={props.positions}
+        onValueChange={(value) =>
+          props.onChange(Array.isArray(value) ? [...value] : [value])
+        }
+      />
+      <div className='text-muted-foreground/80 flex justify-between text-[11px]'>
+        {props.ticks.map((tick) => (
+          <span key={tick}>{tick}</span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function formatTokens(count: number): string {
+  if (count >= 1_000_000) return `${count / 1_000_000}M`
+  return `${count / 1_000}K`
+}
+
+function formatPrice(value: number): string {
+  return formatBillingCurrencyFromUSD(value, {
+    digitsLarge: 4,
+    digitsSmall: 6,
+    abbreviate: false,
+  })
+}
+
+/** A price range as positions on the stops, and back. */
+function rangePositions(range: PriceRange, stops: number[]): [number, number] {
+  const last = stops.length - 1
+  const { min, max } = range
+  let low = 0
+  if (min !== null) {
+    low = stops.findIndex((stop) => stop >= min)
+    if (low < 0) low = last
+  }
+  let high = last
+  if (max !== null) {
+    high = 0
+    stops.forEach((stop, index) => {
+      if (stop <= max) high = index
+    })
+  }
+  return [low, high]
+}
+
+function positionsRange(positions: number[], stops: number[]): PriceRange {
+  const last = stops.length - 1
+  const low = Math.min(...positions)
+  const high = Math.max(...positions)
+  if (low <= 0 && high >= last) return NO_PRICE_RANGE
+  return {
+    min: low <= 0 ? null : stops[low],
+    max: high >= last ? null : stops[high],
+  }
+}
+
+function PriceSlider(props: {
+  label: string
+  stops: number[]
+  range: PriceRange
+  onChange: (range: PriceRange) => void
+}) {
+  const { t } = useTranslation()
+  const positions = rangePositions(props.range, props.stops)
+  const last = props.stops.length - 1
+  const unbounded = positions[0] === 0 && positions[1] === last
+  return (
+    <StopSlider
+      label={props.label}
+      positions={positions}
+      stops={props.stops.length}
+      summary={
+        unbounded
+          ? t('Any')
+          : `${formatPrice(props.stops[positions[0]])} – ${formatPrice(props.stops[positions[1]])}`
+      }
+      ticks={[formatPrice(props.stops[0]), formatPrice(props.stops[last])]}
+      onChange={(next) => props.onChange(positionsRange(next, props.stops))}
+    />
+  )
+}
+
+/**
+ * The model list's filters, laid out as OpenRouter's are: one collapsed row
+ * per filter, opening to checkboxes or a slider. A filter is offered only
+ * when the models carry what it filters on.
+ */
 export const PricingSidebar = memo(function PricingSidebar(
   props: PricingSidebarProps
 ) {
   const { t } = useTranslation()
-  const counts = useMemo(() => {
-    const vendors = new Map<string, number>()
-    const tags = new Map<string, number>()
-    const endpoints = new Map<string, number>()
-    const quotas = { token: 0, request: 0, task: 0 }
-    for (const model of props.models) {
-      if (model.vendor_name) {
-        vendors.set(
-          model.vendor_name,
-          (vendors.get(model.vendor_name) ?? 0) + 1
-        )
+  const { models, filters } = props
+  const selectedGroup = filters.group === FILTER_ALL ? undefined : filters.group
+
+  const facts = useMemo(() => {
+    const series = new Set<string>()
+    const authors = new Set<string>()
+    const endpoints = new Set<string>()
+    let modalities = false
+    let discounted = false
+    let context = false
+    let parameters = false
+    let released = false
+    for (const model of models) {
+      if (model.series) series.add(model.series)
+      if (model.vendor_name) authors.add(model.vendor_name)
+      for (const endpoint of model.supported_endpoint_types ?? []) {
+        endpoints.add(endpoint)
       }
-      for (const tag of new Set(
-        parseTags(model.tags).map((tag) => tag.toLowerCase())
-      )) {
-        tags.set(tag, (tags.get(tag) ?? 0) + 1)
-      }
-      for (const endpoint of new Set(model.supported_endpoint_types ?? [])) {
-        endpoints.set(endpoint, (endpoints.get(endpoint) ?? 0) + 1)
-      }
-      if (hasTaskUsageSchema(model)) {
-        quotas.task++
-      } else if (model.quota_type === 0) {
-        quotas.token++
-      } else if (model.quota_type === 1) {
-        quotas.request++
-      }
+      modalities ||= (model.input_modalities?.length ?? 0) > 0
+      discounted ||= (model.price_multiplier ?? 1) < 1
+      context ||= (model.context_length ?? 0) > 0
+      parameters ||= (model.supported_parameters?.length ?? 0) > 0
+      released ||= Boolean(model.release_date)
     }
-    return { vendors, tags, endpoints, quotas }
-  }, [props.models])
-  const quotaTypeLabels = getQuotaTypeLabels(t)
-  const endpointTypeLabels = getEndpointTypeLabels(t)
+    return {
+      series: [...series].sort((a, b) => a.localeCompare(b)),
+      authors,
+      endpoints,
+      modalities,
+      discounted,
+      context,
+      parameters,
+      released,
+    }
+  }, [models])
 
-  const vendorOptions: FilterOption[] = [
-    {
-      value: FILTER_ALL,
-      label: t('All Vendors'),
-      count: props.models.length,
-    },
-    ...props.vendors
-      .map((vendor) => ({
-        value: vendor.name,
-        label: vendor.name,
-        count: counts.vendors.get(vendor.name) ?? 0,
-        icon: vendor.icon ? getLobeIcon(vendor.icon, 14) : undefined,
-      }))
-      .filter((vendor) => vendor.count > 0),
-  ]
+  const promptStops = useMemo(
+    () => priceStops(models, 'input', selectedGroup),
+    [models, selectedGroup]
+  )
+  const outputStops = useMemo(
+    () => priceStops(models, 'output', selectedGroup),
+    [models, selectedGroup]
+  )
 
-  const groupOptions: FilterOption[] = [
-    {
-      value: FILTER_ALL,
-      label: t('All Groups'),
-    },
-    ...props.groups.map((group) => ({
-      value: group,
-      label: group,
-      suffix: formatGroupRatio(props.groupRatios?.[group]),
-    })),
-  ]
+  const modalityLabels: Record<string, string> = {
+    text: t('Text'),
+    image: t('Image'),
+    file: t('File'),
+    audio: t('Audio'),
+    video: t('Video'),
+  }
+  const parameterLabels: Record<string, string> = {
+    tools: t('Tool calling'),
+    reasoning: t('Reasoning'),
+    structured_outputs: t('Structured outputs'),
+    response_format: t('JSON mode'),
+  }
+  const endpointLabels = getEndpointTypeLabels(t)
 
-  const quotaOptions: FilterOption[] = [
-    {
-      value: QUOTA_TYPES.ALL,
-      label: quotaTypeLabels[QUOTA_TYPES.ALL],
-      count: props.models.length,
-    },
-    {
-      value: QUOTA_TYPES.TOKEN,
-      label: quotaTypeLabels[QUOTA_TYPES.TOKEN],
-      count: counts.quotas.token,
-    },
-    {
-      value: QUOTA_TYPES.REQUEST,
-      label: quotaTypeLabels[QUOTA_TYPES.REQUEST],
-      count: counts.quotas.request,
-    },
-    {
-      value: QUOTA_TYPES.TASK,
-      label: quotaTypeLabels[QUOTA_TYPES.TASK],
-      count: counts.quotas.task,
-    },
-  ]
+  const authorChoices: Choice[] = props.vendors
+    .filter((vendor) => facts.authors.has(vendor.name))
+    .map((vendor) => ({
+      value: vendor.name,
+      label: vendor.name,
+      icon: vendor.icon ? getLobeIcon(vendor.icon, 14) : undefined,
+    }))
+  const endpointChoices: Choice[] = Object.entries(endpointLabels)
+    .filter(
+      ([value]) => value !== ENDPOINT_TYPES.ALL && facts.endpoints.has(value)
+    )
+    .map(([value, label]) => ({ value, label }))
 
-  const tagOptions: FilterOption[] = [
-    {
-      value: FILTER_ALL,
-      label: t('All Tags'),
-      count: props.models.length,
-    },
-    ...props.tags.map((tag) => ({
-      value: tag,
-      label: tag,
-      count: counts.tags.get(tag.toLowerCase()) ?? 0,
-    })),
-  ]
-
-  const endpointOptions: FilterOption[] = [
-    {
-      value: ENDPOINT_TYPES.ALL,
-      label: endpointTypeLabels[ENDPOINT_TYPES.ALL],
-      count: props.models.length,
-    },
-    ...Object.entries(endpointTypeLabels)
-      .filter(([value]) => value !== ENDPOINT_TYPES.ALL)
-      .map(([value, label]) => ({
-        value,
-        label,
-        count: counts.endpoints.get(value) ?? 0,
-      })),
-  ]
+  let contextPosition = 0
+  CONTEXT_STOPS.forEach((stop, index) => {
+    if (stop <= filters.minContext) contextPosition = index
+  })
+  const anyAge = AGE_STOPS.length - 1
+  const agePosition =
+    filters.maxAgeMonths > 0
+      ? Math.max(
+          AGE_STOPS.findIndex(
+            (stop) => stop > 0 && stop >= filters.maxAgeMonths
+          ),
+          0
+        )
+      : anyAge
 
   return (
-    <aside className={cn('bg-card rounded-xl border p-3', props.className)}>
-      <div className='mb-2.5 flex items-center justify-between gap-2'>
-        <div>
-          <h2 className='text-foreground text-sm font-bold'>{t('Filter')}</h2>
-          <p className='text-muted-foreground mt-1 text-xs'>
-            {props.groups.length > 1
-              ? t('Refine models by provider, group, type, and tags.')
-              : t('Refine models by provider, type, and tags.')}
-          </p>
-        </div>
+    <aside className={cn('text-sm', props.className)}>
+      <div className='mb-1 flex items-center justify-between gap-2'>
+        <h2 className='text-foreground text-sm font-semibold'>{t('Filter')}</h2>
         <Button
           type='button'
           variant='ghost'
@@ -288,46 +352,215 @@ export const PricingSidebar = memo(function PricingSidebar(
         </Button>
       </div>
 
-      {props.hasActiveFilters && (
-        <Badge variant='secondary' className='mb-3'>
-          {t('Filters active')}
-        </Badge>
-      )}
-
-      <div className='space-y-1'>
+      <Accordion multiple>
         {props.groups.length > 1 && (
-          <FilterSection
+          <FilterGroup
+            group='group'
+            icon={Users}
             title={t('Groups')}
-            value={props.groupFilter}
-            options={groupOptions}
-            onChange={props.onGroupChange}
-          />
+            filters={filters}
+          >
+            <CheckList
+              choices={props.groups.map((group) => ({
+                value: group,
+                label: group,
+              }))}
+              chosen={selectedGroup ? [selectedGroup] : []}
+              onChange={(chosen) =>
+                props.onFiltersChange({
+                  group: chosen.at(-1) ?? FILTER_ALL,
+                })
+              }
+            />
+          </FilterGroup>
         )}
-        <FilterSection
-          title={t('All Vendors')}
-          value={props.vendorFilter}
-          options={vendorOptions}
-          onChange={props.onVendorChange}
-        />
-        <FilterSection
-          title={t('Model Tags')}
-          value={props.tagFilter}
-          options={tagOptions}
-          onChange={props.onTagChange}
-        />
-        <FilterSection
-          title={t('Pricing Type')}
-          value={props.quotaTypeFilter}
-          options={quotaOptions}
-          onChange={props.onQuotaTypeChange}
-        />
-        <FilterSection
-          title={t('Endpoint Type')}
-          value={props.endpointTypeFilter}
-          options={endpointOptions}
-          onChange={props.onEndpointTypeChange}
-        />
-      </div>
+
+        {facts.modalities && (
+          <FilterGroup
+            group='inputModalities'
+            icon={Shapes}
+            title={t('Input modalities')}
+            filters={filters}
+          >
+            <CheckList
+              choices={INPUT_MODALITIES.map((value) => ({
+                value,
+                label: modalityLabels[value],
+              }))}
+              chosen={filters.inputModalities}
+              onChange={(inputModalities) =>
+                props.onFiltersChange({ inputModalities })
+              }
+            />
+          </FilterGroup>
+        )}
+
+        {facts.discounted && (
+          <FilterGroup
+            group='discounted'
+            icon={BadgePercent}
+            title={t('Discounted')}
+            filters={filters}
+          >
+            <CheckList
+              choices={[{ value: 'yes', label: t('Has a discount') }]}
+              chosen={filters.discounted ? ['yes'] : []}
+              onChange={(chosen) =>
+                props.onFiltersChange({ discounted: chosen.length > 0 })
+              }
+            />
+          </FilterGroup>
+        )}
+
+        {facts.context && (
+          <FilterGroup
+            group='minContext'
+            icon={Ruler}
+            title={t('Context length')}
+            filters={filters}
+          >
+            <StopSlider
+              label={t('Context length')}
+              positions={[contextPosition]}
+              stops={CONTEXT_STOPS.length}
+              summary={
+                contextPosition === 0
+                  ? t('Any')
+                  : t('{{size}} or more', {
+                      size: formatTokens(CONTEXT_STOPS[contextPosition]),
+                    })
+              }
+              ticks={['4K', '64K', '1M']}
+              onChange={([position]) =>
+                props.onFiltersChange({ minContext: CONTEXT_STOPS[position] })
+              }
+            />
+          </FilterGroup>
+        )}
+
+        {promptStops.length > 1 && (
+          <FilterGroup
+            group='promptPrice'
+            icon={CircleDollarSign}
+            title={t('Prompt pricing')}
+            filters={filters}
+          >
+            <PriceSlider
+              label={t('Prompt pricing')}
+              stops={promptStops}
+              range={filters.promptPrice}
+              onChange={(promptPrice) => props.onFiltersChange({ promptPrice })}
+            />
+          </FilterGroup>
+        )}
+
+        {facts.series.length > 0 && (
+          <FilterGroup
+            group='series'
+            icon={Layers}
+            title={t('Series')}
+            filters={filters}
+          >
+            <CheckList
+              choices={facts.series.map((value) => ({ value, label: value }))}
+              chosen={filters.series}
+              onChange={(series) => props.onFiltersChange({ series })}
+            />
+          </FilterGroup>
+        )}
+
+        {facts.parameters && (
+          <FilterGroup
+            group='parameters'
+            icon={CodeXml}
+            title={t('Supported parameters')}
+            filters={filters}
+          >
+            <CheckList
+              choices={SUPPORTED_PARAMETERS.map((value) => ({
+                value,
+                label: parameterLabels[value],
+              }))}
+              chosen={filters.parameters}
+              onChange={(parameters) => props.onFiltersChange({ parameters })}
+            />
+          </FilterGroup>
+        )}
+
+        {outputStops.length > 1 && (
+          <FilterGroup
+            group='outputPrice'
+            icon={CircleDollarSign}
+            title={t('Output pricing')}
+            filters={filters}
+          >
+            <PriceSlider
+              label={t('Output pricing')}
+              stops={outputStops}
+              range={filters.outputPrice}
+              onChange={(outputPrice) => props.onFiltersChange({ outputPrice })}
+            />
+          </FilterGroup>
+        )}
+
+        {facts.released && (
+          <FilterGroup
+            group='maxAgeMonths'
+            icon={CalendarDays}
+            title={t('Model age')}
+            filters={filters}
+          >
+            <StopSlider
+              label={t('Model age')}
+              positions={[agePosition]}
+              stops={AGE_STOPS.length}
+              summary={
+                agePosition === anyAge
+                  ? t('Any')
+                  : t('Released within {{months}} mo', {
+                      months: AGE_STOPS[agePosition],
+                    })
+              }
+              ticks={[t('New'), t('12+ mo')]}
+              onChange={([position]) =>
+                props.onFiltersChange({ maxAgeMonths: AGE_STOPS[position] })
+              }
+            />
+          </FilterGroup>
+        )}
+
+        {authorChoices.length > 0 && (
+          <FilterGroup
+            group='authors'
+            icon={UserRound}
+            title={t('Model authors')}
+            filters={filters}
+          >
+            <CheckList
+              choices={authorChoices}
+              chosen={filters.authors}
+              onChange={(authors) => props.onFiltersChange({ authors })}
+            />
+          </FilterGroup>
+        )}
+
+        {endpointChoices.length > 0 && (
+          <FilterGroup
+            group='endpointTypes'
+            icon={Plug}
+            title={t('Endpoint Type')}
+            filters={filters}
+          >
+            <CheckList
+              choices={endpointChoices}
+              chosen={filters.endpointTypes}
+              onChange={(endpointTypes) =>
+                props.onFiltersChange({ endpointTypes })
+              }
+            />
+          </FilterGroup>
+        )}
+      </Accordion>
     </aside>
   )
 })

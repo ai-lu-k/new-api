@@ -363,3 +363,12 @@ const (
 	MsgSitePageRankingsDescription = "site_page.rankings_description"
 	MsgSitePageAbout               = "site_page.about"
 )
+
+// Catalogue facts a model must carry when it is saved by hand
+const (
+	MsgModelCatalogInputModalities     = "model_catalog.input_modalities"
+	MsgModelCatalogContextLength       = "model_catalog.context_length"
+	MsgModelCatalogSupportedParameters = "model_catalog.supported_parameters"
+	MsgModelCatalogReleaseDate         = "model_catalog.release_date"
+	MsgModelCatalogSeries              = "model_catalog.series"
+)
