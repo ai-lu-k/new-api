@@ -39,11 +39,23 @@ func dshSetupModels(groups []string) []dshsetup.GatewayModel {
 	return models
 }
 
+// dshSetupKeyGroup picks the group of the one key a setup hands out, and the
+// groups that key reaches: the Auto group where the account may use it,
+// otherwise the account's own group (the key's group is then left empty, so
+// that it follows the account).
+func dshSetupKeyGroup(userGroup string) (keyGroup string, groups []string) {
+	if autoGroups := service.GetUserAutoGroup(userGroup); service.GroupInUserUsableGroups(userGroup, "auto") && len(autoGroups) > 0 {
+		return "auto", autoGroups
+	}
+	return "", []string{userGroup}
+}
+
 // GetDshSetupModels tells the quick-start guides which models to offer: the
 // catalogue as this account would reach it. Nothing here is private: the same
 // model names are on the public pricing page.
 func GetDshSetupModels(c *gin.Context) {
 	userGroup := ""
+	signedIn := false
 	if userId := c.GetInt("id"); userId > 0 {
 		group, err := getTokenRequestUserGroup(c)
 		if err != nil {
@@ -51,18 +63,21 @@ func GetDshSetupModels(c *gin.Context) {
 			return
 		}
 		userGroup = group
+		signedIn = true
 	}
 	setting := operation_setting.GetDshSetupSetting()
-	groups := service.GetUserAutoGroup(userGroup)
-	autoGroup := service.GroupInUserUsableGroups(userGroup, "auto") && len(groups) > 0
-	if !autoGroup {
-		// No single key reaches everything, so show what the account could
-		// reach with a key in any group it may use.
+	keyGroup, groups := dshSetupKeyGroup(userGroup)
+	keyReady := signedIn && len(dshSetupModels(groups)) > 0
+	if keyGroup != "auto" {
+		// The catalogue shows what the account could reach with a key in any
+		// group it may use, even where one key does not reach it all.
 		groups = slices.Collect(maps.Keys(service.GetUserUsableGroups(userGroup)))
 	}
 	common.ApiSuccess(c, gin.H{
-		"auto_group":    autoGroup,
-		"default_model": setting.DefaultModel,
+		"auto_group":    keyGroup == "auto",
+		"key_group":     keyGroup,
+		"key_ready":     keyReady,
+		"default_model": dshsetup.DefaultModel(*setting),
 		"models":        dshsetup.ClientModels(*setting, dshSetupModels(groups)),
 	})
 }
@@ -89,16 +104,17 @@ func GetDshSetupScript(c *gin.Context) {
 // key, or "" when it can. The key itself is only prepared when a code is
 // redeemed, so this checks that one exists or that there is room for one.
 func dshSetupRefusal(c *gin.Context, setting *operation_setting.DshSetupSetting, userId int, userGroup string) (string, error) {
-	groups := service.GetUserAutoGroup(userGroup)
-	if !service.GroupInUserUsableGroups(userGroup, "auto") || len(groups) == 0 {
+	keyGroup, groups := dshSetupKeyGroup(userGroup)
+	models := dshSetupModels(groups)
+	if keyGroup != "auto" && len(models) == 0 {
 		return i18n.MsgDshSetupAutoGroupUnavailable, nil
 	}
 	// A code is only worth handing out if redeeming it will produce something.
-	if _, err := dshsetup.BuildPayload(*setting, system_setting.ServerAddress, "sk-placeholder", dshSetupModels(groups)); err != nil {
+	if _, err := dshsetup.BuildPayload(*setting, system_setting.ServerAddress, "sk-placeholder", models); err != nil {
 		logger.LogError(c.Request.Context(), err.Error())
 		return i18n.MsgDshSetupNoModels, nil
 	}
-	token, err := model.GetUnrestrictedUserToken(userId, dshSetupTokenName, "auto")
+	token, err := model.GetUnrestrictedUserToken(userId, dshSetupTokenName, keyGroup)
 	if err != nil {
 		return "", err
 	}
@@ -157,12 +173,13 @@ var errDshSetupTokenLimit = errors.New("dsh setup: the account has no room for a
 // same moment end up sharing a key instead of each creating one.
 var dshSetupTokenMu sync.Mutex
 
-// ensureDshSetupToken returns the account's DSH key, creating it on first use.
-func ensureDshSetupToken(userId int) (token *model.Token, created bool, err error) {
+// ensureDshSetupToken returns the account's DSH key in keyGroup, creating it
+// on first use.
+func ensureDshSetupToken(userId int, keyGroup string) (token *model.Token, created bool, err error) {
 	dshSetupTokenMu.Lock()
 	defer dshSetupTokenMu.Unlock()
 
-	token, err = model.GetUnrestrictedUserToken(userId, dshSetupTokenName, "auto")
+	token, err = model.GetUnrestrictedUserToken(userId, dshSetupTokenName, keyGroup)
 	if err != nil || token != nil {
 		return token, false, err
 	}
@@ -185,8 +202,8 @@ func ensureDshSetupToken(userId int) (token *model.Token, created bool, err erro
 		AccessedTime:    common.GetTimestamp(),
 		ExpiredTime:     -1,
 		UnlimitedQuota:  true,
-		Group:           "auto",
-		CrossGroupRetry: true,
+		Group:           keyGroup,
+		CrossGroupRetry: keyGroup == "auto",
 	}
 	if err := token.Insert(); err != nil {
 		return nil, false, err
@@ -222,17 +239,17 @@ func RedeemDshSetupCode(c *gin.Context) {
 		return
 	}
 	// Nothing is created for an account that could not use it.
-	groups := service.GetUserAutoGroup(user.Group)
-	if !service.GroupInUserUsableGroups(user.Group, "auto") || len(groups) == 0 {
-		unavailable(fmt.Sprintf("user %d cannot use the Auto group", user.Id))
+	keyGroup, groups := dshSetupKeyGroup(user.Group)
+	models := dshSetupModels(groups)
+	if keyGroup != "auto" && len(models) == 0 {
+		unavailable(fmt.Sprintf("user %d has neither the Auto group nor models in its own group", user.Id))
 		return
 	}
-	models := dshSetupModels(groups)
 	if _, err := dshsetup.BuildPayload(*setting, system_setting.ServerAddress, "sk-placeholder", models); err != nil {
 		unavailable(err.Error())
 		return
 	}
-	token, created, err := ensureDshSetupToken(user.Id)
+	token, created, err := ensureDshSetupToken(user.Id, keyGroup)
 	if errors.Is(err, errDshSetupTokenLimit) {
 		logger.LogWarn(c.Request.Context(), fmt.Sprintf("dsh setup: user %d has no room for another API key", user.Id))
 		c.String(http.StatusConflict, "the account has reached its API key limit\n")

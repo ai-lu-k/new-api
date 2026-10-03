@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting/naming_setting"
 )
 
 const (
@@ -185,10 +186,12 @@ func buildRankingsSnapshot(config rankingPeriodConfig, now time.Time) (*Rankings
 	if err != nil {
 		return nil, err
 	}
+	currentTotals = foldRankingAliasTotals(currentTotals)
 	currentBuckets, err := model.GetRankingQuotaBuckets(startTime, endTime, config.bucketSize)
 	if err != nil {
 		return nil, err
 	}
+	currentBuckets = foldRankingAliasBuckets(currentBuckets)
 
 	var previousTotals []model.RankingQuotaTotal
 	if config.hasPrevious {
@@ -197,6 +200,7 @@ func buildRankingsSnapshot(config rankingPeriodConfig, now time.Time) (*Rankings
 		if err != nil {
 			return nil, err
 		}
+		previousTotals = foldRankingAliasTotals(previousTotals)
 	}
 
 	meta := buildRankingModelMeta()
@@ -593,4 +597,46 @@ func minInt(a int, b int) int {
 		return a
 	}
 	return b
+}
+
+// foldRankingAliasTotals counts usage logged under a name that is now an alias
+// towards the name it points at, so that renaming a model keeps its history.
+func foldRankingAliasTotals(totals []model.RankingQuotaTotal) []model.RankingQuotaTotal {
+	merged := make([]model.RankingQuotaTotal, 0, len(totals))
+	index := make(map[string]int, len(totals))
+	folded := false
+	for _, item := range totals {
+		name := naming_setting.ResolveAlias(item.ModelName)
+		folded = folded || name != item.ModelName
+		if at, ok := index[name]; ok {
+			merged[at].TotalTokens += item.TotalTokens
+			continue
+		}
+		index[name] = len(merged)
+		merged = append(merged, model.RankingQuotaTotal{ModelName: name, TotalTokens: item.TotalTokens})
+	}
+	if folded {
+		sort.SliceStable(merged, func(i, j int) bool { return merged[i].TotalTokens > merged[j].TotalTokens })
+	}
+	return merged
+}
+
+// foldRankingAliasBuckets is foldRankingAliasTotals for the history buckets.
+func foldRankingAliasBuckets(buckets []model.RankingQuotaBucket) []model.RankingQuotaBucket {
+	type key struct {
+		name   string
+		bucket int64
+	}
+	merged := make([]model.RankingQuotaBucket, 0, len(buckets))
+	index := make(map[key]int, len(buckets))
+	for _, item := range buckets {
+		k := key{naming_setting.ResolveAlias(item.ModelName), item.Bucket}
+		if at, ok := index[k]; ok {
+			merged[at].Tokens += item.Tokens
+			continue
+		}
+		index[k] = len(merged)
+		merged = append(merged, model.RankingQuotaBucket{ModelName: k.name, Bucket: item.Bucket, Tokens: item.Tokens})
+	}
+	return merged
 }

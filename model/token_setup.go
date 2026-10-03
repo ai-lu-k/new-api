@@ -7,7 +7,10 @@ import "github.com/QuantumNous/new-api/common"
 // IP list), or nil when the user has none.
 func GetUnrestrictedUserToken(userId int, name string, group string) (*Token, error) {
 	var tokens []*Token
-	err := DB.Where(&Token{UserId: userId, Name: name, Group: group, Status: common.TokenStatusEnabled}).
+	// The group goes in its own condition: a struct condition skips an empty
+	// group, and an empty group is a real choice (the key follows the user's).
+	err := DB.Where(&Token{UserId: userId, Name: name, Status: common.TokenStatusEnabled}).
+		Where(commonGroupCol+" = ?", group).
 		Order("id desc").Find(&tokens).Error
 	if err != nil {
 		return nil, err

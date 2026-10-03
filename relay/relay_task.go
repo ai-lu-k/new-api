@@ -23,6 +23,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
+	"github.com/QuantumNous/new-api/setting/naming_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 )
@@ -256,8 +257,9 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	if pinnedPlugin.Plugin != nil {
 		pluginKey = pinnedPlugin.Plugin.Meta.Key
 	}
-	exprStr, exists := billing_setting.ResolveTaskBillingExpr(pluginKey, modelName, info.UpstreamModelName)
-	useTiered := exists || billing_setting.GetBillingMode(modelName) == billing_setting.BillingModeTieredExpr
+	billingModelName := naming_setting.BillingName(modelName)
+	exprStr, exists := billing_setting.ResolveTaskBillingExpr(pluginKey, billingModelName, info.UpstreamModelName)
+	useTiered := exists || billing_setting.GetBillingMode(billingModelName) == billing_setting.BillingModeTieredExpr
 	if useTiered {
 		provider, supported := adaptor.(channel.TaskUsageFactsProvider)
 		if billingexpr.UsesFixedPricing(exprStr) {

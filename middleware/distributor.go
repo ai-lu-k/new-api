@@ -20,6 +20,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/naming_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
@@ -50,6 +51,13 @@ func Distribute() func(c *gin.Context) {
 			abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
 			return
 		}
+		// A name the site keeps alive as an alias is served under its target
+		// from here on: routing, billing and logs all see the target.
+		requestedModel := modelRequest.Model
+		modelRequest.Model = naming_setting.ResolveAlias(requestedModel)
+		if modelRequest.Model != requestedModel {
+			common.SetContextKey(c, constant.ContextKeyRequestedModel, requestedModel)
+		}
 		_, pinned, _ := constraints.ResolvedPin()
 		if !pinned {
 			// Select a channel for the user
@@ -67,7 +75,7 @@ func Distribute() func(c *gin.Context) {
 				if !ok {
 					tokenModelLimit = map[string]bool{}
 				}
-				if !TokenModelLimitAllows(tokenModelLimit, modelRequest.Model) {
+				if !TokenModelLimitAllows(tokenModelLimit, modelRequest.Model) && !TokenModelLimitAllows(tokenModelLimit, requestedModel) {
 					abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorTokenModelForbidden, map[string]any{"Model": modelRequest.Model}))
 					return
 				}

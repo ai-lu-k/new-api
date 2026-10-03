@@ -27,6 +27,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/naming_setting"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -226,7 +227,10 @@ func (s *responsesWSSession) runRequest(state *responsesWSCallState, message []b
 
 func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState, create responsesWSCreateRequest) (apiErr *types.NewAPIError) {
 	policy := service.RequestPolicy(c)
-	modelName := create.Request.Model
+	modelName := naming_setting.ResolveAlias(create.Request.Model)
+	if modelName != create.Request.Model {
+		common.SetContextKey(c, appconstant.ContextKeyRequestedModel, create.Request.Model)
+	}
 	started := time.Now()
 	var info *relaycommon.RelayInfo
 	billingPrepared := false

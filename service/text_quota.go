@@ -16,6 +16,7 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/setting/naming_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/gin-gonic/gin"
@@ -461,7 +462,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		logger.LogError(ctx, "error settling billing: "+err.Error())
 	}
 
-	logModel := summary.ModelName
+	logModel := naming_setting.WithTier(summary.ModelName, relayInfo.OriginModelName)
 	if strings.HasPrefix(logModel, "gpt-4-gizmo") {
 		logModel = "gpt-4-gizmo-*"
 		extraContent = append(extraContent, fmt.Sprintf("模型 %s", summary.ModelName))

@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/setting/naming_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 
@@ -98,7 +99,7 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 		return err
 	}
 
-	modelName := relayInfo.OriginModelName
+	modelName := naming_setting.BillingName(relayInfo.OriginModelName)
 	textInputTokens := usage.InputTokenDetails.TextTokens
 	textOutTokens := usage.OutputTokenDetails.TextTokens
 	audioInputTokens := usage.InputTokenDetails.AudioTokens
@@ -118,6 +119,7 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 	if ok {
 		actualGroupRatio = userGroupRatio
 	}
+	actualGroupRatio *= naming_setting.PriceMultiplier(relayInfo.OriginModelName)
 
 	quotaInfo := QuotaInfo{
 		InputDetails: TokenDetails{
@@ -175,7 +177,7 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 
 	tokenName := ctx.GetString("token_name")
 	completionRatio := decimal.NewFromFloat(ratio_setting.GetCompletionRatio(modelName))
-	audioRatio := decimal.NewFromFloat(ratio_setting.GetAudioRatio(relayInfo.OriginModelName))
+	audioRatio := decimal.NewFromFloat(ratio_setting.GetAudioRatio(naming_setting.BillingName(relayInfo.OriginModelName)))
 	audioCompletionRatio := decimal.NewFromFloat(ratio_setting.GetAudioCompletionRatio(modelName))
 
 	modelRatio := relayInfo.PriceData.ModelRatio
@@ -363,7 +365,7 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 		logger.LogError(ctx, "error settling billing: "+err.Error())
 	}
 
-	logModel := billingModelName
+	logModel := naming_setting.WithTier(billingModelName, relayInfo.OriginModelName)
 	if extraContent != "" {
 		logContent += ", " + extraContent
 	}

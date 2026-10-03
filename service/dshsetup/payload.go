@@ -15,6 +15,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/setting/naming_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 )
 
@@ -92,7 +93,7 @@ type ClientModel struct {
 func ClientModels(setting operation_setting.DshSetupSetting, models []GatewayModel) []ClientModel {
 	offered := make([]ClientModel, 0, len(models))
 	for _, model := range models {
-		entry := setting.Models[model.ID]
+		entry := modelEntry(setting, model.ID)
 		if !modelIDPattern.MatchString(model.ID) || entry.Hidden {
 			continue
 		}
@@ -116,6 +117,32 @@ func ClientModels(setting operation_setting.DshSetupSetting, models []GatewayMod
 	}
 	slices.SortFunc(offered, func(a, b ClientModel) int { return strings.Compare(a.ID, b.ID) })
 	return offered
+}
+
+// modelEntry finds how a model is to be presented. A model whose name now
+// carries a price tier ("-x0.25") keeps what was configured for it under its
+// old name or under its base name, so renaming models needs no new entries.
+func modelEntry(setting operation_setting.DshSetupSetting, id string) operation_setting.DshSetupModel {
+	if entry, ok := setting.Models[id]; ok {
+		return entry
+	}
+	base := naming_setting.BillingName(id)
+	if entry, ok := setting.Models[base]; ok {
+		return entry
+	}
+	names := slices.Sorted(maps.Keys(setting.Models))
+	for _, name := range names {
+		if naming_setting.BillingName(naming_setting.ResolveAlias(name)) == base {
+			return setting.Models[name]
+		}
+	}
+	return operation_setting.DshSetupModel{}
+}
+
+// DefaultModel is the configured default model under the name it is served as
+// now: a default set before a rename follows its alias.
+func DefaultModel(setting operation_setting.DshSetupSetting) string {
+	return naming_setting.ResolveAlias(setting.DefaultModel)
 }
 
 // inputModalities keeps the modalities DSH knows, in its own order.
@@ -166,8 +193,8 @@ func BuildPayload(setting operation_setting.DshSetupSetting, serverAddress strin
 			continue
 		}
 		id := setting.ProviderID + route.idSuffix
-		if slices.Contains(offered[i], setting.DefaultModel) {
-			defaultProvider, defaultModel = id, setting.DefaultModel
+		if wanted := DefaultModel(setting); slices.Contains(offered[i], wanted) {
+			defaultProvider, defaultModel = id, wanted
 		} else if defaultModel == "" {
 			defaultProvider, defaultModel = id, offered[i][0]
 		}
@@ -178,7 +205,7 @@ func BuildPayload(setting operation_setting.DshSetupSetting, serverAddress strin
 		fmt.Fprintf(&providers, "  baseURL: %s\n", quote(base+route.path))
 		providers.WriteString("  models:\n")
 		for _, modelID := range offered[i] {
-			writeModel(&providers, modelID, setting.Models[modelID])
+			writeModel(&providers, modelID, modelEntry(setting, modelID))
 		}
 	}
 	if defaultModel == "" {

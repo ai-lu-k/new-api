@@ -15,8 +15,10 @@ import (
 	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/setting/model_setting"
+	"github.com/QuantumNous/new-api/setting/naming_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	hosttypes "github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -745,3 +747,126 @@ func (s *priceTestReservation) Refund(*gin.Context)      {}
 func (s *priceTestReservation) NeedsRefund() bool        { return false }
 func (s *priceTestReservation) GetPreConsumedQuota() int { return s.held }
 func (s *priceTestReservation) Reserve(quota int) error  { s.held = max(s.held, quota); return nil }
+
+// A price tier spelled in the model name ("-x0.2") bills the model without it
+// at that multiple, on every pricing path, and only when the site turns the
+// feature on. Aliases keep the names callers already use pointing at a tier.
+func TestModelPriceHelperPriceTierInModelName(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	saved := map[string]string{}
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
+		saved[key] = value
+		return nil
+	}))
+	savedRatios := ratio_setting.ModelRatio2JSONString()
+	savedPrices := ratio_setting.ModelPrice2JSONString()
+	oldSelfUse := operation_setting.SelfUseModeEnabled
+	oldMultiplier := operation_setting.GetQuotaSetting().PreConsumeMultiplier
+	t.Cleanup(func() {
+		require.NoError(t, config.GlobalConfig.LoadFromDB(saved))
+		require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(savedRatios))
+		require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(savedPrices))
+		operation_setting.SelfUseModeEnabled = oldSelfUse
+		operation_setting.GetQuotaSetting().PreConsumeMultiplier = oldMultiplier
+	})
+	operation_setting.SelfUseModeEnabled = false
+	operation_setting.GetQuotaSetting().PreConsumeMultiplier = 1
+
+	ratios := ratio_setting.GetModelRatioCopy()
+	ratios["tier-ratio-model"] = 2.0
+	ratios["upscaler-x4"] = 3.0
+	ratioJSON, err := common.Marshal(ratios)
+	require.NoError(t, err)
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(string(ratioJSON)))
+	prices := ratio_setting.GetModelPriceCopy()
+	prices["tier-call-model"] = 0.1
+	priceJSON, err := common.Marshal(prices)
+	require.NoError(t, err)
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(string(priceJSON)))
+
+	load := func(enabled string) {
+		require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+			"billing_setting.billing_mode":      `{"tier-expr-model":"tiered_expr"}`,
+			"billing_setting.billing_expr":      `{"tier-expr-model":"tier(\"base\", p * 3 + c * 15)"}`,
+			"group_ratio_setting.group_ratio":   `{"default":1}`,
+			"model_naming.price_suffix_enabled": enabled,
+			"model_naming.aliases":              `{"old/tier-model":"tier-expr-model-x0.2","loop-a":"loop-b","loop-b":"loop-a"}`,
+		}))
+	}
+	load("true")
+
+	price := func(t *testing.T, modelName string) (hosttypes.PriceData, *relaycommon.RelayInfo, error) {
+		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+		ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+		ctx.Set("group", "default")
+		info := &relaycommon.RelayInfo{
+			OriginModelName: modelName,
+			UserGroup:       "default",
+			UsingGroup:      "default",
+			BillingRequestInput: &billingexpr.RequestInput{
+				Headers: map[string]string{"Content-Type": "application/json"},
+				Body:    []byte(`{}`),
+			},
+		}
+		priceData, err := ModelPriceHelper(ctx, info, 1000, &types.TokenCountMeta{})
+		return priceData, info, err
+	}
+
+	t.Run("expression price is scaled at reservation and settlement", func(t *testing.T) {
+		priceData, info, err := price(t, "tier-expr-model-x0.2")
+		require.NoError(t, err)
+		assert.Equal(t, "tier-expr-model", info.BillingModelName)
+		assert.Equal(t, 300, priceData.QuotaToPreConsume)
+		require.NotNil(t, info.TieredBillingSnapshot)
+		actual, err := billingexpr.ComputeTieredQuotaWithRequest(info.TieredBillingSnapshot, billingexpr.TokenParams{P: 1000, C: 100, Len: 1000}, *info.BillingRequestInput)
+		require.NoError(t, err)
+		assert.Equal(t, 450, actual.ActualQuotaAfterGroup)
+	})
+
+	t.Run("ratio price is scaled and request modifiers stay on the model", func(t *testing.T) {
+		base, _, err := price(t, "tier-ratio-model")
+		require.NoError(t, err)
+		tiered, info, err := price(t, "tier-ratio-model-x0.5@thinking:on")
+		require.NoError(t, err)
+		assert.Equal(t, "tier-ratio-model", info.BillingModelName)
+		assert.Equal(t, 2.0, tiered.ModelRatio)
+		assert.Equal(t, 0.5, tiered.GroupRatioInfo.GroupRatio)
+		assert.Equal(t, base.QuotaToPreConsume/2, tiered.QuotaToPreConsume)
+	})
+
+	t.Run("per-call price is scaled", func(t *testing.T) {
+		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+		info := &relaycommon.RelayInfo{OriginModelName: "tier-call-model-x0.5", UserGroup: "default", UsingGroup: "default"}
+		priceData, err := ModelPriceHelperPerCall(ctx, info)
+		require.NoError(t, err)
+		assert.True(t, priceData.UsePrice)
+		assert.Equal(t, int(0.1*common.QuotaPerUnit*0.5), priceData.Quota)
+	})
+
+	t.Run("a real model whose name ends like a tier keeps its own price", func(t *testing.T) {
+		priceData, info, err := price(t, "upscaler-x4")
+		require.NoError(t, err)
+		assert.Empty(t, info.BillingModelName)
+		assert.Equal(t, 3.0, priceData.ModelRatio)
+		assert.Equal(t, 1.0, priceData.GroupRatioInfo.GroupRatio)
+	})
+
+	t.Run("aliases resolve to a tier and loops resolve nothing", func(t *testing.T) {
+		assert.Equal(t, "tier-expr-model-x0.2", naming_setting.ResolveAlias("old/tier-model"))
+		assert.Equal(t, "tier-expr-model-x0.2@effort:high", naming_setting.ResolveAlias("old/tier-model@effort:high"))
+		assert.Equal(t, "loop-a", naming_setting.ResolveAlias("loop-a"))
+		assert.Equal(t, "tier-ratio-model", naming_setting.ResolveAlias("tier-ratio-model"))
+		assert.Equal(t, "tier-expr-model-x0.2", naming_setting.WithTier("tier-expr-model", "tier-expr-model-x0.2@effort:high"))
+		assert.Equal(t, "upscaler-x4", naming_setting.WithTier("upscaler-x4", "upscaler-x4"))
+	})
+
+	t.Run("the suffix means nothing while the feature is off", func(t *testing.T) {
+		load("false")
+		t.Cleanup(func() { load("true") })
+		_, _, err := price(t, "tier-ratio-model-x0.5")
+		require.Error(t, err)
+		assert.Equal(t, 1.0, naming_setting.PriceMultiplier("tier-ratio-model-x0.5"))
+		assert.Equal(t, "tier-ratio-model-x0.5", naming_setting.BillingName("tier-ratio-model-x0.5"))
+	})
+}

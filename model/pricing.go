@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
+	"github.com/QuantumNous/new-api/setting/naming_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 )
@@ -35,6 +36,7 @@ type Pricing struct {
 	QuotaType              int                                  `json:"quota_type"`
 	ModelRatio             float64                              `json:"model_ratio"`
 	ModelPrice             float64                              `json:"model_price"`
+	PriceMultiplier        *float64                             `json:"price_multiplier,omitempty"`
 	OwnerBy                string                               `json:"owner_by"`
 	CompletionRatio        float64                              `json:"completion_ratio"`
 	CacheRatio             *float64                             `json:"cache_ratio,omitempty"`
@@ -203,8 +205,21 @@ func updatePricing() {
 	names := make([]string, 0, len(enableAbilities))
 	for _, ability := range enableAbilities {
 		names = append(names, ability.Model)
+		if priced := naming_setting.BillingName(ability.Model); priced != ability.Model {
+			names = append(names, priced)
+		}
 	}
 	metaMap := resolveModelMetadata(allMeta, names)
+	// A name that carries a price tier ("-x0.25") is described as the model
+	// it is a tier of, unless it has metadata of its own.
+	for _, ability := range enableAbilities {
+		if _, exists := metaMap[ability.Model]; exists {
+			continue
+		}
+		if meta, ok := metaMap[naming_setting.BillingName(ability.Model)]; ok {
+			metaMap[ability.Model] = meta
+		}
+	}
 
 	// 预加载供应商
 	var vendors []Vendor
@@ -333,6 +348,14 @@ func updatePricing() {
 			SupportedEndpointTypes: modelSupportEndpointTypes[model],
 		}
 
+		// A name that carries a price tier is priced as the model it is a
+		// tier of; PriceMultiplier is what the tier puts on that price.
+		priced := naming_setting.BillingName(model)
+		if priced != model {
+			multiplier := naming_setting.PriceMultiplier(model)
+			pricing.PriceMultiplier = &multiplier
+		}
+
 		// 补充模型元数据（描述、标签、供应商、状态）
 		if meta, ok := metaMap[model]; ok {
 			// 若模型被禁用(status!=1)，则直接跳过，不返回给前端
@@ -344,35 +367,35 @@ func updatePricing() {
 			pricing.Tags = meta.Tags
 			pricing.VendorID = meta.VendorID
 		}
-		modelPrice, findPrice := ratio_setting.GetModelPrice(model, false)
+		modelPrice, findPrice := ratio_setting.GetModelPrice(priced, false)
 		if findPrice {
 			pricing.ModelPrice = modelPrice
 			pricing.QuotaType = 1
 		} else {
-			modelRatio, _, _ := ratio_setting.GetModelRatio(model)
+			modelRatio, _, _ := ratio_setting.GetModelRatio(priced)
 			pricing.ModelRatio = modelRatio
-			pricing.CompletionRatio = ratio_setting.GetCompletionRatio(model)
+			pricing.CompletionRatio = ratio_setting.GetCompletionRatio(priced)
 			pricing.QuotaType = 0
 		}
-		if cacheRatio, ok := ratio_setting.GetCacheRatio(model); ok {
+		if cacheRatio, ok := ratio_setting.GetCacheRatio(priced); ok {
 			pricing.CacheRatio = &cacheRatio
 		}
-		if createCacheRatio, ok := ratio_setting.GetCreateCacheRatio(model); ok {
+		if createCacheRatio, ok := ratio_setting.GetCreateCacheRatio(priced); ok {
 			pricing.CreateCacheRatio = &createCacheRatio
 		}
-		if imageRatio, ok := ratio_setting.GetImageRatio(model); ok {
+		if imageRatio, ok := ratio_setting.GetImageRatio(priced); ok {
 			pricing.ImageRatio = &imageRatio
 		}
-		if ratio_setting.ContainsAudioRatio(model) {
-			audioRatio := ratio_setting.GetAudioRatio(model)
+		if ratio_setting.ContainsAudioRatio(priced) {
+			audioRatio := ratio_setting.GetAudioRatio(priced)
 			pricing.AudioRatio = &audioRatio
 		}
-		if ratio_setting.ContainsAudioCompletionRatio(model) {
-			audioCompletionRatio := ratio_setting.GetAudioCompletionRatio(model)
+		if ratio_setting.ContainsAudioCompletionRatio(priced) {
+			audioCompletionRatio := ratio_setting.GetAudioCompletionRatio(priced)
 			pricing.AudioCompletionRatio = &audioCompletionRatio
 		}
-		if billingMode := billing_setting.GetBillingMode(model); billingMode == "tiered_expr" {
-			if expr, ok := billing_setting.GetBillingExpr(model); ok && strings.TrimSpace(expr) != "" {
+		if billingMode := billing_setting.GetBillingMode(priced); billingMode == "tiered_expr" {
+			if expr, ok := billing_setting.GetBillingExpr(priced); ok && strings.TrimSpace(expr) != "" {
 				pricing.BillingMode = billingMode
 				pricing.BillingExpr = expr
 			}
@@ -384,8 +407,8 @@ func updatePricing() {
 				}
 			}
 		}
-		usageModel := model
-		plugin, ok := pluginGeneration.GetByModel(model)
+		usageModel := priced
+		plugin, ok := pluginGeneration.GetByModel(priced)
 		if !ok {
 			if target, resolved := ResolveTaskModelAlias(pluginGeneration, model); resolved {
 				plugin, ok = pluginGeneration.Get(target.PluginKey)
@@ -397,23 +420,23 @@ func updatePricing() {
 			pricing.BillingUsageSchema = jsplugin.CloneUsageSchema(usageSchema)
 			pricing.BillingUsageExamples = jsplugin.CloneUsageExamples(usageExamples)
 		}
-		providers := pluginGeneration.PluginsByModel(model)
+		providers := pluginGeneration.PluginsByModel(priced)
 		hasProviderOverride := false
 		for _, provider := range providers {
-			if _, configured := billing_setting.GetPluginBillingExpr(provider.Meta.Key, model); configured {
+			if _, configured := billing_setting.GetPluginBillingExpr(provider.Meta.Key, priced); configured {
 				hasProviderOverride = true
 				break
 			}
 		}
 		if hasProviderOverride || (len(providers) >= 2 && pricing.BillingMode == billing_setting.BillingModeTieredExpr) {
 			for _, provider := range providers {
-				schema, examples := provider.Meta.UsageForModel(model)
+				schema, examples := provider.Meta.UsageForModel(priced)
 				if schema == nil {
 					schema = map[string]jsplugin.UsageFieldSchema{}
 				}
-				expression, hasExpression := billing_setting.ResolveTaskBillingExpr(provider.Meta.Key, model, "")
+				expression, hasExpression := billing_setting.ResolveTaskBillingExpr(provider.Meta.Key, priced, "")
 				mode := billing_setting.BillingModeRatio
-				if hasExpression || billing_setting.GetBillingMode(model) == billing_setting.BillingModeTieredExpr {
+				if hasExpression || billing_setting.GetBillingMode(priced) == billing_setting.BillingModeTieredExpr {
 					mode = billing_setting.BillingModeTieredExpr
 				}
 				if mode == billing_setting.BillingModeTieredExpr && !billing_setting.TaskExprCompatible(expression, schema) {

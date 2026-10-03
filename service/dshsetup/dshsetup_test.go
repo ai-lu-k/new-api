@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -180,6 +181,31 @@ func TestClientModelsNameTheProtocolsOfEachChatModel(t *testing.T) {
 		},
 		{ID: "glm-5.3", Name: "GLM 5.3（特惠）", Protocols: []string{"openai-completions"}},
 	}, ClientModels(testSetting, testModels), "hidden, image-only and unsafe ids are left out")
+}
+
+func TestRenamedModelsKeepTheirSetup(t *testing.T) {
+	saved := map[string]string{}
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
+		saved[key] = value
+		return nil
+	}))
+	t.Cleanup(func() { require.NoError(t, config.GlobalConfig.LoadFromDB(saved)) })
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"model_naming.price_suffix_enabled": "true",
+		"model_naming.aliases":              `{"deepseek/deepseek-v4.1-flash":"deepseek-v4.1-flash-x0.25"}`,
+	}))
+
+	endpoints := []constant.EndpointType{constant.EndpointTypeOpenAI}
+	models := ClientModels(testSetting, []GatewayModel{
+		{ID: "deepseek-v4.1-flash-x0.25", Endpoints: endpoints},
+		{ID: "deepseek-v4.1-flash-x0.5", Endpoints: endpoints},
+	})
+	require.Len(t, models, 2)
+	for _, model := range models {
+		assert.Equal(t, "DeepSeek V4.1 Flash", model.Name, model.ID)
+		assert.Equal(t, 1000000, model.ContextWindow, model.ID)
+	}
+	assert.Equal(t, "deepseek-v4.1-flash-x0.25", DefaultModel(operation_setting.DshSetupSetting{DefaultModel: "deepseek/deepseek-v4.1-flash"}))
 }
 
 func TestPayloadOffersEachModelOnOneProtocol(t *testing.T) {
