@@ -26,10 +26,12 @@ import { DshQuickSetup } from './dsh-quick-setup'
  * the same script: through a prompt, or by hand. A site that has it switched
  * off shows the steps for filling DSH's own forms instead.
  */
-export function DshGuide() {
+export function DshGuide(props: { tokenId?: number }) {
   const { status } = useStatus()
 
-  if (status?.dsh_setup_enabled) return <DshQuickSetup />
+  if (status?.dsh_setup_enabled) {
+    return <DshQuickSetup tokenId={props.tokenId} />
+  }
 
   // The first step brings its own top margin, which the section already has.
   return (

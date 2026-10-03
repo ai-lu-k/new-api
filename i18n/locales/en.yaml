@@ -59,6 +59,7 @@ dsh_setup.disabled: "One-command DSH setup is not enabled on this site"
 dsh_setup.auto_group_unavailable: "Your account cannot use the Auto group, which the DSH setup relies on"
 dsh_setup.no_models: "There is no model the DSH client could be set up with"
 dsh_setup.token_limit: "You have reached the API key limit; delete a key you no longer use and try again"
+dsh_setup.token_unavailable: "That API key is not available; pick another one"
 
 # Redemption messages
 redemption.name_length: "Redemption code name length must be between 1-20"

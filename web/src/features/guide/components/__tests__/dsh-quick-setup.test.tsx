@@ -118,7 +118,10 @@ function showPage(visibility: 'visible' | 'hidden') {
   fireEvent(document, new Event('visibilitychange'))
 }
 
-async function renderQuickSetup(status: Record<string, unknown>) {
+async function renderQuickSetup(
+  status: Record<string, unknown>,
+  tokenId?: number
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   })
@@ -128,7 +131,9 @@ async function renderQuickSetup(status: Record<string, unknown>) {
     ...status,
   })
   const router = createRouter({
-    routeTree: createRootRoute({ component: DshQuickSetup }),
+    routeTree: createRootRoute({
+      component: () => <DshQuickSetup tokenId={tokenId} />,
+    }),
     history: createMemoryHistory({ initialEntries: ['/#dsh'] }),
   })
   await router.load()
@@ -315,4 +320,17 @@ it('leaves a hidden page alone and catches up when it is shown again', async () 
   )
   expect(await screen.findByText(promptFor('code-2'))).toBeInTheDocument()
   expect(codeRequests).toHaveBeenCalledTimes(2)
+})
+
+it('asks for a code for the chosen key, and still shows no key', async () => {
+  signIn()
+  await renderQuickSetup({ dsh_setup_enabled: true }, 42)
+
+  const prompt = await screen.findByText(/Please connect the LUK models to DSH/)
+  expect(prompt).toHaveTextContent(shellCommand('code-1'))
+  expect(codeRequests).toHaveBeenCalledTimes(1)
+  expect(codeRequests).toHaveBeenCalledWith('/api/dsh_setup/code', {
+    token_id: 42,
+  })
+  expect(document.body.textContent).not.toMatch(/sk-/)
 })

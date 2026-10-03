@@ -3,6 +3,7 @@ package controller
 import (
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"net/http"
 	"slices"
@@ -100,10 +101,25 @@ func GetDshSetupScript(c *gin.Context) {
 	c.Data(http.StatusOK, "text/plain; charset=utf-8", []byte(script))
 }
 
+// dshSetupOwnToken returns the user's own key tokenId if DSH can be set up
+// with it: it exists, is the user's and is enabled. Anything else yields nil,
+// without saying which, so that key ids cannot be probed.
+func dshSetupOwnToken(userId int, tokenId int) *model.Token {
+	if tokenId <= 0 {
+		return nil
+	}
+	token, err := model.GetTokenByIds(tokenId, userId)
+	if err != nil || token.Status != common.TokenStatusEnabled {
+		return nil
+	}
+	return token
+}
+
 // dshSetupRefusal says why an account cannot be set up right now, as a message
 // key, or "" when it can. The key itself is only prepared when a code is
 // redeemed, so this checks that one exists or that there is room for one.
-func dshSetupRefusal(c *gin.Context, setting *operation_setting.DshSetupSetting, userId int, userGroup string) (string, error) {
+// With tokenId the setup uses that key, which must be the user's own.
+func dshSetupRefusal(c *gin.Context, setting *operation_setting.DshSetupSetting, userId int, userGroup string, tokenId int) (string, error) {
 	keyGroup, groups := dshSetupKeyGroup(userGroup)
 	models := dshSetupModels(groups)
 	if keyGroup != "auto" && len(models) == 0 {
@@ -113,6 +129,12 @@ func dshSetupRefusal(c *gin.Context, setting *operation_setting.DshSetupSetting,
 	if _, err := dshsetup.BuildPayload(*setting, system_setting.ServerAddress, "sk-placeholder", models); err != nil {
 		logger.LogError(c.Request.Context(), err.Error())
 		return i18n.MsgDshSetupNoModels, nil
+	}
+	if tokenId != 0 {
+		if dshSetupOwnToken(userId, tokenId) == nil {
+			return i18n.MsgDshSetupTokenUnavailable, nil
+		}
+		return "", nil
 	}
 	token, err := model.GetUnrestrictedUserToken(userId, dshSetupTokenName, keyGroup)
 	if err != nil {
@@ -134,6 +156,10 @@ func dshSetupRefusal(c *gin.Context, setting *operation_setting.DshSetupSetting,
 // the account's configuration. The setup page asks for one each time it is
 // opened, so this neither creates a key nor leaves a record: both happen when
 // the code is redeemed.
+//
+// The body may name one of the user's keys as token_id: the setup then hands
+// out that key instead of the account's DSH key. The code still carries no
+// key, only the right to fetch it once.
 func CreateDshSetupCode(c *gin.Context) {
 	setting := operation_setting.GetDshSetupSetting()
 	if !setting.Enabled {
@@ -146,7 +172,18 @@ func CreateDshSetupCode(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	refusal, err := dshSetupRefusal(c, setting, userId, userGroup)
+	var req struct {
+		TokenId int `json:"token_id"`
+	}
+	// A request without a body is the plain setup.
+	if c.Request.ContentLength != 0 {
+		err := common.DecodeJson(c.Request.Body, &req)
+		if (err != nil && !errors.Is(err, io.EOF)) || req.TokenId < 0 {
+			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+			return
+		}
+	}
+	refusal, err := dshSetupRefusal(c, setting, userId, userGroup, req.TokenId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -156,7 +193,7 @@ func CreateDshSetupCode(c *gin.Context) {
 		return
 	}
 
-	code, expires, err := dshsetup.Codes.Issue(userId)
+	code, expires, err := dshsetup.Codes.IssueFor(userId, req.TokenId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -228,11 +265,12 @@ func RedeemDshSetupCode(c *gin.Context) {
 		refuse("feature disabled")
 		return
 	}
-	userId, ok := dshsetup.Codes.Redeem(c.GetHeader("X-Setup-Code"))
+	grant, ok := dshsetup.Codes.RedeemGrant(c.GetHeader("X-Setup-Code"))
 	if !ok {
 		refuse("unknown, used or expired code")
 		return
 	}
+	userId := grant.UserID
 	user, err := model.GetUserById(userId, false)
 	if err != nil || user.Status != common.UserStatusEnabled {
 		refuse(fmt.Sprintf("user %d is not available", userId))
@@ -249,7 +287,19 @@ func RedeemDshSetupCode(c *gin.Context) {
 		unavailable(err.Error())
 		return
 	}
-	token, created, err := ensureDshSetupToken(user.Id, keyGroup)
+	var token *model.Token
+	created := false
+	if grant.TokenID != 0 {
+		// Checked again: the key may have been disabled or deleted since the
+		// code was issued.
+		token = dshSetupOwnToken(user.Id, grant.TokenID)
+		if token == nil {
+			refuse(fmt.Sprintf("key %d of user %d is not available", grant.TokenID, user.Id))
+			return
+		}
+	} else {
+		token, created, err = ensureDshSetupToken(user.Id, keyGroup)
+	}
 	if errors.Is(err, errDshSetupTokenLimit) {
 		logger.LogWarn(c.Request.Context(), fmt.Sprintf("dsh setup: user %d has no room for another API key", user.Id))
 		c.String(http.StatusConflict, "the account has reached its API key limit\n")
@@ -265,7 +315,7 @@ func RedeemDshSetupCode(c *gin.Context) {
 		return
 	}
 	recordDshSetupAudit(c, user.Id, user.Username, user.Role, "dsh_setup.redeem", "DSH setup code redeemed",
-		model.AuditFields{"token_id": token.Id, "token_created": created})
+		model.AuditFields{"token_id": token.Id, "token_created": created, "token_chosen": grant.TokenID != 0})
 	c.Data(http.StatusOK, "text/plain; charset=utf-8", []byte(payload))
 }
 

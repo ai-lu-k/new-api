@@ -41,16 +41,22 @@ export function MyKeys(props: {
 }) {
   const { t } = useTranslation()
   const [busy, setBusy] = useState<number | null>(null)
-  const [handed, setHanded] = useState<{ name: string; key: string } | null>(
-    null
-  )
+  const [handed, setHanded] = useState<{
+    id: number
+    name: string
+    key: string
+  } | null>(null)
 
   const open = async (apiKey: ApiKey) => {
     setBusy(apiKey.id)
     try {
       const result = await fetchTokenKey(apiKey.id)
       if (result.success && result.data?.key) {
-        setHanded({ name: apiKey.name, key: `sk-${result.data.key}` })
+        setHanded({
+          id: apiKey.id,
+          name: apiKey.name,
+          key: `sk-${result.data.key}`,
+        })
       } else {
         handleServerError(result, t('Failed to load API keys'))
       }
@@ -122,6 +128,7 @@ export function MyKeys(props: {
       <QuickImportDialog
         open={handed !== null}
         onOpenChange={(isOpen) => !isOpen && setHanded(null)}
+        keyId={handed?.id ?? 0}
         keyName={handed?.name ?? ''}
         tokenKey={handed?.key ?? ''}
       />

@@ -60,6 +60,7 @@ dsh_setup.disabled: "本站尚未開啟 DSH 一鍵設定"
 dsh_setup.auto_group_unavailable: "目前帳號不能使用自動分組，無法一鍵設定 DSH"
 dsh_setup.no_models: "目前沒有可以設定給 DSH 的模型"
 dsh_setup.token_limit: "API 金鑰數量已達上限，請先刪除不用的金鑰再試"
+dsh_setup.token_unavailable: "這把 API 金鑰無法使用，請換一把"
 
 # Redemption messages
 redemption.name_length: "兌換碼名稱長度必須在1-20之間"

@@ -94,7 +94,7 @@ function signIn() {
   useAuthStore.getState().auth.setUser({ id: 7, username: 'ada', role: 1 })
 }
 
-async function renderGuide() {
+async function renderGuide(apiKey?: string) {
   const queries = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   })
@@ -103,7 +103,9 @@ async function renderGuide() {
     server_address: 'https://ai.example.test',
   })
   const router = createRouter({
-    routeTree: createRootRoute({ component: ApiGuide }),
+    routeTree: createRootRoute({
+      component: () => <ApiGuide apiKey={apiKey} />,
+    }),
     history: createMemoryHistory({ initialEntries: ['/#api'] }),
   })
   await router.load()
@@ -220,4 +222,23 @@ it('explains how to create a key by hand when the site cannot prepare one', asyn
     screen.queryByRole('button', { name: 'Create and copy API key' })
   ).not.toBeInTheDocument()
   expect(screen.getByText(/choose Create API Key/)).toBeVisible()
+})
+
+it('carries a key it is handed, without preparing another', async () => {
+  signIn()
+  const user = userEvent.setup()
+  const copy = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
+  await renderGuide('sk-row-key-0042')
+
+  expect(
+    screen.getByText(/Authorization: Bearer sk-ro…0042/)
+  ).toBeInTheDocument()
+  expect(screen.queryByText(/sk-row-key-0042/)).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: 'Create and copy API key' })
+  ).not.toBeInTheDocument()
+
+  await user.click(screen.getByRole('button', { name: 'Copy Key' }))
+  expect(copy).toHaveBeenLastCalledWith('sk-row-key-0042')
+  expect(api.post).not.toHaveBeenCalled()
 })

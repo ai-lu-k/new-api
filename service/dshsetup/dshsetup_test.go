@@ -46,6 +46,27 @@ func TestSetupCodeWorksOnceWithinItsLifetime(t *testing.T) {
 	assert.False(t, ok, "a code at the end of its lifetime")
 }
 
+// A code issued for one of the user's keys says so when redeemed, and never
+// holds the key itself.
+func TestSetupCodeRemembersTheKeyItWasIssuedFor(t *testing.T) {
+	store := NewCodeStore()
+
+	chosen, _, err := store.IssueFor(7, 42)
+	require.NoError(t, err)
+	plain, _, err := store.Issue(7)
+	require.NoError(t, err)
+
+	grant, ok := store.RedeemGrant(chosen)
+	require.True(t, ok)
+	assert.Equal(t, Grant{UserID: 7, TokenID: 42}, grant)
+	_, ok = store.RedeemGrant(chosen)
+	assert.False(t, ok, "used up like any other code")
+
+	grant, ok = store.RedeemGrant(plain)
+	require.True(t, ok)
+	assert.Equal(t, Grant{UserID: 7}, grant, "no key chosen: the account's DSH key")
+}
+
 // The page asks for a code each time it is opened, so a newer code must not
 // void the one the user has already copied.
 func TestSetupCodesOfOneUserCoexistUpToALimit(t *testing.T) {

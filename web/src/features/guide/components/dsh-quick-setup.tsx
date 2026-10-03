@@ -48,13 +48,17 @@ const RENEW_EARLY_MS = 60 * 1000
  * shown and replaced before it expires, so a usable one is always on screen
  * without the user asking.
  */
-function useSetupCode(userId: number | undefined, enabled: boolean) {
+function useSetupCode(
+  userId: number | undefined,
+  enabled: boolean,
+  tokenId?: number
+) {
   const { t } = useTranslation()
   const failure = t('Failed to prepare the setup prompt')
   const query = useQuery({
-    queryKey: ['dsh-setup-code', userId ?? null],
+    queryKey: ['dsh-setup-code', userId ?? null, tokenId ?? null],
     queryFn: async () => {
-      const response = await createDshSetupCode()
+      const response = await createDshSetupCode(tokenId)
       if (!response.success || !response.data) {
         throw createServerError(response, failure)
       }
@@ -154,8 +158,11 @@ function CommandLine(props: {
  * a chat. The script is run either by DSH itself, told to by a prompt that
  * also has it ask which model to use and match that model to the official
  * one, or by the user in a terminal.
+ *
+ * Given `tokenId`, the script writes that key of the account instead of the
+ * one the site keeps for DSH.
  */
-export function DshQuickSetup() {
+export function DshQuickSetup(props: { tokenId?: number }) {
   const { t, i18n } = useTranslation()
   const { status } = useStatus()
   const userId = useAuthStore((state) => state.auth.user?.id)
@@ -163,7 +170,7 @@ export function DshQuickSetup() {
   const { copiedText, copyToClipboard } = useCopyToClipboard({ notify: false })
   const offered = Boolean(status?.dsh_setup_enabled)
   const signedIn = userId !== undefined
-  const code = useSetupCode(userId, offered && signedIn)
+  const code = useSetupCode(userId, offered && signedIn, props.tokenId)
   // The prompt names the models to choose from. It is still usable without
   // them, so a failed listing only leaves the choices out.
   const catalog = useQuery({

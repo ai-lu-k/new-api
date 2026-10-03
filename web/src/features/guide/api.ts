@@ -27,12 +27,19 @@ export type DshSetupCode = {
 }
 
 /** Prepare this account's DSH key and get a one-time code for the setup script. */
-export async function createDshSetupCode(): Promise<{
+/**
+ * Ask for a one-time setup code. With `tokenId` the setup hands DSH that key
+ * of the account instead of the key the site keeps for DSH.
+ */
+export async function createDshSetupCode(tokenId?: number): Promise<{
   success: boolean
   message?: string
   data?: DshSetupCode
 }> {
-  const res = await api.post('/api/dsh_setup/code')
+  const res = await api.post(
+    '/api/dsh_setup/code',
+    tokenId ? { token_id: tokenId } : undefined
+  )
   return res.data
 }
 

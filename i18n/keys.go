@@ -68,6 +68,7 @@ const (
 	MsgDshSetupAutoGroupUnavailable = "dsh_setup.auto_group_unavailable"
 	MsgDshSetupNoModels             = "dsh_setup.no_models"
 	MsgDshSetupTokenLimit           = "dsh_setup.token_limit"
+	MsgDshSetupTokenUnavailable     = "dsh_setup.token_unavailable"
 )
 
 // Redemption related messages

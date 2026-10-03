@@ -35,6 +35,7 @@ export function ApiKeysDialogs() {
       <QuickImportDialog
         open={open === 'quick-import'}
         onOpenChange={(isOpen) => !isOpen && setOpen(null)}
+        keyId={currentRow?.id ?? 0}
         keyName={currentRow?.name ?? ''}
         tokenKey={resolvedKey}
       />

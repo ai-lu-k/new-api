@@ -53,8 +53,10 @@ const KEY_NAME = 'Quick Start'
  * a request in the language at hand. The examples follow the model: the
  * OpenAI-compatible format where the gateway serves the model on it, the
  * Anthropic one otherwise.
+ *
+ * Given `apiKey`, the examples carry that key instead of one prepared here.
  */
-export function ApiGuide() {
+export function ApiGuide(props: { apiKey?: string }) {
   const { t } = useTranslation()
   const { status } = useStatus()
   const userId = useAuthStore((state) => state.auth.user?.id)
@@ -62,7 +64,7 @@ export function ApiGuide() {
   const { copyToClipboard } = useCopyToClipboard()
   const modelFieldId = useId()
   const [chosenModel, setChosenModel] = useState('')
-  const [apiKey, setApiKey] = useState('')
+  const [apiKey, setApiKey] = useState(props.apiKey ?? '')
 
   const catalog = useQuery({
     queryKey: ['dsh-setup-models', userId ?? null],
@@ -101,9 +103,11 @@ export function ApiGuide() {
     models[0]
   const style = apiStyleOf(model)
   const baseUrl = apiBaseUrl(style, address)
-  const signedIn = userId !== undefined
+  const hasOwnKey = Boolean(props.apiKey)
+  const signedIn = hasOwnKey || userId !== undefined
   const canPrepareKey =
-    signedIn && Boolean(catalog.data?.key_ready ?? catalog.data?.auto_group)
+    hasOwnKey ||
+    (signedIn && Boolean(catalog.data?.key_ready ?? catalog.data?.auto_group))
 
   const copyKey = async () => {
     // A failed attempt has already been reported by the mutation's onError.
@@ -152,7 +156,13 @@ export function ApiGuide() {
       </div>
     )
   }
-  if (canPrepareKey) {
+  if (hasOwnKey) {
+    keyStep = (
+      <Button variant='outline' size='sm' onClick={copyKey}>
+        {t('Copy Key')}
+      </Button>
+    )
+  } else if (canPrepareKey) {
     keyStep = (
       <div className='space-y-2'>
         <p>
