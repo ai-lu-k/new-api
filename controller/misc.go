@@ -45,6 +45,8 @@ func GetStatus(c *gin.Context) {
 
 	cs := console_setting.GetConsoleSetting()
 	passkeySetting := system_setting.PasskeySettingsSnapshot()
+	// Read before the options are locked: it takes that lock itself.
+	homeTitle := currentSitePage().Page("/").Title
 	common.OptionMapRWMutex.RLock()
 	defer common.OptionMapRWMutex.RUnlock()
 
@@ -95,6 +97,7 @@ func GetStatus(c *gin.Context) {
 		"password_register_enabled":     common.PasswordRegisterEnabled,
 		"default_use_auto_group":        setting.DefaultUseAutoGroup,
 		"dsh_setup_enabled":             operation_setting.GetDshSetupSetting().Enabled,
+		"home_title":                    homeTitle,
 
 		"password_login_encryption_enabled": common.PasswordLoginEncryptionEnabled,
 

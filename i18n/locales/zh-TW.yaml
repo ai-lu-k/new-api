@@ -298,3 +298,13 @@ custom_oauth.name_empty: "供應者名稱不能為空"
 custom_oauth.has_bindings: "無法刪除已有使用者綁定的供應者"
 custom_oauth.binding_not_found: "OAuth 綁定不存在"
 custom_oauth.provider_id_field_invalid: "無法從供應者響應中提取使用者 ID"
+
+# Text of the public pages as served before the front end starts
+site_page.home: "首頁"
+site_page.models: "模型廣場"
+site_page.models_description: "{{.Site}} 上全部 {{.Count}} 個可用模型，以及它們的價格、延遲和吞吐。"
+site_page.model_description: "{{.Model}} 在 {{.Site}} 上的價格與呼叫方式。"
+site_page.model_vendor: "供應商：{{.Vendor}}"
+site_page.rankings: "排行榜"
+site_page.rankings_description: "{{.Site}} 上各模型按呼叫量的排行。"
+site_page.about: "關於"

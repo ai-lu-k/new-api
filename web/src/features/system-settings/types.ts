@@ -152,6 +152,9 @@ export type SiteSettings = {
   'general_setting.docs_link': string
   'legal.user_agreement': string
   'legal.privacy_policy': string
+  'site_page.default_language': string
+  'site_page.home_title': string
+  'site_page.home_description': string
   HeaderNavModules: string
   SidebarModulesAdmin: string
 }

@@ -351,3 +351,15 @@ const (
 	MsgCustomOAuthBindingNotFound   = "custom_oauth.binding_not_found"
 	MsgCustomOAuthProviderIdInvalid = "custom_oauth.provider_id_field_invalid"
 )
+
+// Text of the public pages as served before the front end starts
+const (
+	MsgSitePageHome                = "site_page.home"
+	MsgSitePageModels              = "site_page.models"
+	MsgSitePageModelsDescription   = "site_page.models_description"
+	MsgSitePageModelDescription    = "site_page.model_description"
+	MsgSitePageModelVendor         = "site_page.model_vendor"
+	MsgSitePageRankings            = "site_page.rankings"
+	MsgSitePageRankingsDescription = "site_page.rankings_description"
+	MsgSitePageAbout               = "site_page.about"
+)

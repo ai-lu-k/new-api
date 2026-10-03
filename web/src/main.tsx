@@ -25,13 +25,14 @@ import { installBuildMetadata } from '@/lib/build-metadata'
 import { applyFaviconToDom } from '@/lib/dom-utils'
 import '@/lib/dayjs'
 import { initializeFrontendCache } from '@/lib/frontend-cache'
+import { pageTitle } from '@/lib/page-title'
 import { createAppQueryClient } from '@/lib/query-client'
 import { readCachedStatus, statusQueryOptions } from '@/lib/status-query'
 
 import { DirectionProvider } from './context/direction-provider'
 import { FontProvider } from './context/font-provider'
 import { ThemeProvider } from './context/theme-provider'
-import './i18n/config'
+import i18n from './i18n/config'
 // Generated Routes
 import { routeTree } from './routeTree.gen'
 
@@ -71,16 +72,23 @@ if (!rootElement) {
 ;(function initSystemBranding() {
   try {
     if (typeof window === 'undefined' || typeof document === 'undefined') return
-    const apply = (name: string) => {
-      document.title = name
+    const apply = (name: string, homeTitle?: unknown) => {
+      const title = pageTitle(
+        window.location.pathname,
+        { name, homeTitle: typeof homeTitle === 'string' ? homeTitle : '' },
+        (key) => i18n.t(key)
+      )
+      document.title = title
       const metaTitle = document.querySelector(
         'meta[name="title"]'
       ) as HTMLMetaElement | null
-      if (metaTitle) metaTitle.setAttribute('content', name)
+      if (metaTitle) metaTitle.setAttribute('content', title)
     }
     // Cache-first
     const cached = readCachedStatus()
-    if (cached?.system_name) apply(cached.system_name as string)
+    if (cached?.system_name) {
+      apply(cached.system_name as string, cached.home_title)
+    }
     if (cached?.logo) applyFaviconToDom(cached.logo as string)
 
     // Background refresh through the shared cache. This primes ['status']
@@ -90,7 +98,7 @@ if (!rootElement) {
     queryClient
       .ensureQueryData(statusQueryOptions)
       .then((s) => {
-        if (s?.system_name) apply(s.system_name as string)
+        if (s?.system_name) apply(s.system_name as string, s.home_title)
         if (s?.logo) applyFaviconToDom(s.logo as string)
       })
       .catch(() => {
@@ -100,7 +108,11 @@ if (!rootElement) {
     /* empty */
   }
 })()
-if (!rootElement.innerHTML) {
+// The server may have put the page's text in the root for clients that do not
+// run scripts (see service/sitepage); rendering replaces it.
+const prerendered =
+  rootElement.querySelector(':scope > [data-prerender]') !== null
+if (!rootElement.innerHTML || prerendered) {
   const root = ReactDOM.createRoot(rootElement)
   root.render(
     <StrictMode>

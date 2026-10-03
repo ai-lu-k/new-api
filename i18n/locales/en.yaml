@@ -297,3 +297,13 @@ custom_oauth.name_empty: "Provider name cannot be empty"
 custom_oauth.has_bindings: "Cannot delete provider with existing user bindings"
 custom_oauth.binding_not_found: "OAuth binding not found"
 custom_oauth.provider_id_field_invalid: "Could not extract user ID from provider response"
+
+# Text of the public pages as served before the front end starts
+site_page.home: "Home"
+site_page.models: "Model Square"
+site_page.models_description: "All {{.Count}} models available on {{.Site}}, with their prices, latency and throughput."
+site_page.model_description: "Price and usage of {{.Model}} on {{.Site}}."
+site_page.model_vendor: "Provider: {{.Vendor}}"
+site_page.rankings: "Rankings"
+site_page.rankings_description: "The models on {{.Site}} ranked by usage."
+site_page.about: "About"
