@@ -454,6 +454,22 @@ export const PricingSidebar = memo(function PricingSidebar(
           </FilterGroup>
         )}
 
+        {outputStops.length > 1 && (
+          <FilterGroup
+            group='outputPrice'
+            icon={CircleDollarSign}
+            title={t('Output pricing')}
+            filters={filters}
+          >
+            <PriceSlider
+              label={t('Output pricing')}
+              stops={outputStops}
+              range={filters.outputPrice}
+              onChange={(outputPrice) => props.onFiltersChange({ outputPrice })}
+            />
+          </FilterGroup>
+        )}
+
         {facts.series.length > 0 && (
           <FilterGroup
             group='series'
@@ -483,22 +499,6 @@ export const PricingSidebar = memo(function PricingSidebar(
               }))}
               chosen={filters.parameters}
               onChange={(parameters) => props.onFiltersChange({ parameters })}
-            />
-          </FilterGroup>
-        )}
-
-        {outputStops.length > 1 && (
-          <FilterGroup
-            group='outputPrice'
-            icon={CircleDollarSign}
-            title={t('Output pricing')}
-            filters={filters}
-          >
-            <PriceSlider
-              label={t('Output pricing')}
-              stops={outputStops}
-              range={filters.outputPrice}
-              onChange={(outputPrice) => props.onFiltersChange({ outputPrice })}
             />
           </FilterGroup>
         )}
