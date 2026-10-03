@@ -46,8 +46,7 @@ export function pageTitle(
   if (path.startsWith('/pricing/')) {
     return titled(decodePathSegment(path.slice('/pricing/'.length)))
   }
-  if (path === '/rankings') return titled(t('Rankings'))
-  if (path === '/about') return titled(t('About'))
+  if (path === '/rankings') return titled(t('Transparency'))
   return site.name
 }
 

@@ -22,8 +22,7 @@ import { pageTitle } from '../page-title'
 
 const zh: Record<string, string> = {
   'Model Square': '模型广场',
-  Rankings: '排行榜',
-  About: '关于',
+  Transparency: '公开信息',
 }
 const t = (key: string) => zh[key] ?? key
 const site = { name: 'LUK', homeTitle: 'LUK · 统一 API 网关' }
@@ -33,8 +32,7 @@ describe('pageTitle', () => {
     expect(pageTitle('/', site, t)).toBe('LUK · 统一 API 网关')
     expect(pageTitle('/pricing', site, t)).toBe('模型广场 · LUK')
     expect(pageTitle('/pricing/', site, t)).toBe('模型广场 · LUK')
-    expect(pageTitle('/rankings', site, t)).toBe('排行榜 · LUK')
-    expect(pageTitle('/about', site, t)).toBe('关于 · LUK')
+    expect(pageTitle('/rankings', site, t)).toBe('公开信息 · LUK')
   })
 
   it('names the model on a model page', () => {

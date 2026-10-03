@@ -1,19 +1,19 @@
 <style>
   :host { display:block; width:100%; }
-  .luk-cost { color: var(--foreground, #0a0a0a); max-width: 46rem; margin: 0 auto; padding: 7rem 1.5rem 6rem; }
-  .luk-cost h1 { margin: 0; font-size: 2rem; line-height: 1.2; font-weight: 700; letter-spacing: -.02em; }
-  .luk-cost h2 { margin: 2.75rem 0 0; font-size: 1.125rem; font-weight: 600; }
-  .luk-cost p { margin: .875rem 0 0; font-size: .9375rem; line-height: 1.8; color: var(--muted-foreground, #6b7280); }
-  .luk-cost a {
+  .luk-about { color: var(--foreground, #0a0a0a); max-width: 46rem; }
+  .luk-about h2 { margin: 2.25rem 0 0; font-size: 1.125rem; font-weight: 600; }
+  .luk-about h2:first-child { margin-top: 0; }
+  .luk-about p { margin: .875rem 0 0; font-size: .9375rem; line-height: 1.8; color: var(--muted-foreground, #6b7280); }
+  .luk-about a {
     color: var(--foreground, #0a0a0a); text-decoration: underline;
     text-decoration-thickness: 1px; text-underline-offset: 4px;
   }
 </style>
 
-<div class="luk-cost">
-  <h1>成本公开</h1>
-  <p>这一页用来逐项列出本站的成本：上游模型费用、服务器、域名等，以及它们和售价之间的差额。明细正在整理，整理好之后在这里公布，有变动时同步更新。</p>
-
+<div class="luk-about">
   <h2>代码</h2>
   <p>网关基于开源项目 new-api（AGPL-3.0），本站对它的全部改动都公开在 <a href="https://github.com/ai-lu-k/new-api" target="_blank" rel="noopener noreferrer">github.com/ai-lu-k/new-api</a>，可以审查，也可以拿去二次开发。</p>
+
+  <h2>支出</h2>
+  <p>本站每个月的各项支出逐项列在<a href="/rankings?section=expenses">支出公开</a>里，有变动时同步更新。</p>
 </div>

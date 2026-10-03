@@ -137,7 +137,7 @@ export type RankingsSnapshot = {
   vendor_share_history: VendorShareSeries
 }
 
-export type RankingsView = 'models' | 'expenses'
+export type RankingsView = 'models' | 'expenses' | 'about'
 
 /** One line of what the site paid in a month. */
 export type ExpenseItem = {

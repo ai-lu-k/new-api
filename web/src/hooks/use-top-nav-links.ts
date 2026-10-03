@@ -80,11 +80,11 @@ export function useTopNavLinks(): TopNavLink[] {
     links.push({ title: t('Model Square'), href: '/pricing', requiresAuth })
   }
 
-  // Rankings
+  // Rankings, together with the site's expenses and the About content
   const rankings = modules?.rankings
   if (rankings && typeof rankings === 'object' && rankings.enabled) {
     const requiresAuth = rankings.requireAuth && !isAuthed
-    links.push({ title: t('Rankings'), href: '/rankings', requiresAuth })
+    links.push({ title: t('Transparency'), href: '/rankings', requiresAuth })
   }
 
   // Docs (supports external links)
@@ -96,10 +96,7 @@ export function useTopNavLinks(): TopNavLink[] {
     }
   }
 
-  // About
-  if (modules?.about !== false) {
-    links.push({ title: t('About'), href: '/about' })
-  }
+  // About has no link of its own: it is a section of the rankings page.
 
   return links
 }

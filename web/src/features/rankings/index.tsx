@@ -20,6 +20,9 @@ import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
 import { PublicLayout } from '@/components/layout'
+import { AboutContent } from '@/features/about'
+import { useStatus } from '@/hooks/use-status'
+import { parseHeaderNavModulesFromStatus } from '@/lib/nav-modules'
 import { PageTransition } from '@/components/page-transition'
 import { Skeleton } from '@/components/ui/skeleton'
 
@@ -46,7 +49,16 @@ export function Rankings() {
     ? (search.period as RankingPeriod)
     : 'week'
 
-  const view: RankingsView = search.section === 'expenses' ? 'expenses' : 'models'
+  // The About section follows the site's About switch.
+  const { status } = useStatus()
+  const showAbout =
+    parseHeaderNavModulesFromStatus(status as Record<string, unknown> | null)
+      ?.about !== false
+  const views: RankingsView[] = showAbout
+    ? ['models', 'expenses', 'about']
+    : ['models', 'expenses']
+  const view: RankingsView =
+    search.section && views.includes(search.section) ? search.section : 'models'
 
   const rankingsQuery = useRankings(period)
   const snapshot = rankingsQuery.data?.data
@@ -63,7 +75,7 @@ export function Rankings() {
       to: '/rankings',
       search: (prev) => ({
         ...prev,
-        section: next === 'expenses' ? next : undefined,
+        section: next === 'models' ? undefined : next,
       }),
     })
   }
@@ -73,6 +85,7 @@ export function Rankings() {
       <div className='relative'>
         <PageTransition className='relative mx-auto w-full max-w-[1280px] space-y-8 px-3 pt-16 pb-10 sm:px-6 sm:pt-20 sm:pb-12 xl:px-8'>
           <RankingsHero
+            views={views}
             view={view}
             onViewChange={handleViewChange}
             period={period}
@@ -80,6 +93,7 @@ export function Rankings() {
           />
 
           {view === 'expenses' && <ExpenseLedger />}
+          {view === 'about' && <AboutContent />}
           {view === 'models' && rankingsQuery.isLoading && <RankingsLoading />}
           {view === 'models' && !rankingsQuery.isLoading && !snapshot && (
             <RankingsError

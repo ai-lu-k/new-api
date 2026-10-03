@@ -68,7 +68,7 @@ it('labels the landing page link Quick Start and lists no separate guide link', 
     ['Quick Start', '/'],
     ['Console', '/dashboard'],
     ['Model Square', '/pricing'],
-    ['Rankings', '/rankings'],
+    ['Transparency', '/rankings'],
   ])
 })
 
@@ -76,4 +76,15 @@ it('leaves the landing page link out when the home module is switched off', () =
   const links = topNavLinksFor({ home: false, docs: false, about: false })
 
   expect(links.map(([, href]) => href)).not.toContain('/')
+})
+
+it('gives About no link of its own: it is a section of the rankings page', () => {
+  const links = topNavLinksFor({
+    home: true,
+    rankings: { enabled: true, requireAuth: false },
+    docs: false,
+    about: true,
+  })
+
+  expect(links.map(([, href]) => href)).not.toContain('/about')
 })

@@ -132,10 +132,13 @@ git push server tavern
   主题 token，但用不了 Tailwind 工具类（构建时扫描不到），样式只能靠它自带的 `<style>`。
   这段 HTML 现在**只有首屏**（标题、一句话、两个按钮）；它下面那排「使用 xx 开始」和各客户端的
   接入步骤是代码里的组件（见第八节），紧跟在这段 HTML 后面渲染，推代码就会更新。
-- **成本公开页就是「关于」页。** 首屏副标题里的「每一项成本」链到 `/about`，内容是 `options` 表里的 `About`
-  （HTML、Markdown 或一个网址都行），后台「系统设置 → 关于」可以直接改，不用发版；仓库副本是
-  `deploy/about-page-content.html`，现在只是占位，没有任何数字。顶部导航里的「关于」入口是关着的
-  （`HeaderNavModules.about=false`），不影响这个页面打开。
+- **支出公开和「关于」都在排行榜那一页（导航里叫「公开信息」）。** 页面顶部切换三个栏目：模型排行、
+  支出公开（`/rankings?section=expenses`）、关于（`/rankings?section=about`，旧的 `/about` 会跳过来）。
+  支出只列支出，按月逐项手填：超级管理员登录后在这一页上直接添加、编辑月份，存在 `options` 表的
+  `expense_ledger.months` 里，不用发版。首屏副标题里的「每一项成本」链到支出公开。
+  「关于」栏目的内容是 `options` 表里的 `About`（HTML、Markdown 或一个网址都行），后台
+  「系统设置 → 关于」可以直接改；仓库副本是 `deploy/about-page-content.html`。
+  `HeaderNavModules.about` 现在决定这一页有没有「关于」栏目，导航里不再有单独的「关于」入口。
 - **首屏写的是「成本透明，代码开源」，上线前这两句都得先成立。** 成本页要先填上真实的明细；
   代码的说法以实际公开的仓库为准，页面上链到的是网关的仓库。
 - **`github.com` 的 git-over-HTTPS 在这个网络里是断的**（`info/refs` 直接超时），

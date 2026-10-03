@@ -32,9 +32,27 @@ const PERIODS: { id: RankingPeriod; labelKey: string }[] = [
 const VIEWS: { id: RankingsView; labelKey: string }[] = [
   { id: 'models', labelKey: 'Model rankings' },
   { id: 'expenses', labelKey: 'Expenses' },
+  { id: 'about', labelKey: 'About' },
 ]
 
+const HEADINGS: Record<RankingsView, { title: string; description: string }> =
+  {
+    models: {
+      title: 'Rankings',
+      description:
+        'Discover the most-used models and rising vendors on the platform, updated from live usage data.',
+    },
+    expenses: {
+      title: 'Expenses',
+      description:
+        'What running this site costs each month, published item by item.',
+    },
+    about: { title: 'About', description: '' },
+  }
+
 type RankingsHeroProps = {
+  /** The sections to offer; one that is switched off is left out. */
+  views: RankingsView[]
   view: RankingsView
   onViewChange: (view: RankingsView) => void
   period: RankingPeriod
@@ -43,8 +61,8 @@ type RankingsHeroProps = {
 
 /**
  * Hero strip for the rankings page. Intentionally minimal — the switch
- * between the model rankings and the site's expenses, a title with its
- * subtitle, and the period tabs of the rankings.
+ * between the model rankings, the site's expenses and the About content, a
+ * title with its subtitle, and the period tabs of the rankings.
  */
 export function RankingsHero(props: RankingsHeroProps) {
   const { t } = useTranslation()
@@ -56,7 +74,7 @@ export function RankingsHero(props: RankingsHeroProps) {
         aria-label={t('Section')}
         className='bg-muted inline-flex rounded-lg p-1'
       >
-        {VIEWS.map((v) => {
+        {VIEWS.filter((v) => props.views.includes(v.id)).map((v) => {
           const isActive = props.view === v.id
           return (
             <button
@@ -80,17 +98,13 @@ export function RankingsHero(props: RankingsHeroProps) {
 
       <div className='space-y-2'>
         <h1 className='text-[clamp(1.75rem,4vw,2.5rem)] leading-[1.15] font-bold tracking-tight'>
-          {props.view === 'expenses' ? t('Expenses') : t('Rankings')}
+          {t(HEADINGS[props.view].title)}
         </h1>
-        <p className='text-muted-foreground/80 max-w-2xl text-sm'>
-          {props.view === 'expenses'
-            ? t(
-                'What running this site costs each month, published item by item.'
-              )
-            : t(
-                'Discover the most-used models and rising vendors on the platform, updated from live usage data.'
-              )}
-        </p>
+        {HEADINGS[props.view].description && (
+          <p className='text-muted-foreground/80 max-w-2xl text-sm'>
+            {t(HEADINGS[props.view].description)}
+          </p>
+        )}
       </div>
 
       {props.view === 'models' && (

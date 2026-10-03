@@ -171,7 +171,7 @@ export function HeaderNavigationSection({
     {
       key: 'about',
       title: t('About'),
-      description: t('Static page describing the platform.'),
+      description: t('About section of the Transparency page.'),
     },
   ]
 
@@ -199,8 +199,10 @@ export function HeaderNavigationSection({
       enabledKey: 'rankingsEnabled',
       requireAuthKey: 'rankingsRequireAuth',
       requireAuthDependsOn: 'rankingsEnabled',
-      title: t('Rankings'),
-      description: t('Public rankings page based on live usage data.'),
+      title: t('Transparency'),
+      description: t(
+        'Public page with model rankings, the site\'s expenses and the About section.'
+      ),
       requireAuthTitle: t('Require login to view rankings'),
       requireAuthDescription: t(
         'Visitors must authenticate before accessing the rankings page.'
