@@ -20,7 +20,7 @@ import { useTranslation } from 'react-i18next'
 
 import { cn } from '@/lib/utils'
 
-import type { RankingPeriod } from '../types'
+import type { RankingPeriod, RankingsView } from '../types'
 
 const PERIODS: { id: RankingPeriod; labelKey: string }[] = [
   { id: 'today', labelKey: 'Today' },
@@ -29,65 +29,106 @@ const PERIODS: { id: RankingPeriod; labelKey: string }[] = [
   { id: 'year', labelKey: 'Year' },
 ]
 
+const VIEWS: { id: RankingsView; labelKey: string }[] = [
+  { id: 'models', labelKey: 'Model rankings' },
+  { id: 'expenses', labelKey: 'Expenses' },
+]
+
 type RankingsHeroProps = {
+  view: RankingsView
+  onViewChange: (view: RankingsView) => void
   period: RankingPeriod
   onPeriodChange: (period: RankingPeriod) => void
 }
 
 /**
- * Hero strip for the rankings page. Intentionally minimal — title +
- * subtitle + period tabs only.
+ * Hero strip for the rankings page. Intentionally minimal — the switch
+ * between the model rankings and the site's expenses, a title with its
+ * subtitle, and the period tabs of the rankings.
  */
 export function RankingsHero(props: RankingsHeroProps) {
   const { t } = useTranslation()
 
   return (
     <section className='space-y-5'>
-      <div className='space-y-2'>
-        <h1 className='text-[clamp(1.75rem,4vw,2.5rem)] leading-[1.15] font-bold tracking-tight'>
-          {t('Rankings')}
-        </h1>
-        <p className='text-muted-foreground/80 max-w-2xl text-sm'>
-          {t(
-            'Discover the most-used models and rising vendors on the platform, updated from live usage data.'
-          )}
-        </p>
-      </div>
-
-      {/* Underline tabs for period — clean and unobtrusive. */}
       <div
         role='tablist'
-        aria-label={t('Period')}
-        className='border-border/60 flex items-center border-b'
+        aria-label={t('Section')}
+        className='bg-muted inline-flex rounded-lg p-1'
       >
-        {PERIODS.map((p) => {
-          const isActive = props.period === p.id
+        {VIEWS.map((v) => {
+          const isActive = props.view === v.id
           return (
             <button
-              key={p.id}
+              key={v.id}
               role='tab'
               type='button'
               aria-selected={isActive}
-              onClick={() => props.onPeriodChange(p.id)}
+              onClick={() => props.onViewChange(v.id)}
               className={cn(
-                'focus-visible:ring-ring/40 relative -mb-px rounded-sm px-3 py-2 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none',
+                'focus-visible:ring-ring/40 rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none',
                 isActive
-                  ? 'text-foreground'
+                  ? 'bg-background text-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground'
               )}
             >
-              {t(p.labelKey)}
-              <span
-                aria-hidden
-                className={cn(
-                  'bg-foreground absolute inset-x-3 -bottom-px h-[2px] rounded-full transition-opacity',
-                  isActive ? 'opacity-100' : 'opacity-0'
-                )}
-              />
+              {t(v.labelKey)}
             </button>
           )
         })}
       </div>
+
+      <div className='space-y-2'>
+        <h1 className='text-[clamp(1.75rem,4vw,2.5rem)] leading-[1.15] font-bold tracking-tight'>
+          {props.view === 'expenses' ? t('Expenses') : t('Rankings')}
+        </h1>
+        <p className='text-muted-foreground/80 max-w-2xl text-sm'>
+          {props.view === 'expenses'
+            ? t(
+                'What running this site costs each month, published item by item.'
+              )
+            : t(
+                'Discover the most-used models and rising vendors on the platform, updated from live usage data.'
+              )}
+        </p>
+      </div>
+
+      {props.view === 'models' && (
+        // Underline tabs for period — clean and unobtrusive.
+        <div
+          role='tablist'
+          aria-label={t('Period')}
+          className='border-border/60 flex items-center border-b'
+        >
+          {PERIODS.map((p) => {
+            const isActive = props.period === p.id
+            return (
+              <button
+                key={p.id}
+                role='tab'
+                type='button'
+                aria-selected={isActive}
+                onClick={() => props.onPeriodChange(p.id)}
+                className={cn(
+                  'focus-visible:ring-ring/40 relative -mb-px rounded-sm px-3 py-2 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none',
+                  isActive
+                    ? 'text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                {t(p.labelKey)}
+                <span
+                  aria-hidden
+                  className={cn(
+                    'bg-foreground absolute inset-x-3 -bottom-px h-[2px] rounded-full transition-opacity',
+                    isActive ? 'opacity-100' : 'opacity-0'
+                  )}
+                />
+              </button>
+            )
+          })}
+        </div>
+      )}
     </section>
   )
 }

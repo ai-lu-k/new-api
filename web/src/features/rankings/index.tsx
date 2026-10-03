@@ -24,13 +24,14 @@ import { PageTransition } from '@/components/page-transition'
 import { Skeleton } from '@/components/ui/skeleton'
 
 import {
+  ExpenseLedger,
   MarketShareSection,
   ModelsSection,
   PulseSection,
   RankingsHero,
 } from './components'
 import { useRankings } from './hooks/use-rankings'
-import type { RankingPeriod } from './types'
+import type { RankingPeriod, RankingsView } from './types'
 
 const VALID_PERIODS: RankingPeriod[] = ['today', 'week', 'month', 'year']
 
@@ -45,6 +46,8 @@ export function Rankings() {
     ? (search.period as RankingPeriod)
     : 'week'
 
+  const view: RankingsView = search.section === 'expenses' ? 'expenses' : 'models'
+
   const rankingsQuery = useRankings(period)
   const snapshot = rankingsQuery.data?.data
 
@@ -55,14 +58,30 @@ export function Rankings() {
     })
   }
 
+  const handleViewChange = (next: RankingsView) => {
+    navigate({
+      to: '/rankings',
+      search: (prev) => ({
+        ...prev,
+        section: next === 'expenses' ? next : undefined,
+      }),
+    })
+  }
+
   return (
     <PublicLayout showMainContainer={false}>
       <div className='relative'>
         <PageTransition className='relative mx-auto w-full max-w-[1280px] space-y-8 px-3 pt-16 pb-10 sm:px-6 sm:pt-20 sm:pb-12 xl:px-8'>
-          <RankingsHero period={period} onPeriodChange={handlePeriodChange} />
+          <RankingsHero
+            view={view}
+            onViewChange={handleViewChange}
+            period={period}
+            onPeriodChange={handlePeriodChange}
+          />
 
-          {rankingsQuery.isLoading && <RankingsLoading />}
-          {!rankingsQuery.isLoading && !snapshot && (
+          {view === 'expenses' && <ExpenseLedger />}
+          {view === 'models' && rankingsQuery.isLoading && <RankingsLoading />}
+          {view === 'models' && !rankingsQuery.isLoading && !snapshot && (
             <RankingsError
               message={
                 rankingsQuery.error instanceof Error
@@ -71,7 +90,7 @@ export function Rankings() {
               }
             />
           )}
-          {!rankingsQuery.isLoading && snapshot && (
+          {view === 'models' && !rankingsQuery.isLoading && snapshot && (
             <>
               <ModelsSection
                 history={snapshot.models_history}

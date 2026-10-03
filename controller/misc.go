@@ -193,6 +193,15 @@ func GetAbout(c *gin.Context) {
 	serveRevalidatedJSON(c, about)
 }
 
+// GetExpenseLedger publishes the expenses the administrator entered, by month.
+func GetExpenseLedger(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    gin.H{"months": operation_setting.GetExpenseLedgerMonths()},
+	})
+}
+
 func GetUserAgreement(c *gin.Context) {
 	serveRevalidatedJSON(c, system_setting.GetLegalSettings().UserAgreement)
 }

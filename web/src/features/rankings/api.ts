@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 
-import type { RankingPeriod, RankingsSnapshot } from './types'
+import type { ExpenseMonth, RankingPeriod, RankingsSnapshot } from './types'
 
 type RankingsResponse = {
   success: boolean
@@ -30,5 +30,29 @@ export async function getRankings(
   period: RankingPeriod
 ): Promise<RankingsResponse> {
   const res = await api.get('/api/rankings', { params: { period } })
+  return res.data
+}
+
+type ExpenseLedgerResponse = {
+  success: boolean
+  message?: string
+  data?: { months: ExpenseMonth[] }
+}
+
+/** The expenses the operator has published, newest month first. */
+export async function getExpenseLedger(): Promise<ExpenseLedgerResponse> {
+  const res = await api.get('/api/expense_ledger')
+  return res.data
+}
+
+/** Replace the published expenses. Only the root user may do this. */
+export async function saveExpenseLedger(months: ExpenseMonth[]): Promise<{
+  success: boolean
+  message?: string
+}> {
+  const res = await api.put('/api/option/', {
+    key: 'expense_ledger.months',
+    value: JSON.stringify(months),
+  })
   return res.data
 }

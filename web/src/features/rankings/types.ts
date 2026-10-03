@@ -136,3 +136,18 @@ export type RankingsSnapshot = {
   /** 100%-stacked area history of token share by vendor over the period. */
   vendor_share_history: VendorShareSeries
 }
+
+export type RankingsView = 'models' | 'expenses'
+
+/** One line of what the site paid in a month. */
+export type ExpenseItem = {
+  name: string
+  amount: number
+  note?: string
+}
+
+/** The expense lines of one calendar month, "2026-10". */
+export type ExpenseMonth = {
+  month: string
+  items: ExpenseItem[]
+}
