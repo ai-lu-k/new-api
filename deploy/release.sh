@@ -43,8 +43,8 @@ set_tag "$TAG"
 cd "$COMPOSE_DIR"
 docker compose up -d --force-recreate "$SERVICE"
 
-# 测试容器和生产共用一张网络。它在那张网络上要是也叫 `new-api`，审计入口就会把
-# 线上流量分给它，所以宁可把它停掉，也不让它顶着这个名字跑。
+# 测试容器和生产共用一张网络。它在那张网络上要是也叫 `new-api`，按这个名字找网关的
+# 入口就会把线上流量分给它，所以宁可把它停掉，也不让它顶着这个名字跑。
 NET_NAMES=$(docker inspect "$SERVICE" --format \
   '{{range .NetworkSettings.Networks}}{{range .Aliases}}{{println .}}{{end}}{{range .DNSNames}}{{println .}}{{end}}{{end}}' \
   2>/dev/null || true)

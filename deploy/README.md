@@ -106,16 +106,14 @@ git push server tavern
 
 ## 五、不在仓库里的依赖
 
-应用代码之外，线上还有几处服务器配置是 new-api 跑起来必需的。完整 vhost 备份在
-`deploy/nginx/ai.lu-k.cn.conf`，改 nginx 时请同步更新这份备份。
+应用代码之外，线上还有几处服务器配置是 new-api 跑起来必需的（vhost 配置不放在仓库里）。
 
 | 位置 | 作用 |
 |---|---|
 | `location ^~ /` → `127.0.0.1:3000` | SPA 与全部管理接口 |
 | `location ^~ /img/` → `/www/wwwroot/luk-brand` | 「快速开始」页的教程截图 `/img/dsh-custom-provider.png` |
-| `location ~ ^/guide/?$` | 教程页的 SEO 入口 |
 | `location ^~ /tavern`、`^~ /tieba` | 已下线的酒馆页面与旧无鉴权代理，一律返回 410 |
-| `location ^~ /v1/` → `llm_evidence_ingress` | 调用入口（经审计链路） |
+| `location ^~ /v1/` | 调用入口，流式，不缓冲 |
 
 改完 nginx 记得 `nginx -t` 再 reload。
 
@@ -178,11 +176,11 @@ staging 的 compose 在 `deploy/staging/docker-compose.yml`。三个注意点：
 
 - **服务名不能和生产一样叫 `new-api`。** 两个环境共用 `new-api_new-api-net` 这张
   网络，compose 会把服务名注册成网络别名；同名时 `new-api` 同时解析到两个容器，
-  而 `/v1/` 的审计入口正是用 `http://new-api:3000` 找上游的 —— 线上请求就会有一部分
+  而 `/v1/` 的入口是按 `http://new-api:3000` 这个名字找网关的 —— 线上请求就会有一部分
   落到测试环境，用测试库鉴权、计费、记日志（新建的令牌在那边不存在，直接 401）。
   2026-09-29 到 10-02 有 1955 个线上请求是这样被测试环境处理的。现在测试服务叫
   `new-api-staging`，`release.sh` 起容器后还会再查一遍，发现重名就把测试容器停掉。
-  核对方法：`docker exec llm-evidence-audit-1 getent hosts new-api` 只应返回一个地址。
+  核对方法：在那张网络上的任意容器里 `getent hosts new-api`，只应返回一个地址。
 - 测试环境**不能设 `SESSION_COOKIE_TRUSTED_URL`**：new-api 认为它与
   `SESSION_COOKIE_SECURE=false` 互斥，会直接拒绝启动（日志反复打印
   `SESSION_COOKIE_TRUSTED_URL requires SESSION_COOKIE_SECURE=true`）。隧道走 http，
@@ -393,7 +391,7 @@ providers 文档）、`hidden`（不是对话模型的，比如生图和 `jev`�
 - 页面标题前后端各有一份规则（`service/sitepage` 与 `web/src/lib/page-title.ts`），改一边要改另一边。
 - 不要在 `robots.txt` 里屏蔽 `/api/`，也不要再用 nginx 的静态文件顶替这两个地址。
 
-**上生产时 nginx 要跟着改**（现在的 `deploy/nginx/ai.lu-k.cn.conf` 是线上现状的备份，新版本上线那一刻才改）：
+**上生产时 nginx 要跟着改**（2026-10-03 上线时已按下面几步改完）：
 
 1. 删掉 `location = /robots.txt`、`= /sitemap.xml`、`= /seo.css`、`= /luk-seo.js` 四段。不删的话，nginx 上那份
    带 `Disallow: /api/` 的旧 robots.txt 会盖住应用生成的。

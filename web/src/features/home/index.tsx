@@ -20,7 +20,10 @@ import { useCallback, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { PublicLayout } from '@/components/layout'
-import { Footer } from '@/components/layout/components/footer'
+import {
+  Footer,
+  ProjectAttribution,
+} from '@/components/layout/components/footer'
 import { RichContent } from '@/components/rich-content'
 import { useTheme } from '@/context/theme-provider'
 import { QuickStart } from '@/features/guide/components/quick-start'
@@ -106,6 +109,12 @@ export function Home() {
           />
           {/* The stored HTML is the page's heading; the ways to start follow it. */}
           <QuickStart />
+          {/* A stored home page replaces the default one and its footer, so
+              the project's attribution notice and the link to the original
+              project are kept here, at the foot of the page. */}
+          <p className='px-4 pb-10 text-center text-xs'>
+            <ProjectAttribution currentYear={new Date().getFullYear()} inline />
+          </p>
         </PublicLayout>
       )
     }

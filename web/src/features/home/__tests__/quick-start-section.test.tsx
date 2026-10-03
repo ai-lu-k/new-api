@@ -80,3 +80,20 @@ it('follows the stored home page heading with the ways to start', async () => {
     heading.compareDocumentPosition(options) & Node.DOCUMENT_POSITION_FOLLOWING
   ).toBeTruthy()
 })
+
+it('keeps the project attribution and the link to the original project at the foot of a stored home page', async () => {
+  storedHome = '<div><h1>One gateway</h1></div>'
+  await renderHome()
+
+  const options = await screen.findByRole('navigation', { name: 'Quick Start' })
+  const original = screen.getByRole('link', { name: 'New API' })
+  expect(original).toHaveAttribute(
+    'href',
+    'https://github.com/QuantumNous/new-api'
+  )
+  // The notice follows the link, in the words the project's own footer uses.
+  expect(original.parentElement?.textContent).toMatch(/^© \d{4} New API\. \S/)
+  expect(
+    options.compareDocumentPosition(original) & Node.DOCUMENT_POSITION_FOLLOWING
+  ).toBeTruthy()
+})
