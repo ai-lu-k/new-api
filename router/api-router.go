@@ -337,6 +337,11 @@ func SetApiRouter(router *gin.Engine) {
 			systemTaskRoute.GET("/current", controller.GetCurrentSystemTask)
 			systemTaskRoute.GET("/:task_id", controller.GetSystemTask)
 		}
+		financeRoute := apiRouter.Group("/finance")
+		financeRoute.Use(middleware.RootAuth())
+		{
+			financeRoute.GET("/summary", controller.GetFinanceSummary)
+		}
 		systemInfoRoute := apiRouter.Group("/system-info")
 		systemInfoRoute.Use(middleware.RootAuth())
 		{

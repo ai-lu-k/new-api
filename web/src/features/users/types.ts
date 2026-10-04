@@ -138,11 +138,27 @@ export type ManageUserAction =
 
 export type QuotaAdjustMode = 'add' | 'subtract' | 'override'
 
+/**
+ * Why quota is added by hand. A paid reason means money was received outside
+ * the checkout, so the addition counts as a top-up; the others are gifts.
+ */
+export type QuotaAddReason =
+  | 'offline_payment'
+  | 'gift'
+  | 'compensation'
+  | 'test'
+  | 'other'
+
 export interface ManageUserQuotaPayload {
   id: number
   action: 'add_quota'
   mode: QuotaAdjustMode
   value: number
+  /** Required when adding. */
+  reason?: QuotaAddReason
+  reason_note?: string
+  /** Money received, for a paid reason. */
+  paid_amount?: number
 }
 
 // ============================================================================

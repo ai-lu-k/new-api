@@ -1047,6 +1047,11 @@ type ManageRequest struct {
 	Action string `json:"action"`
 	Value  int    `json:"value"`
 	Mode   string `json:"mode"`
+	// Reason, ReasonNote and PaidAmount describe a manual quota addition:
+	// why it was made and, for a paid reason, the money received for it.
+	Reason     string  `json:"reason"`
+	ReasonNote string  `json:"reason_note"`
+	PaidAmount float64 `json:"paid_amount"`
 }
 
 // ManageUser Only admin user can do this

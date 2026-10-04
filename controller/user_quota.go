@@ -2,13 +2,21 @@ package controller
 
 import (
 	"errors"
+	"math"
 	"net/http"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+)
+
+const (
+	maxQuotaReasonNoteLen = 200
+	maxQuotaPaidAmount    = 1e9
 )
 
 func manageUserQuota(c *gin.Context, req ManageRequest) {
@@ -20,7 +28,7 @@ func manageUserQuota(c *gin.Context, req ManageRequest) {
 	}
 	switch req.Mode {
 	case "add":
-		action = "user.quota_add"
+		action = model.AuditActionUserQuotaAdd
 	case "subtract":
 		action = "user.quota_subtract"
 	case "override":
@@ -43,6 +51,32 @@ func manageUserQuota(c *gin.Context, req ManageRequest) {
 			}, c)
 		markAuditLogged(c)
 	}()
+
+	// An addition says why it is made, so that money received outside the
+	// checkout can be told apart from gifts.
+	if req.Mode == "add" {
+		note := strings.TrimSpace(req.ReasonNote)
+		switch {
+		case !model.IsQuotaAddReason(req.Reason),
+			utf8.RuneCountInString(note) > maxQuotaReasonNoteLen,
+			req.Reason == model.QuotaAddReasonOther && note == "":
+			params["failure_reason"] = "reason_required"
+			common.ApiErrorI18n(c, i18n.MsgUserQuotaReasonRequired)
+			return
+		case model.IsPaidQuotaAddReason(req.Reason) &&
+			(math.IsNaN(req.PaidAmount) || req.PaidAmount <= 0 || req.PaidAmount > maxQuotaPaidAmount):
+			params["failure_reason"] = "paid_amount_required"
+			common.ApiErrorI18n(c, i18n.MsgUserQuotaPaidAmountRequired)
+			return
+		}
+		params["reason"] = req.Reason
+		if note != "" {
+			params["reason_note"] = note
+		}
+		if model.IsPaidQuotaAddReason(req.Reason) {
+			params["paid_amount"] = req.PaidAmount
+		}
+	}
 
 	adjustment, err := model.AdjustUserQuota(req.Id, c.GetInt("role"), req.Mode, req.Value)
 	if err != nil {

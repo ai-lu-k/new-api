@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import {
   Activity,
   Box,
+  ChartColumn,
   ClipboardList,
   CreditCard,
   FileText,
@@ -180,6 +181,12 @@ export function useSidebarData(): SidebarData {
             title: t('Expense disclosure'),
             url: '/expenses',
             icon: ReceiptText,
+            requiredRole: ROLE.SUPER_ADMIN,
+          },
+          {
+            title: t('Income and expenses'),
+            url: '/finance',
+            icon: ChartColumn,
             requiredRole: ROLE.SUPER_ADMIN,
           },
         ],

@@ -221,7 +221,7 @@ func TestManageUserQuotaRecordsTopupAndAudit(t *testing.T) {
 			require.NoError(t, db.Create(&user).Error)
 			createQuotaTestOperator(t, db, common.RoleRootUser)
 
-			recorder := performManageUserRequest(t, fmt.Sprintf(`{"id":%d,"action":"add_quota","mode":%q,"value":%d}`, user.Id, tc.mode, tc.value))
+			recorder := performManageUserRequest(t, fmt.Sprintf(`{"id":%d,"action":"add_quota","mode":%q,"value":%d,"reason":"gift"}`, user.Id, tc.mode, tc.value))
 			assert.Equal(t, http.StatusOK, recorder.Code)
 			require.Contains(t, recorder.Body.String(), `"success":true`)
 			require.NoError(t, db.First(&user, user.Id).Error)
@@ -253,6 +253,9 @@ func TestManageUserQuotaRecordsTopupAndAudit(t *testing.T) {
 			expectedParams := model.AuditFields{"target_user_id": user.Id, "target_username": user.Username, "mode": tc.mode, "requested_quota": tc.value, "from": 1000, "to": tc.wantQuota}
 			if tc.mode != "override" {
 				expectedParams["quota"] = tc.value
+			}
+			if tc.mode == "add" {
+				expectedParams["reason"] = "gift"
 			}
 			expected, err := common.Marshal(expectedParams)
 			require.NoError(t, err)
@@ -304,7 +307,7 @@ func TestManageUserQuotaFailuresDoNotRecordTopup(t *testing.T) {
 					}
 				}))
 			}
-			recorder := performManageUserRequest(t, fmt.Sprintf(`{"id":%d,"action":"add_quota","mode":%q,"value":%d}`, user.Id, tc.mode, tc.value))
+			recorder := performManageUserRequest(t, fmt.Sprintf(`{"id":%d,"action":"add_quota","mode":%q,"value":%d,"reason":"gift"}`, user.Id, tc.mode, tc.value))
 			assert.Contains(t, recorder.Body.String(), `"success":false`)
 			require.NoError(t, db.First(&user, user.Id).Error)
 			assert.Equal(t, 1000, user.Quota)
@@ -344,7 +347,7 @@ func TestManageUserQuotaLogFailureKeepsSuccessfulAdjustment(t *testing.T) {
 					tx.AddError(errors.New("quota log unavailable"))
 				}
 			}))
-			recorder := performManageUserRequest(t, fmt.Sprintf(`{"id":%d,"action":"add_quota","mode":"add","value":500}`, user.Id))
+			recorder := performManageUserRequest(t, fmt.Sprintf(`{"id":%d,"action":"add_quota","mode":"add","value":500,"reason":"gift"}`, user.Id))
 			assert.Contains(t, recorder.Body.String(), `"success":true`)
 			require.NoError(t, db.First(&user, user.Id).Error)
 			assert.Equal(t, 1500, user.Quota)
@@ -398,7 +401,7 @@ func TestManageUserQuotaTargetsAndWalletBounds(t *testing.T) {
 			}
 			recorder := httptest.NewRecorder()
 			c, _ := gin.CreateTestContext(recorder)
-			c.Request = httptest.NewRequest(http.MethodPost, "/api/user/manage", strings.NewReader(fmt.Sprintf(`{"id":%d,"action":"add_quota","mode":%q,"value":%d}`, tc.targetID, tc.mode, tc.value)))
+			c.Request = httptest.NewRequest(http.MethodPost, "/api/user/manage", strings.NewReader(fmt.Sprintf(`{"id":%d,"action":"add_quota","mode":%q,"value":%d,"reason":"gift"}`, tc.targetID, tc.mode, tc.value)))
 			role := tc.operatorRole
 			if role == 0 {
 				role = common.RoleRootUser
@@ -418,7 +421,11 @@ func TestManageUserQuotaTargetsAndWalletBounds(t *testing.T) {
 			assert.False(t, audits[0].Success)
 			params, err := common.Marshal(audits[0].Other.Op.Params)
 			require.NoError(t, err)
-			expected, err := common.Marshal(model.AuditFields{"target_user_id": tc.targetID, "mode": tc.mode, "requested_quota": tc.value, "failure_reason": tc.reason})
+			expectedParams := model.AuditFields{"target_user_id": tc.targetID, "mode": tc.mode, "requested_quota": tc.value, "failure_reason": tc.reason}
+			if tc.mode == "add" {
+				expectedParams["reason"] = "gift"
+			}
+			expected, err := common.Marshal(expectedParams)
 			require.NoError(t, err)
 			assert.JSONEq(t, string(expected), string(params))
 			assert.NotContains(t, audits[0].Content, user.Username)
@@ -441,7 +448,7 @@ func TestManageUserQuotaMiddlewareKeepsOneOperationPerRequest(t *testing.T) {
 		body, action string
 		success      bool
 	}{
-		{`{"id":9999,"action":"add_quota","mode":"add","value":100}`, "user.quota_add", true},
+		{`{"id":9999,"action":"add_quota","mode":"add","value":100,"reason":"gift"}`, "user.quota_add", true},
 		{`{"id":9999,"action":"add_quota","mode":"subtract","value":0}`, "user.quota_subtract", false},
 		{`{"id":9999,"action":"add_quota","mode":"invalid","value":1}`, "generic", false},
 		{`{"id":`, "generic", false},
@@ -589,7 +596,7 @@ func TestManageUserQuotaCacheUsesCommittedIntegerDifference(t *testing.T) {
 					}
 				}))
 			}
-			recorder := performManageUserRequest(t, fmt.Sprintf(`{"id":%d,"action":"add_quota","mode":%q,"value":%d}`, user.Id, tc.mode, tc.value))
+			recorder := performManageUserRequest(t, fmt.Sprintf(`{"id":%d,"action":"add_quota","mode":%q,"value":%d,"reason":"gift"}`, user.Id, tc.mode, tc.value))
 			assert.Contains(t, recorder.Body.String(), fmt.Sprintf(`"success":%t`, !tc.failUpdate))
 			require.NoError(t, db.First(&user, user.Id).Error)
 			assert.Equal(t, tc.after, user.Quota)
@@ -605,4 +612,80 @@ func TestManageUserQuotaCacheUsesCommittedIntegerDifference(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestManageUserQuotaAddNeedsReason(t *testing.T) {
+	for name, extra := range map[string]string{
+		"no reason":               ``,
+		"unknown reason":          `,"reason":"because"`,
+		"other without a note":    `,"reason":"other","reason_note":"  "`,
+		"paid without an amount":  `,"reason":"offline_payment"`,
+		"paid with a zero amount": `,"reason":"offline_payment","paid_amount":0`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			db := setupManageUserTestDB(t)
+			createQuotaTestOperator(t, db, common.RoleRootUser)
+			user := model.User{Username: "quota-owner", Role: common.RoleCommonUser, Quota: 1000, AffCode: "quota-owner-aff"}
+			require.NoError(t, db.Create(&user).Error)
+
+			recorder := performManageUserRequest(t, fmt.Sprintf(`{"id":%d,"action":"add_quota","mode":"add","value":500%s}`, user.Id, extra))
+			assert.Contains(t, recorder.Body.String(), `"success":false`)
+			require.NoError(t, db.First(&user, user.Id).Error)
+			assert.Equal(t, 1000, user.Quota)
+		})
+	}
+}
+
+func TestFinanceSummaryTellsTopUpsFromGifts(t *testing.T) {
+	db := setupManageUserTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.TopUp{}, &model.Checkin{}, &model.Redemption{}))
+	createQuotaTestOperator(t, db, common.RoleRootUser)
+	user := model.User{Username: "quota-owner", Role: common.RoleCommonUser, Quota: 0, AffCode: "quota-owner-aff"}
+	require.NoError(t, db.Create(&user).Error)
+	unit := int(common.QuotaPerUnit)
+
+	// Three manual additions: one paid for outside the checkout, two given away.
+	for _, body := range []string{
+		fmt.Sprintf(`{"id":%d,"action":"add_quota","mode":"add","value":%d,"reason":"offline_payment","paid_amount":18.5,"reason_note":"bank transfer"}`, user.Id, 20*unit),
+		fmt.Sprintf(`{"id":%d,"action":"add_quota","mode":"add","value":%d,"reason":"compensation"}`, user.Id, 3*unit),
+		fmt.Sprintf(`{"id":%d,"action":"add_quota","mode":"add","value":%d,"reason":"other","reason_note":"event prize"}`, user.Id, 2*unit),
+	} {
+		require.Contains(t, performManageUserRequest(t, body).Body.String(), `"success":true`)
+	}
+
+	now := time.Now()
+	lastMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).AddDate(0, -1, 0).Add(time.Hour).Unix()
+	require.NoError(t, db.Create(&[]model.TopUp{
+		{UserId: user.Id, Money: 30, TradeNo: "paid-now", PaymentMethod: "alipay", Status: common.TopUpStatusSuccess, CompleteTime: now.Unix()},
+		{UserId: user.Id, Money: 7.25, TradeNo: "paid-last-month", PaymentMethod: "wxpay", Status: common.TopUpStatusSuccess, CompleteTime: lastMonth},
+		{UserId: user.Id, Money: 99, TradeNo: "never-paid", PaymentMethod: "alipay", Status: common.TopUpStatusPending, CompleteTime: now.Unix()},
+		{UserId: user.Id, Money: 50, TradeNo: "from-balance", PaymentMethod: model.PaymentMethodBalance, Status: common.TopUpStatusSuccess, CompleteTime: now.Unix()},
+	}).Error)
+	require.NoError(t, db.Create(&model.Checkin{UserId: user.Id, CheckinDate: now.Format("2006-01-02"), QuotaAwarded: unit / 2, CreatedAt: now.Unix()}).Error)
+	require.NoError(t, db.Create(&model.Redemption{Key: "0123456789abcdef0123456789abcdef", Status: common.RedemptionCodeStatusUsed, Quota: 4 * unit, RedeemedTime: now.Unix()}).Error)
+	require.NoError(t, db.Create(&model.Redemption{Key: "fedcba9876543210fedcba9876543210", Status: common.RedemptionCodeStatusEnabled, Quota: 9 * unit}).Error)
+
+	months, err := buildFinanceSummary(now, 2)
+	require.NoError(t, err)
+	require.Len(t, months, 2)
+	current, previous := months[0], months[1]
+	assert.Equal(t, now.Format("2006-01"), current.Month)
+	assert.Equal(t, 30.0, current.OnlineTopUp)
+	assert.Equal(t, 18.5, current.ManualTopUp)
+	assert.Equal(t, 5.0, current.GiftManual)
+	assert.Equal(t, 0.5, current.GiftCheckin)
+	assert.Equal(t, 4.0, current.GiftRedemption)
+	assert.Equal(t, 7.25, previous.OnlineTopUp)
+	assert.Zero(t, previous.ManualTopUp)
+	assert.Zero(t, previous.GiftManual)
+
+	// The person receiving the quota sees why it was added.
+	logs, _, err := model.GetUserLogs(user.Id, model.LogTypeTopup, 0, 0, "", "", 0, 20, "", "", "")
+	require.NoError(t, err)
+	require.Len(t, logs, 3)
+	found := false
+	for _, log := range logs {
+		found = found || strings.Contains(log.Other, `"reason":"offline_payment"`)
+	}
+	assert.True(t, found)
 }

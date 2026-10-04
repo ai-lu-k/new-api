@@ -30,7 +30,15 @@ import { handleServerError } from '@/lib/handle-server-error'
 import { cn } from '@/lib/utils'
 
 import { adjustUserQuota } from '../api'
-import type { QuotaAdjustMode } from '../types'
+import type { QuotaAddReason, QuotaAdjustMode } from '../types'
+
+const ADD_REASONS: { id: QuotaAddReason; labelKey: string }[] = [
+  { id: 'offline_payment', labelKey: 'Paid offline' },
+  { id: 'gift', labelKey: 'Gift' },
+  { id: 'compensation', labelKey: 'Compensation' },
+  { id: 'test', labelKey: 'Test' },
+  { id: 'other', labelKey: 'Other' },
+]
 
 interface UserQuotaDialogProps {
   open: boolean
@@ -44,6 +52,10 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
   const { t } = useTranslation()
   const [mode, setMode] = useState<QuotaAdjustMode>('add')
   const [amount, setAmount] = useState('')
+  const [reason, setReason] = useState<QuotaAddReason | null>(null)
+  const [reasonNote, setReasonNote] = useState('')
+  // Money received for a paid addition; empty means "the same as the quota".
+  const [paidAmount, setPaidAmount] = useState('')
   const [loading, setLoading] = useState(false)
 
   const { meta: currencyMeta } = getCurrencyDisplay()
@@ -70,9 +82,34 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
     }
   }
 
+  const resetForm = () => {
+    setAmount('')
+    setMode('add')
+    setReason(null)
+    setReasonNote('')
+    setPaidAmount('')
+  }
+
   const handleConfirm = async () => {
     if (!amount && mode !== 'override') return
     if (quotaValue <= 0 && mode !== 'override') return
+
+    const paid = reason === 'offline_payment'
+    const received = paidAmount.trim() === '' ? amountValue : Number(paidAmount)
+    if (mode === 'add') {
+      if (!reason) {
+        toast.error(t('Choose why this quota is being added.'))
+        return
+      }
+      if (reason === 'other' && !reasonNote.trim()) {
+        toast.error(t('Describe the reason in the note.'))
+        return
+      }
+      if (paid && !(Number.isFinite(received) && received > 0)) {
+        toast.error(t('Enter the amount received.'))
+        return
+      }
+    }
 
     setLoading(true)
     try {
@@ -83,11 +120,17 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
         action: 'add_quota',
         mode,
         value: mode === 'override' ? value : Math.abs(value),
+        ...(mode === 'add' && reason
+          ? {
+              reason,
+              ...(reasonNote.trim() ? { reason_note: reasonNote.trim() } : {}),
+              ...(paid ? { paid_amount: received } : {}),
+            }
+          : {}),
       })
       if (result.success) {
         toast.success(t('Quota adjusted successfully'))
-        setAmount('')
-        setMode('add')
+        resetForm()
         props.onOpenChange(false)
         props.onSuccess()
       } else {
@@ -101,8 +144,7 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
   }
 
   const handleCancel = () => {
-    setAmount('')
-    setMode('add')
+    resetForm()
     props.onOpenChange(false)
   }
 
@@ -174,6 +216,78 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
             }}
           />
         </div>
+
+        {mode === 'add' && (
+          <>
+            <div className='space-y-2'>
+              <Label>{t('Reason')}</Label>
+              <div
+                role='radiogroup'
+                aria-label={t('Reason')}
+                className='flex flex-wrap gap-1'
+              >
+                {ADD_REASONS.map((r) => (
+                  <Button
+                    key={r.id}
+                    type='button'
+                    role='radio'
+                    aria-checked={reason === r.id}
+                    variant='outline'
+                    size='sm'
+                    className={cn(
+                      reason === r.id &&
+                        'bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground'
+                    )}
+                    onClick={() => setReason(r.id)}
+                  >
+                    {t(r.labelKey)}
+                  </Button>
+                ))}
+              </div>
+              <p className='text-muted-foreground text-xs'>
+                {reason === 'offline_payment'
+                  ? t(
+                      'Counts as a top-up: the user paid outside the checkout.'
+                    )
+                  : t('Every reason except "Paid offline" counts as a gift.')}
+              </p>
+            </div>
+
+            {reason === 'offline_payment' && (
+              <div className='space-y-2'>
+                <Label htmlFor='quota-paid-amount'>
+                  {t('Amount received (CNY)')}
+                </Label>
+                <Input
+                  id='quota-paid-amount'
+                  type='number'
+                  min={0}
+                  step={0.01}
+                  placeholder={
+                    amountValue > 0 ? String(amountValue) : undefined
+                  }
+                  value={paidAmount}
+                  onChange={(e) => setPaidAmount(e.target.value)}
+                />
+                <p className='text-muted-foreground text-xs'>
+                  {t('Leave empty if it equals the quota added.')}
+                </p>
+              </div>
+            )}
+
+            <div className='space-y-2'>
+              <Label htmlFor='quota-reason-note'>
+                {reason === 'other' ? t('Note') : t('Note (optional)')}
+              </Label>
+              <Input
+                id='quota-reason-note'
+                maxLength={200}
+                value={reasonNote}
+                onChange={(e) => setReasonNote(e.target.value)}
+              />
+            </div>
+          </>
+        )}
       </div>
     </Dialog>
   )
