@@ -27,6 +27,12 @@ import { useAuthStore } from '@/stores/auth-store'
 import { ExpenseLedger } from '../components/expense-ledger'
 import { formatExpenseAmount, formatExpenseMonth } from '../lib'
 
+vi.mock('@visactor/react-vchart', () => ({
+  VChart: (props: { spec: { data: { values: unknown[] }[] } }) => (
+    <div data-testid='chart' data-points={props.spec.data[0].values.length} />
+  ),
+}))
+
 const MONTHS = [
   {
     month: '2026-10',
@@ -53,35 +59,39 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-function renderLedger() {
+function renderLedger(editable = false) {
   render(
     <QueryClientProvider
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
     >
-      <ExpenseLedger />
+      <ExpenseLedger editable={editable} />
     </QueryClientProvider>
   )
 }
 
-it('lists each month with its lines and total, read-only for a visitor', async () => {
+it('lists each month with its lines and total, read-only on the public page', async () => {
+  // Even the root user edits on the admin page, not here.
+  useAuthStore.getState().auth.setUser({ id: 1, username: 'root', role: 100 })
   renderLedger()
 
-  const [october] = await screen.findAllByRole('region')
+  const october = await screen.findByRole('region', { name: /October 2026/ })
   expect(within(october).getByText('Upstream model fees')).toBeTruthy()
   expect(within(october).getByText('Invoice 12')).toBeTruthy()
   expect(within(october).getByText(/1,500\.50/)).toBeTruthy()
-  expect(screen.getAllByRole('region')).toHaveLength(2)
+  expect(screen.getByRole('region', { name: /September 2026/ })).toBeTruthy()
+  expect(
+    screen.getByRole('region', { name: 'Expenses by month' })
+  ).toBeTruthy()
   expect(screen.queryByRole('button', { name: 'Add month' })).toBeNull()
   expect(screen.queryByRole('button', { name: 'Edit expenses' })).toBeNull()
 })
 
-it('lets the root user change a month and publishes the whole list', async () => {
-  useAuthStore.getState().auth.setUser({ id: 1, username: 'root', role: 100 })
+it('edits a month on the admin page and publishes the whole list', async () => {
   const put = vi
     .spyOn(api, 'put')
     .mockResolvedValue({ data: { success: true, message: '' } })
   const user = userEvent.setup()
-  renderLedger()
+  renderLedger(true)
 
   const edit = await screen.findAllByRole('button', { name: 'Edit expenses' })
   await user.click(edit[1])
@@ -102,10 +112,9 @@ it('lets the root user change a month and publishes the whole list', async () =>
 })
 
 it('refuses a line without a name', async () => {
-  useAuthStore.getState().auth.setUser({ id: 1, username: 'root', role: 100 })
   const put = vi.spyOn(api, 'put')
   const user = userEvent.setup()
-  renderLedger()
+  renderLedger(true)
 
   await user.click(await screen.findByRole('button', { name: 'Add month' }))
   const dialog = await screen.findByRole('dialog')

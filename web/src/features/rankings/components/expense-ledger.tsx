@@ -23,9 +23,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ROLE } from '@/lib/roles'
 import { requireServerSuccess } from '@/lib/server-error-message'
-import { useAuthStore } from '@/stores/auth-store'
 
 import { getExpenseLedger } from '../api'
 import {
@@ -36,17 +34,24 @@ import {
   formatExpenseMonth,
 } from '../lib'
 import type { ExpenseMonth } from '../types'
+import { ExpenseChart } from './expense-chart'
 import { ExpenseMonthDialog } from './expense-month-dialog'
 
+type ExpenseLedgerProps = {
+  /**
+   * Offer adding and editing months. Saving is the root user's alone, so only
+   * the admin page turns this on; the public page is read-only for everyone.
+   */
+  editable?: boolean
+}
+
 /**
- * What the site paid, month by month, as the operator entered it. The root
- * user edits the lines in place.
+ * What the site paid, month by month, as the operator entered it: a chart of
+ * the monthly totals above the lines of each month.
  */
-export function ExpenseLedger() {
+export function ExpenseLedger(props: ExpenseLedgerProps) {
   const { t } = useTranslation()
-  const canEdit = useAuthStore(
-    (state) => state.auth.user?.role === ROLE.SUPER_ADMIN
-  )
+  const canEdit = props.editable === true
   const [editing, setEditing] = useState<ExpenseMonth | null>(null)
   const query = useQuery({
     queryKey: EXPENSE_LEDGER_QUERY_KEY,
@@ -91,6 +96,8 @@ export function ExpenseLedger() {
           </p>
         </div>
       )}
+
+      {!canEdit && months.length > 0 && <ExpenseChart months={months} />}
 
       {months.map((month) => (
         <ExpenseMonthCard
