@@ -28,14 +28,28 @@ import { requireServerSuccess } from '@/lib/server-error-message'
 import { getExpenseLedger } from '../api'
 import {
   EXPENSE_LEDGER_QUERY_KEY,
-  currentExpenseMonth,
+  EXPENSE_NAME_LIST_ID,
   expenseMonthTotal,
+  expenseNameSuggestions,
+  firstFreeExpenseMonth,
   formatExpenseAmount,
   formatExpenseMonth,
+  prepaidMonthlyShare,
 } from '../lib'
-import type { ExpenseMonth } from '../types'
+import type { ExpenseLedgerData, ExpenseMonth, PrepaidExpense } from '../types'
 import { ExpenseChart } from './expense-chart'
 import { ExpenseMonthDialog } from './expense-month-dialog'
+import { PrepaidExpenseDialog } from './prepaid-expense-dialog'
+
+// English names double as translation keys.
+const NAME_PRESETS = [
+  'Upstream model fees',
+  'Server',
+  'Domain',
+  'Payment fees',
+]
+
+const EMPTY_LEDGER: ExpenseLedgerData = { months: [], entered: [], prepaid: [] }
 
 type ExpenseLedgerProps = {
   /**
@@ -46,18 +60,27 @@ type ExpenseLedgerProps = {
 }
 
 /**
- * What the site paid, month by month, as the operator entered it: a chart of
- * the monthly totals above the lines of each month.
+ * What the site paid, month by month: a chart of the monthly totals above
+ * the lines of each month. A month lists what the operator entered for it
+ * and its share of every prepaid expense that covers it.
  */
 export function ExpenseLedger(props: ExpenseLedgerProps) {
   const { t } = useTranslation()
   const canEdit = props.editable === true
   const [editing, setEditing] = useState<ExpenseMonth | null>(null)
+  // The index into the prepaid list, or 'new'.
+  const [editingPrepaid, setEditingPrepaid] = useState<number | 'new' | null>(
+    null
+  )
   const query = useQuery({
     queryKey: EXPENSE_LEDGER_QUERY_KEY,
     queryFn: async () => requireServerSuccess(await getExpenseLedger()),
   })
-  const months = query.data?.data?.months ?? []
+  const ledger: ExpenseLedgerData = {
+    ...EMPTY_LEDGER,
+    ...query.data?.data,
+  }
+  const months = ledger.months
 
   if (query.isLoading) {
     return <Skeleton className='h-[320px] w-full rounded-xl' />
@@ -72,21 +95,41 @@ export function ExpenseLedger(props: ExpenseLedgerProps) {
     )
   }
 
+  // The dialog edits the lines entered for the month, not the prepaid shares
+  // shown with them.
+  const editMonth = (month: string) =>
+    setEditing(
+      ledger.entered.find((m) => m.month === month) ?? { month, items: [] }
+    )
+
   return (
     <div className='space-y-6'>
       {canEdit && (
-        <div className='flex justify-end'>
-          <Button
-            variant='outline'
-            size='sm'
-            onClick={() =>
-              setEditing({ month: currentExpenseMonth(), items: [] })
-            }
-          >
-            <Plus />
-            {t('Add month')}
-          </Button>
-        </div>
+        <>
+          <datalist id={EXPENSE_NAME_LIST_ID}>
+            {expenseNameSuggestions(
+              ledger,
+              NAME_PRESETS.map((name) => t(name))
+            ).map((name) => (
+              <option key={name} value={name} />
+            ))}
+          </datalist>
+          <PrepaidExpenseList
+            prepaid={ledger.prepaid}
+            onAdd={() => setEditingPrepaid('new')}
+            onEdit={setEditingPrepaid}
+          />
+          <div className='flex justify-end'>
+            <Button
+              variant='outline'
+              size='sm'
+              onClick={() => editMonth(firstFreeExpenseMonth(ledger.entered))}
+            >
+              <Plus />
+              {t('Add month')}
+            </Button>
+          </div>
+        </>
       )}
 
       {months.length === 0 && (
@@ -103,19 +146,97 @@ export function ExpenseLedger(props: ExpenseLedgerProps) {
         <ExpenseMonthCard
           key={month.month}
           month={month}
-          onEdit={canEdit ? () => setEditing(month) : undefined}
+          onEdit={canEdit ? () => editMonth(month.month) : undefined}
         />
       ))}
 
       {editing && (
         <ExpenseMonthDialog
           key={editing.month}
-          months={months}
+          months={ledger.entered}
           editing={editing}
           onClose={() => setEditing(null)}
         />
       )}
+      {editingPrepaid !== null && (
+        <PrepaidExpenseDialog
+          key={editingPrepaid}
+          prepaid={ledger.prepaid}
+          index={editingPrepaid === 'new' ? null : editingPrepaid}
+          onClose={() => setEditingPrepaid(null)}
+        />
+      )}
     </div>
+  )
+}
+
+function PrepaidExpenseList(props: {
+  prepaid: PrepaidExpense[]
+  onAdd: () => void
+  onEdit: (index: number) => void
+}) {
+  const { t, i18n } = useTranslation()
+
+  return (
+    <section
+      aria-label={t('Prepaid expenses')}
+      className='bg-card overflow-hidden rounded-xl border'
+    >
+      <header className='flex items-start justify-between gap-3 px-5 py-4'>
+        <div>
+          <h2 className='text-base font-semibold'>{t('Prepaid expenses')}</h2>
+          <p className='text-muted-foreground mt-1 text-sm'>
+            {t(
+              'Paid once for several months, such as a server or a domain rented by the year. Enter the payment once; every covered month shows an equal share when it begins.'
+            )}
+          </p>
+        </div>
+        <Button variant='outline' size='sm' onClick={props.onAdd}>
+          <Plus />
+          {t('Add prepaid expense')}
+        </Button>
+      </header>
+      {props.prepaid.length > 0 && (
+        <ul className='divide-y border-t'>
+          {props.prepaid.map((expense, index) => (
+            <li
+              // Entries have no identity of their own; the position is the key.
+              // eslint-disable-next-line react/no-array-index-key
+              key={`${expense.name}:${index}`}
+              className='flex items-center justify-between gap-6 px-5 py-3'
+            >
+              <div className='min-w-0'>
+                <div className='text-sm font-medium'>{expense.name}</div>
+                <div className='text-muted-foreground mt-0.5 text-xs break-words'>
+                  {t(
+                    '{{total}} for {{months}} months from {{start}}, {{share}} a month',
+                    {
+                      total: formatExpenseAmount(expense.amount, i18n.language),
+                      months: expense.months,
+                      start: formatExpenseMonth(expense.start, i18n.language),
+                      share: formatExpenseAmount(
+                        prepaidMonthlyShare(expense.amount, expense.months),
+                        i18n.language
+                      ),
+                    }
+                  )}
+                  {expense.note ? ` · ${expense.note}` : ''}
+                </div>
+              </div>
+              <Button
+                variant='ghost'
+                size='icon'
+                className='size-7 shrink-0'
+                aria-label={t('Edit prepaid expense')}
+                onClick={() => props.onEdit(index)}
+              >
+                <Pencil className='size-3.5' />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   )
 }
 
@@ -166,6 +287,21 @@ function ExpenseMonthCard(props: {
           >
             <div className='min-w-0'>
               <div className='text-sm font-medium'>{item.name}</div>
+              {item.spread && (
+                <div className='text-muted-foreground mt-0.5 text-xs break-words'>
+                  {t(
+                    'One payment of {{total}} spread over {{months}} months (month {{index}} of {{months}})',
+                    {
+                      total: formatExpenseAmount(
+                        item.spread.total,
+                        i18n.language
+                      ),
+                      months: item.spread.months,
+                      index: item.spread.index,
+                    }
+                  )}
+                </div>
+              )}
               {item.note && (
                 <div className='text-muted-foreground mt-0.5 text-xs break-words'>
                   {item.note}

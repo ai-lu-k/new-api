@@ -25,7 +25,11 @@ import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { ExpenseLedger } from '../components/expense-ledger'
-import { formatExpenseAmount, formatExpenseMonth } from '../lib'
+import {
+  firstFreeExpenseMonth,
+  formatExpenseAmount,
+  formatExpenseMonth,
+} from '../lib'
 
 vi.mock('@visactor/react-vchart', () => ({
   VChart: (props: { spec: { data: { values: unknown[] }[] } }) => (
@@ -44,13 +48,35 @@ const MONTHS = [
   { month: '2026-09', items: [{ name: 'Server', amount: 280 }] },
 ]
 
+// October also shows its share of the yearly server payment.
+const PREPAID = [{ name: 'Server', amount: 1200, start: '2026-10', months: 12 }]
+const PUBLISHED = [
+  {
+    month: '2026-10',
+    items: [
+      ...MONTHS[0].items,
+      {
+        name: 'Server',
+        amount: 100,
+        spread: { total: 1200, months: 12, index: 1 },
+      },
+    ],
+  },
+  MONTHS[1],
+]
+
 beforeEach(() => {
   useAuthStore.setState(useAuthStore.getInitialState(), true)
   vi.spyOn(api, 'get').mockImplementation(async (url) => {
     if (url !== '/api/expense_ledger') {
       throw new Error(`Unexpected request: ${url}`)
     }
-    return { data: { success: true, data: { months: MONTHS } } }
+    return {
+      data: {
+        success: true,
+        data: { months: PUBLISHED, entered: MONTHS, prepaid: PREPAID },
+      },
+    }
   })
 })
 
@@ -60,7 +86,7 @@ afterEach(() => {
 })
 
 function renderLedger(editable = false) {
-  render(
+  return render(
     <QueryClientProvider
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
     >
@@ -77,7 +103,10 @@ it('lists each month with its lines and total, read-only on the public page', as
   const october = await screen.findByRole('region', { name: /October 2026/ })
   expect(within(october).getByText('Upstream model fees')).toBeTruthy()
   expect(within(october).getByText('Invoice 12')).toBeTruthy()
-  expect(within(october).getByText(/1,500\.50/)).toBeTruthy()
+  expect(within(october).getByText(/1,600\.50/)).toBeTruthy()
+  expect(
+    within(october).getByText(/spread over 12 months \(month 1 of 12\)/)
+  ).toBeTruthy()
   expect(screen.getByRole('region', { name: /September 2026/ })).toBeTruthy()
   expect(
     screen.getByRole('region', { name: 'Expenses by month' })
@@ -129,4 +158,64 @@ it('formats for the interface language codes, which are not Intl tags', () => {
   expect(formatExpenseMonth('2026-10', 'zhTW')).toBe('2026年10月')
   expect(formatExpenseAmount(1210, 'zhCN')).toBe('¥1,210.00')
   expect(formatExpenseMonth('2026-10', 'not a tag')).toContain('2026')
+})
+
+it('saves only the entered lines of a month, not its prepaid share', async () => {
+  const put = vi
+    .spyOn(api, 'put')
+    .mockResolvedValue({ data: { success: true, message: '' } })
+  const user = userEvent.setup()
+  renderLedger(true)
+
+  const edit = await screen.findAllByRole('button', { name: 'Edit expenses' })
+  await user.click(edit[0])
+  const dialog = await screen.findByRole('dialog')
+  expect(within(dialog).getAllByRole('spinbutton', { name: 'Amount' })).toHaveLength(2)
+  await user.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+  const [, body] = put.mock.calls[0] as [string, { key: string; value: string }]
+  expect(body.key).toBe('expense_ledger.months')
+  expect(JSON.parse(body.value)).toEqual([MONTHS[1], MONTHS[0]])
+})
+
+it('adds a prepaid expense and offers the names already in use', async () => {
+  const put = vi
+    .spyOn(api, 'put')
+    .mockResolvedValue({ data: { success: true, message: '' } })
+  const user = userEvent.setup()
+  const { container } = renderLedger(true)
+
+  await user.click(
+    await screen.findByRole('button', { name: 'Add prepaid expense' })
+  )
+  const options = [...container.querySelectorAll('datalist option')].map((o) =>
+    o.getAttribute('value')
+  )
+  expect(options.slice(0, 2)).toEqual(['Server', 'Upstream model fees'])
+  expect(options).toContain('Domain')
+
+  const dialog = await screen.findByRole('dialog')
+  const name = within(dialog).getByLabelText('Expense item')
+  expect(name.getAttribute('list')).toBe('expense-item-names')
+  await user.type(name, 'Domain')
+  await user.type(within(dialog).getByLabelText('Amount paid'), '90')
+  const months = within(dialog).getByLabelText('Number of months')
+  await user.clear(months)
+  await user.type(months, '3')
+  expect(within(dialog).getByText(/30\.00/)).toBeTruthy()
+  await user.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+  const [, body] = put.mock.calls[0] as [string, { key: string; value: string }]
+  expect(body.key).toBe('expense_ledger.prepaid')
+  const saved = JSON.parse(body.value)
+  expect(saved).toHaveLength(2)
+  expect(saved[0]).toEqual(PREPAID[0])
+  expect(saved[1]).toMatchObject({ name: 'Domain', amount: 90, months: 3 })
+})
+
+it('starts a new month on the first one that has nothing entered', () => {
+  const october = new Date(2026, 9, 4)
+  expect(firstFreeExpenseMonth([], october)).toBe('2026-10')
+  expect(firstFreeExpenseMonth(MONTHS, october)).toBe('2026-11')
+  expect(firstFreeExpenseMonth(MONTHS, new Date(2026, 11, 31))).toBe('2026-12')
 })

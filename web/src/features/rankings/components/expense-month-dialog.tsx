@@ -29,7 +29,7 @@ import { Label } from '@/components/ui/label'
 import { handleServerError } from '@/lib/handle-server-error'
 
 import { saveExpenseLedger } from '../api'
-import { EXPENSE_LEDGER_QUERY_KEY } from '../lib'
+import { EXPENSE_LEDGER_QUERY_KEY, EXPENSE_NAME_LIST_ID } from '../lib'
 import type { ExpenseMonth } from '../types'
 
 type DraftLine = { name: string; amount: string; note: string }
@@ -37,7 +37,7 @@ type DraftLine = { name: string; amount: string; note: string }
 const EMPTY_LINE: DraftLine = { name: '', amount: '', note: '' }
 
 type ExpenseMonthDialogProps = {
-  /** Every published month, the one being edited included. */
+  /** Every month entered by hand, the one being edited included. */
   months: ExpenseMonth[]
   /** The month to edit; one that is not in `months` yet is a new month. */
   editing: ExpenseMonth
@@ -175,6 +175,7 @@ export function ExpenseMonthDialog(props: ExpenseMonthDialogProps) {
             <Input
               aria-label={t('Expense item')}
               placeholder={t('Expense item')}
+              list={EXPENSE_NAME_LIST_ID}
               value={line.name}
               onChange={(e) => setLine(index, { name: e.target.value })}
             />

@@ -18,7 +18,13 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 
-import type { ExpenseMonth, RankingPeriod, RankingsSnapshot } from './types'
+import type {
+  ExpenseLedgerData,
+  ExpenseMonth,
+  PrepaidExpense,
+  RankingPeriod,
+  RankingsSnapshot,
+} from './types'
 
 type RankingsResponse = {
   success: boolean
@@ -36,16 +42,16 @@ export async function getRankings(
 type ExpenseLedgerResponse = {
   success: boolean
   message?: string
-  data?: { months: ExpenseMonth[] }
+  data?: ExpenseLedgerData
 }
 
-/** The expenses the operator has published, newest month first. */
+/** The site's expenses, newest month first, with the lists the editor uses. */
 export async function getExpenseLedger(): Promise<ExpenseLedgerResponse> {
   const res = await api.get('/api/expense_ledger')
   return res.data
 }
 
-/** Replace the published expenses. Only the root user may do this. */
+/** Replace the months entered by hand. Only the root user may do this. */
 export async function saveExpenseLedger(months: ExpenseMonth[]): Promise<{
   success: boolean
   message?: string
@@ -53,6 +59,18 @@ export async function saveExpenseLedger(months: ExpenseMonth[]): Promise<{
   const res = await api.put('/api/option/', {
     key: 'expense_ledger.months',
     value: JSON.stringify(months),
+  })
+  return res.data
+}
+
+/** Replace the prepaid expenses. Only the root user may do this. */
+export async function savePrepaidExpenses(prepaid: PrepaidExpense[]): Promise<{
+  success: boolean
+  message?: string
+}> {
+  const res = await api.put('/api/option/', {
+    key: 'expense_ledger.prepaid',
+    value: JSON.stringify(prepaid),
   })
   return res.data
 }

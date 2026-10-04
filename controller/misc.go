@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -193,12 +194,18 @@ func GetAbout(c *gin.Context) {
 	serveRevalidatedJSON(c, about)
 }
 
-// GetExpenseLedger publishes the expenses the administrator entered, by month.
+// GetExpenseLedger publishes the site's expenses by month: what the
+// administrator entered for each month plus the shares of prepaid expenses.
+// "entered" and "prepaid" are the stored lists, which the editor works on.
 func GetExpenseLedger(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data":    gin.H{"months": operation_setting.GetExpenseLedgerMonths()},
+		"data": gin.H{
+			"months":  operation_setting.GetPublishedExpenseMonths(time.Now()),
+			"entered": operation_setting.GetExpenseLedgerMonths(),
+			"prepaid": operation_setting.GetPrepaidExpenses(),
+		},
 	})
 }
 

@@ -144,10 +144,38 @@ export type ExpenseItem = {
   name: string
   amount: number
   note?: string
+  /**
+   * Set by the server on a line that is one month's share of a prepaid
+   * expense. Such a line is computed, never saved with the month.
+   */
+  spread?: { total: number; months: number; index: number }
 }
 
 /** The expense lines of one calendar month, "2026-10". */
 export type ExpenseMonth = {
   month: string
   items: ExpenseItem[]
+}
+
+/**
+ * An expense paid once that covers several months, such as a server rented
+ * by the year. Each covered month shows an equal share of it.
+ */
+export type PrepaidExpense = {
+  name: string
+  /** The whole payment. */
+  amount: number
+  /** First covered month, "2026-10". */
+  start: string
+  /** Number of covered months. */
+  months: number
+  note?: string
+}
+
+export type ExpenseLedgerData = {
+  /** What the public page shows: entered lines plus prepaid shares. */
+  months: ExpenseMonth[]
+  /** The months as the operator entered them; the editor works on these. */
+  entered: ExpenseMonth[]
+  prepaid: PrepaidExpense[]
 }
