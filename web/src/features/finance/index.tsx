@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 
@@ -39,8 +40,8 @@ import { cn } from '@/lib/utils'
 
 import { getFinanceSummary } from './api'
 import { FinanceChart } from './components/finance-chart'
-import { monthBalance, totalGift, totalTopUp } from './lib'
-import type { FinanceMonth } from './types'
+import { monthBalance, totalGift, totalTopUp, yearTotals } from './lib'
+import type { FinanceMonth, FinanceTotals } from './types'
 
 /**
  * Money in and out by month, for the root user only: what users paid, what
@@ -89,7 +90,7 @@ export function Finance() {
                 )}
               </p>
             )}
-            <CurrentMonth month={months[0]} />
+            <PeriodSummary months={months} total={query.data?.data?.total} />
             <FinanceChart months={months} />
             <MonthTable months={months} />
           </div>
@@ -99,39 +100,92 @@ export function Finance() {
   )
 }
 
-function CurrentMonth(props: { month: FinanceMonth }) {
+type Period = 'month' | 'year' | 'all'
+
+const PERIODS: { id: Period; labelKey: string }[] = [
+  { id: 'month', labelKey: 'Current month' },
+  { id: 'year', labelKey: 'Current year' },
+  { id: 'all', labelKey: 'All time' },
+]
+
+/**
+ * The four headline figures in one card, for the current month, the current
+ * year or everything since the site began.
+ */
+function PeriodSummary(props: {
+  months: FinanceMonth[]
+  total?: FinanceTotals
+}) {
   const { t, i18n } = useTranslation()
-  const balance = monthBalance(props.month)
+  const [period, setPeriod] = useState<Period>('month')
+  const current = props.months[0]
+  const year = current.month.slice(0, 4)
+
+  let figures: FinanceTotals = current
+  let heading = formatExpenseMonth(current.month, i18n.language)
+  if (period === 'year') {
+    // The list reaches back twelve months, so it holds the whole year so far.
+    figures = yearTotals(props.months, year)
+    heading = year
+  } else if (period === 'all') {
+    figures = props.total ?? yearTotals(props.months, year)
+    heading = t('Since the site began')
+  }
+
+  const balance = monthBalance(figures)
   const tiles = [
-    { label: t('Top-ups'), value: totalTopUp(props.month) },
-    { label: t('Spending'), value: props.month.expenses },
+    { label: t('Top-ups'), value: totalTopUp(figures) },
+    { label: t('Spending'), value: figures.expenses },
     { label: t('Net'), value: balance, signed: true },
-    { label: t('Gifts'), value: totalGift(props.month) },
+    { label: t('Gifts'), value: totalGift(figures) },
   ]
 
   return (
     <section
-      aria-label={formatExpenseMonth(props.month.month, i18n.language)}
-      className='space-y-3'
+      aria-label={t('Summary')}
+      className='bg-card overflow-hidden rounded-xl border'
     >
-      <h2 className='text-muted-foreground text-sm font-medium'>
-        {formatExpenseMonth(props.month.month, i18n.language)}
-      </h2>
-      <div className='grid grid-cols-2 gap-3 lg:grid-cols-4'>
+      <header className='flex flex-wrap items-center justify-between gap-3 px-5 py-4'>
+        <h2 className='text-base font-semibold'>{heading}</h2>
+        <div
+          role='tablist'
+          aria-label={t('Period')}
+          className='bg-muted inline-flex rounded-lg p-1'
+        >
+          {PERIODS.map((p) => (
+            <button
+              key={p.id}
+              type='button'
+              role='tab'
+              aria-selected={period === p.id}
+              onClick={() => setPeriod(p.id)}
+              className={cn(
+                'rounded-md px-3 py-1 text-sm font-medium transition-colors',
+                period === p.id
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              {t(p.labelKey)}
+            </button>
+          ))}
+        </div>
+      </header>
+      <dl className='grid grid-cols-2 border-t lg:grid-cols-4 lg:divide-x'>
         {tiles.map((tile) => (
-          <div key={tile.label} className='bg-card rounded-xl border px-5 py-4'>
-            <div className='text-muted-foreground text-xs'>{tile.label}</div>
-            <div
+          <div key={tile.label} className='px-5 py-4'>
+            <dt className='text-muted-foreground text-xs'>{tile.label}</dt>
+            <dd
               className={cn(
                 'mt-1 text-xl font-semibold tabular-nums',
                 tile.signed && tile.value < 0 && 'text-destructive'
               )}
             >
               {formatExpenseAmount(tile.value, i18n.language)}
-            </div>
+            </dd>
           </div>
         ))}
-      </div>
+      </dl>
     </section>
   )
 }

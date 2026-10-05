@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 import { api } from '@/lib/api'
@@ -58,7 +59,21 @@ beforeEach(() => {
       throw new Error(`Unexpected request: ${url}`)
     }
     return {
-      data: { success: true, data: { months: MONTHS, excluded_users: 2 } },
+      data: {
+        success: true,
+        data: {
+          months: MONTHS,
+          excluded_users: 2,
+          total: {
+            online_topup: 900,
+            manual_topup: 100,
+            gift_manual: 0,
+            gift_checkin: 0,
+            gift_redemption: 0,
+            expenses: 400,
+          },
+        },
+      },
     }
   })
 })
@@ -75,7 +90,8 @@ it('adds top-ups and gifts up and leaves gifts out of the net', () => {
   expect(monthBalance(MONTHS[1])).toBe(20)
 })
 
-it('shows the current month, the chart and one row per month', async () => {
+it('shows the summary for a month, the year and all time, the chart and one row per month', async () => {
+  const user = userEvent.setup()
   render(
     <QueryClientProvider
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
@@ -84,10 +100,22 @@ it('shows the current month, the chart and one row per month', async () => {
     </QueryClientProvider>
   )
 
-  const current = await screen.findByRole('region', { name: /October 2026/ })
-  expect(within(current).getByText(/350\.00/)).toBeTruthy()
-  expect(within(current).getByText(/-.*60\.00/)).toBeTruthy()
-  expect(within(current).getByText(/35\.50/)).toBeTruthy()
+  const summary = await screen.findByRole('region', { name: 'Summary' })
+  expect(within(summary).getByText('October 2026')).toBeTruthy()
+  expect(within(summary).getByText(/350\.00/)).toBeTruthy()
+  expect(within(summary).getByText(/-.*60\.00/)).toBeTruthy()
+  expect(within(summary).getByText(/35\.50/)).toBeTruthy()
+
+  // The year so far: both months added up.
+  await user.click(within(summary).getByRole('tab', { name: 'Current year' }))
+  expect(within(summary).getByText('2026')).toBeTruthy()
+  expect(within(summary).getByText(/470\.00/)).toBeTruthy()
+  expect(within(summary).getByText(/510\.00/)).toBeTruthy()
+
+  // Everything since the site began comes from the server's total.
+  await user.click(within(summary).getByRole('tab', { name: 'All time' }))
+  expect(within(summary).getByText(/1,000\.00/)).toBeTruthy()
+  expect(within(summary).getByText(/600\.00/)).toBeTruthy()
   expect(
     screen.getByRole('region', {
       name: 'Top-ups, expenses and gifts by month',

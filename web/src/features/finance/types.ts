@@ -30,3 +30,6 @@ export type FinanceMonth = {
   gift_redemption: number
   expenses: number
 }
+
+/** The same figures added up over a period that is not one month. */
+export type FinanceTotals = Omit<FinanceMonth, 'month'>

@@ -22,7 +22,7 @@ const (
 // received; gifts are quota given away, at its face value; expenses are what
 // the expense ledger publishes for the month.
 type financeMonth struct {
-	Month          string  `json:"month"`
+	Month          string  `json:"month,omitempty"`
 	OnlineTopUp    float64 `json:"online_topup"`
 	ManualTopUp    float64 `json:"manual_topup"`
 	GiftManual     float64 `json:"gift_manual"`
@@ -32,7 +32,7 @@ type financeMonth struct {
 }
 
 // GetFinanceSummary returns the last months of top-ups, gifts and expenses,
-// newest first. Root only.
+// newest first, and the total since the site began. Root only.
 func GetFinanceSummary(c *gin.Context) {
 	count, err := strconv.Atoi(c.DefaultQuery("months", strconv.Itoa(financeDefaultMonths)))
 	if err != nil || count < 1 {
@@ -42,13 +42,20 @@ func GetFinanceSummary(c *gin.Context) {
 		count = financeMaxMonths
 	}
 	excluded := operation_setting.GetFinanceExcludedUserIds()
-	months, err := buildFinanceSummary(time.Now(), count, excluded)
+	now := time.Now()
+	months, err := buildFinanceSummary(now, count, excluded)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	total, err := buildFinanceTotal(now, excluded)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": gin.H{
 		"months":         months,
+		"total":          total,
 		"excluded_users": len(excluded),
 	}})
 }
@@ -56,56 +63,82 @@ func GetFinanceSummary(c *gin.Context) {
 // buildFinanceSummary leaves the excluded accounts, the operator's own test
 // accounts for one, out of every figure.
 func buildFinanceSummary(now time.Time, count int, excluded []int) ([]financeMonth, error) {
+	expenses := publishedExpensesByMonth(now)
+	first := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+	months := make([]financeMonth, 0, count)
+	for i := 0; i < count; i++ {
+		start := first.AddDate(0, -i, 0)
+		entry, err := financePeriod(start.Unix(), start.AddDate(0, 1, 0).Unix(), excluded)
+		if err != nil {
+			return nil, err
+		}
+		entry.Month = start.Format("2006-01")
+		entry.Expenses = roundCents(expenses[entry.Month])
+		months = append(months, entry)
+	}
+	return months, nil
+}
+
+// buildFinanceTotal sums everything up to now, however far back it goes.
+func buildFinanceTotal(now time.Time, excluded []int) (financeMonth, error) {
+	entry, err := financePeriod(0, now.Unix()+1, excluded)
+	if err != nil {
+		return entry, err
+	}
+	var spent float64
+	for _, amount := range publishedExpensesByMonth(now) {
+		spent += amount
+	}
+	entry.Expenses = roundCents(spent)
+	return entry, nil
+}
+
+func publishedExpensesByMonth(now time.Time) map[string]float64 {
 	expenses := make(map[string]float64)
 	for _, month := range operation_setting.GetPublishedExpenseMonths(now) {
 		for _, item := range month.Items {
 			expenses[month.Month] += item.Amount
 		}
 	}
+	return expenses
+}
 
-	first := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
-	months := make([]financeMonth, 0, count)
-	for i := 0; i < count; i++ {
-		start := first.AddDate(0, -i, 0)
-		from, to := start.Unix(), start.AddDate(0, 1, 0).Unix()
-		entry := financeMonth{Month: start.Format("2006-01")}
-
-		online, err := model.SumPaidTopUps(from, to, excluded)
-		if err != nil {
-			return nil, err
-		}
-		checkin, err := model.SumCheckinQuota(from, to, excluded)
-		if err != nil {
-			return nil, err
-		}
-		redeemed, err := model.SumRedeemedQuota(from, to, excluded)
-		if err != nil {
-			return nil, err
-		}
-		adds, err := model.ListManualQuotaAdds(from, to, excluded)
-		if err != nil {
-			return nil, err
-		}
-		var manualPaid, manualGift float64
-		for _, add := range adds {
-			// Money was received for a paid reason; anything else, additions
-			// from before reasons existed included, was given away.
-			if model.IsPaidQuotaAddReason(add.Reason) {
-				manualPaid += add.PaidAmount
-			} else {
-				manualGift += float64(add.Quota) / common.QuotaPerUnit
-			}
-		}
-
-		entry.OnlineTopUp = roundCents(online)
-		entry.ManualTopUp = roundCents(manualPaid)
-		entry.GiftManual = roundCents(manualGift)
-		entry.GiftCheckin = roundCents(float64(checkin) / common.QuotaPerUnit)
-		entry.GiftRedemption = roundCents(float64(redeemed) / common.QuotaPerUnit)
-		entry.Expenses = roundCents(expenses[entry.Month])
-		months = append(months, entry)
+// financePeriod adds up top-ups and gifts in [from, to); the caller fills in
+// the expenses.
+func financePeriod(from, to int64, excluded []int) (financeMonth, error) {
+	var entry financeMonth
+	online, err := model.SumPaidTopUps(from, to, excluded)
+	if err != nil {
+		return entry, err
 	}
-	return months, nil
+	checkin, err := model.SumCheckinQuota(from, to, excluded)
+	if err != nil {
+		return entry, err
+	}
+	redeemed, err := model.SumRedeemedQuota(from, to, excluded)
+	if err != nil {
+		return entry, err
+	}
+	adds, err := model.ListManualQuotaAdds(from, to, excluded)
+	if err != nil {
+		return entry, err
+	}
+	var manualPaid, manualGift float64
+	for _, add := range adds {
+		// Money was received for a paid reason; anything else, additions from
+		// before reasons existed included, was given away.
+		if model.IsPaidQuotaAddReason(add.Reason) {
+			manualPaid += add.PaidAmount
+		} else {
+			manualGift += float64(add.Quota) / common.QuotaPerUnit
+		}
+	}
+	entry.OnlineTopUp = roundCents(online)
+	entry.ManualTopUp = roundCents(manualPaid)
+	entry.GiftManual = roundCents(manualGift)
+	entry.GiftCheckin = roundCents(float64(checkin) / common.QuotaPerUnit)
+	entry.GiftRedemption = roundCents(float64(redeemed) / common.QuotaPerUnit)
+	return entry, nil
 }
 
 func roundCents(value float64) float64 {

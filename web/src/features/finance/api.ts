@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 
-import type { FinanceMonth } from './types'
+import type { FinanceMonth, FinanceTotals } from './types'
 
 /** The last months of top-ups, gifts and expenses, newest first. Root only. */
 export async function getFinanceSummary(months = 12): Promise<{
@@ -26,6 +26,8 @@ export async function getFinanceSummary(months = 12): Promise<{
   message?: string
   data?: {
     months: FinanceMonth[]
+    /** Everything since the site began, however far back. */
+    total?: FinanceTotals
     /** How many accounts, test accounts for one, are left out. */
     excluded_users?: number
   }

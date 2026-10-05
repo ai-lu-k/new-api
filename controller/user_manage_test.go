@@ -679,6 +679,14 @@ func TestFinanceSummaryTellsTopUpsFromGifts(t *testing.T) {
 	assert.Zero(t, previous.ManualTopUp)
 	assert.Zero(t, previous.GiftManual)
 
+	// The total reaches back past the months that are listed.
+	total, err := buildFinanceTotal(now, nil)
+	require.NoError(t, err)
+	assert.Equal(t, 37.25, total.OnlineTopUp)
+	assert.Equal(t, 18.5, total.ManualTopUp)
+	assert.Equal(t, 5.0, total.GiftManual)
+	assert.Empty(t, total.Month)
+
 	// A test account can be left out of every figure.
 	without, err := buildFinanceSummary(now, 2, []int{user.Id})
 	require.NoError(t, err)
