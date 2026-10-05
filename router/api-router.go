@@ -337,6 +337,13 @@ func SetApiRouter(router *gin.Engine) {
 			systemTaskRoute.GET("/current", controller.GetCurrentSystemTask)
 			systemTaskRoute.GET("/:task_id", controller.GetSystemTask)
 		}
+		feedbackRoute := apiRouter.Group("/feedback")
+		{
+			feedbackRoute.POST("/", middleware.UserAuth(), middleware.UserCriticalRateLimit("feedback"), controller.CreateFeedback)
+			feedbackRoute.GET("/self", middleware.UserAuth(), controller.GetOwnFeedback)
+			feedbackRoute.GET("/", middleware.AdminAuth(), controller.GetAllFeedback)
+			feedbackRoute.PUT("/:id", middleware.AdminAuth(), controller.UpdateFeedback)
+		}
 		financeRoute := apiRouter.Group("/finance")
 		financeRoute.Use(middleware.RootAuth())
 		{

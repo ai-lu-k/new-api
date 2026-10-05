@@ -317,3 +317,5 @@ model_catalog.context_length: "Enter the context length in tokens (greater than 
 model_catalog.supported_parameters: "The supported parameters include an item that is not recognised."
 model_catalog.release_date: "Enter the release date as year and month, such as 2026-09."
 model_catalog.series: "Enter the model series (at most 64 characters)."
+
+feedback.content_invalid: 'Feedback needs 5 to 2000 characters, and contact details at most 120'

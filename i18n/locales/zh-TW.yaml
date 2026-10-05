@@ -318,3 +318,5 @@ model_catalog.context_length: "請填寫上下文長度（token 數，大於 0�
 model_catalog.supported_parameters: "支援的參數裡有無法識別的項目"
 model_catalog.release_date: "請填寫發佈時間，格式為年-月，例如 2026-09"
 model_catalog.series: "請填寫模型系列（不超過 64 個字元）"
+
+feedback.content_invalid: '留言內容需要 5 到 2000 個字，聯絡方式最多 120 個字'

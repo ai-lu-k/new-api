@@ -132,6 +132,7 @@ const (
 	MsgUserLinuxDOIdEmpty            = "user.linux_do_id_empty"
 	MsgUserQuotaChangeZero           = "user.quota_change_zero"
 	MsgUserQuotaReasonRequired       = "user.quota_reason_required"
+	MsgFeedbackContentInvalid        = "feedback.content_invalid"
 	MsgUserQuotaPaidAmountRequired   = "user.quota_paid_amount_required"
 )
 
