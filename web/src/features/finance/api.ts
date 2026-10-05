@@ -24,7 +24,11 @@ import type { FinanceMonth } from './types'
 export async function getFinanceSummary(months = 12): Promise<{
   success: boolean
   message?: string
-  data?: { months: FinanceMonth[] }
+  data?: {
+    months: FinanceMonth[]
+    /** How many accounts, test accounts for one, are left out. */
+    excluded_users?: number
+  }
 }> {
   const res = await api.get('/api/finance/summary', { params: { months } })
   return res.data

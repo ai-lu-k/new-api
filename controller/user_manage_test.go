@@ -665,7 +665,7 @@ func TestFinanceSummaryTellsTopUpsFromGifts(t *testing.T) {
 	require.NoError(t, db.Create(&model.Redemption{Key: "0123456789abcdef0123456789abcdef", Status: common.RedemptionCodeStatusUsed, Quota: 4 * unit, RedeemedTime: now.Unix()}).Error)
 	require.NoError(t, db.Create(&model.Redemption{Key: "fedcba9876543210fedcba9876543210", Status: common.RedemptionCodeStatusEnabled, Quota: 9 * unit}).Error)
 
-	months, err := buildFinanceSummary(now, 2)
+	months, err := buildFinanceSummary(now, 2, nil)
 	require.NoError(t, err)
 	require.Len(t, months, 2)
 	current, previous := months[0], months[1]
@@ -678,6 +678,18 @@ func TestFinanceSummaryTellsTopUpsFromGifts(t *testing.T) {
 	assert.Equal(t, 7.25, previous.OnlineTopUp)
 	assert.Zero(t, previous.ManualTopUp)
 	assert.Zero(t, previous.GiftManual)
+
+	// A test account can be left out of every figure.
+	without, err := buildFinanceSummary(now, 2, []int{user.Id})
+	require.NoError(t, err)
+	assert.Zero(t, without[0].OnlineTopUp)
+	assert.Zero(t, without[0].ManualTopUp)
+	assert.Zero(t, without[0].GiftManual)
+	assert.Zero(t, without[0].GiftCheckin)
+	assert.Zero(t, without[1].OnlineTopUp)
+	other, err := buildFinanceSummary(now, 2, []int{user.Id + 1000})
+	require.NoError(t, err)
+	assert.Equal(t, 30.0, other[0].OnlineTopUp)
 
 	// The person receiving the quota sees why it was added.
 	logs, _, err := model.GetUserLogs(user.Id, model.LogTypeTopup, 0, 0, "", "", 0, 20, "", "", "")

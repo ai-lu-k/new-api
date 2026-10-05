@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"gorm.io/gorm"
 )
 
 // Reasons an administrator gives when adding quota to a user by hand. A paid
@@ -42,34 +43,46 @@ type ManualQuotaAdd struct {
 	PaidAmount float64
 }
 
+// withoutUsers leaves the rows of the given accounts out of a query; the
+// income summary uses it for the operator's own test accounts.
+func withoutUsers(query *gorm.DB, column string, userIds []int) *gorm.DB {
+	if len(userIds) == 0 {
+		return query
+	}
+	return query.Where(column+" NOT IN ?", userIds)
+}
+
 // SumPaidTopUps returns the money received through the site's checkout for
 // orders completed in [start, end). Orders paid from the wallet balance moved
 // no money and are left out.
-func SumPaidTopUps(start, end int64) (float64, error) {
+func SumPaidTopUps(start, end int64, excludedUserIds []int) (float64, error) {
 	var total float64
-	err := DB.Model(&TopUp{}).
+	query := DB.Model(&TopUp{}).
 		Where("status = ? AND payment_method <> ? AND complete_time >= ? AND complete_time < ?",
-			common.TopUpStatusSuccess, PaymentMethodBalance, start, end).
+			common.TopUpStatusSuccess, PaymentMethodBalance, start, end)
+	err := withoutUsers(query, "user_id", excludedUserIds).
 		Select("COALESCE(SUM(money), 0)").Scan(&total).Error
 	return total, err
 }
 
 // SumCheckinQuota returns the quota handed out by check-ins in [start, end).
-func SumCheckinQuota(start, end int64) (int64, error) {
+func SumCheckinQuota(start, end int64, excludedUserIds []int) (int64, error) {
 	var total int64
-	err := DB.Model(&Checkin{}).
-		Where("created_at >= ? AND created_at < ?", start, end).
+	query := DB.Model(&Checkin{}).
+		Where("created_at >= ? AND created_at < ?", start, end)
+	err := withoutUsers(query, "user_id", excludedUserIds).
 		Select("COALESCE(SUM(quota_awarded), 0)").Scan(&total).Error
 	return total, err
 }
 
 // SumRedeemedQuota returns the quota of redemption codes used in [start, end),
 // codes deleted since then included.
-func SumRedeemedQuota(start, end int64) (int64, error) {
+func SumRedeemedQuota(start, end int64, excludedUserIds []int) (int64, error) {
 	var total int64
-	err := DB.Unscoped().Model(&Redemption{}).
+	query := DB.Unscoped().Model(&Redemption{}).
 		Where("status = ? AND redeemed_time >= ? AND redeemed_time < ?",
-			common.RedemptionCodeStatusUsed, start, end).
+			common.RedemptionCodeStatusUsed, start, end)
+	err := withoutUsers(query, "used_user_id", excludedUserIds).
 		Select("COALESCE(SUM(quota), 0)").Scan(&total).Error
 	return total, err
 }
@@ -77,11 +90,12 @@ func SumRedeemedQuota(start, end int64) (int64, error) {
 // ListManualQuotaAdds returns the manual quota additions logged in
 // [start, end). An addition recorded before reasons existed has an empty
 // reason.
-func ListManualQuotaAdds(start, end int64) ([]ManualQuotaAdd, error) {
+func ListManualQuotaAdds(start, end int64, excludedUserIds []int) ([]ManualQuotaAdd, error) {
 	var logs []Log
-	err := LOG_DB.Model(&Log{}).
+	query := LOG_DB.Model(&Log{}).
 		Select("created_at", "other").
-		Where("type = ? AND created_at >= ? AND created_at < ?", LogTypeTopup, start, end).
+		Where("type = ? AND created_at >= ? AND created_at < ?", LogTypeTopup, start, end)
+	err := withoutUsers(query, "user_id", excludedUserIds).
 		Find(&logs).Error
 	if err != nil {
 		return nil, err

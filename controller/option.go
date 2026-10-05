@@ -312,6 +312,15 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "finance.excluded_user_ids":
+		err = operation_setting.CheckFinanceExcludedUserIds(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
 	case "expense_ledger.prepaid":
 		err = operation_setting.CheckPrepaidExpenses(option.Value.(string))
 		if err != nil {

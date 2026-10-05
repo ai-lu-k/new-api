@@ -57,7 +57,9 @@ beforeEach(() => {
     if (url !== '/api/finance/summary') {
       throw new Error(`Unexpected request: ${url}`)
     }
-    return { data: { success: true, data: { months: MONTHS } } }
+    return {
+      data: { success: true, data: { months: MONTHS, excluded_users: 2 } },
+    }
   })
 })
 
@@ -92,4 +94,5 @@ it('shows the current month, the chart and one row per month', async () => {
     })
   ).toBeTruthy()
   expect(screen.getAllByRole('row')).toHaveLength(3)
+  expect(screen.getByText(/leave out 2 accounts/)).toBeTruthy()
 })

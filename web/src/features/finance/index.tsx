@@ -53,6 +53,7 @@ export function Finance() {
     queryFn: async () => requireServerSuccess(await getFinanceSummary()),
   })
   const months = query.data?.data?.months ?? []
+  const excludedUsers = query.data?.data?.excluded_users ?? 0
 
   return (
     <SectionPageLayout>
@@ -80,6 +81,14 @@ export function Finance() {
         )}
         {!query.isLoading && !query.isError && months.length > 0 && (
           <div className='space-y-6'>
+            {excludedUsers > 0 && (
+              <p className='text-muted-foreground text-sm'>
+                {t(
+                  'The figures leave out {{count}} accounts marked as test accounts.',
+                  { count: excludedUsers }
+                )}
+              </p>
+            )}
             <CurrentMonth month={months[0]} />
             <FinanceChart months={months} />
             <MonthTable months={months} />

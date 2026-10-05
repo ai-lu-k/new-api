@@ -41,15 +41,21 @@ func GetFinanceSummary(c *gin.Context) {
 	if count > financeMaxMonths {
 		count = financeMaxMonths
 	}
-	months, err := buildFinanceSummary(time.Now(), count)
+	excluded := operation_setting.GetFinanceExcludedUserIds()
+	months, err := buildFinanceSummary(time.Now(), count, excluded)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": gin.H{"months": months}})
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": gin.H{
+		"months":         months,
+		"excluded_users": len(excluded),
+	}})
 }
 
-func buildFinanceSummary(now time.Time, count int) ([]financeMonth, error) {
+// buildFinanceSummary leaves the excluded accounts, the operator's own test
+// accounts for one, out of every figure.
+func buildFinanceSummary(now time.Time, count int, excluded []int) ([]financeMonth, error) {
 	expenses := make(map[string]float64)
 	for _, month := range operation_setting.GetPublishedExpenseMonths(now) {
 		for _, item := range month.Items {
@@ -64,19 +70,19 @@ func buildFinanceSummary(now time.Time, count int) ([]financeMonth, error) {
 		from, to := start.Unix(), start.AddDate(0, 1, 0).Unix()
 		entry := financeMonth{Month: start.Format("2006-01")}
 
-		online, err := model.SumPaidTopUps(from, to)
+		online, err := model.SumPaidTopUps(from, to, excluded)
 		if err != nil {
 			return nil, err
 		}
-		checkin, err := model.SumCheckinQuota(from, to)
+		checkin, err := model.SumCheckinQuota(from, to, excluded)
 		if err != nil {
 			return nil, err
 		}
-		redeemed, err := model.SumRedeemedQuota(from, to)
+		redeemed, err := model.SumRedeemedQuota(from, to, excluded)
 		if err != nil {
 			return nil, err
 		}
-		adds, err := model.ListManualQuotaAdds(from, to)
+		adds, err := model.ListManualQuotaAdds(from, to, excluded)
 		if err != nil {
 			return nil, err
 		}

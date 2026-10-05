@@ -5951,6 +5951,7 @@
     "The entered text does not match the required text.": "Le texte saisi ne correspond pas au texte requis.",
     "The environment (test vs production) is decided by the key you paste here — use the Test key while integrating, then swap to the Production key when going live.": "L’environnement (test ou production) est déterminé par la clé collée ici : utilisez la clé de test pendant l’intégration, puis remplacez-la par la clé de production lors de la mise en ligne.",
     "The exact model identifier as used in API requests.": "L'identifiant exact du modèle tel qu'utilisé dans les requêtes API.",
+    "The figures leave out {{count}} accounts marked as test accounts.": "Les chiffres excluent {{count}} comptes marqués comme comptes de test.",
     "The following models have billing type conflicts (fixed price vs ratio billing). Confirm to proceed with the changes.": "Les modèles suivants présentent des conflits de type de facturation (prix fixe vs facturation au ratio). Confirmez pour procéder aux changements.",
     "The following models in the model redirect have not been added to the \"Models\" list and may fail during invocation due to missing available models:": "Les modèles suivants dans la redirection du modèle n'ont pas été ajoutés à la liste \"Modèles\" et peuvent échouer lors de l'invocation en raison de modèles disponibles manquants :",
     "The gateway rejected this plugin": "La passerelle a rejeté ce plugin",
