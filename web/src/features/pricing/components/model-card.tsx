@@ -44,6 +44,7 @@ import type { PricingModel, PriceType, TokenUnit } from '../types'
 import { ModelBillingModeBadge } from './model-billing-mode-badge'
 import { ModelPerfBadge, type ModelPerfBadgeData } from './model-perf-badge'
 import { PriceTierBadge } from './price-tier-badge'
+import { PromoCountdown } from './promo-countdown'
 
 export interface ModelCardProps {
   model: PricingModel
@@ -278,7 +279,8 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
             {props.model.model_name}
           </h3>
           {(props.model.vendor_name ||
-            props.model.price_multiplier !== undefined) && (
+            props.model.price_multiplier !== undefined ||
+            props.model.promo_ends_at) && (
             <div className='mt-1 flex min-w-0 items-center gap-2'>
               {props.model.vendor_name && (
                 <p
@@ -290,6 +292,10 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
               )}
               <PriceTierBadge
                 multiplier={props.model.price_multiplier}
+                className='shrink-0'
+              />
+              <PromoCountdown
+                endsAt={props.model.promo_ends_at}
                 className='shrink-0'
               />
             </div>

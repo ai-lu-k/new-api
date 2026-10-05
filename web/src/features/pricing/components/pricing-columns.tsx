@@ -28,6 +28,7 @@ import type { ModelPriceCellOptions } from './model-price-cell'
 import { ModelPricePart } from './model-price-part'
 import { PerfCell, WeeklyTokensCell } from './model-stats-cells'
 import { PriceTierBadge } from './price-tier-badge'
+import { PromoCountdown } from './promo-countdown'
 import { PricingSortHeader } from './pricing-sort-header'
 
 // ----------------------------------------------------------------------------
@@ -102,6 +103,10 @@ export function usePricingColumns(
               </span>
               <PriceTierBadge
                 multiplier={model.price_multiplier}
+                className='shrink-0'
+              />
+              <PromoCountdown
+                endsAt={model.promo_ends_at}
                 className='shrink-0'
               />
             </div>

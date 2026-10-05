@@ -158,3 +158,21 @@ export function replaceModelInPath(path: string, modelName: string): string {
 export function isTokenBasedModel(model: PricingModel): boolean {
   return model.quota_type === QUOTA_TYPE_VALUES.TOKEN
 }
+
+/**
+ * What is left of a limited-time offer, in the two largest units that say
+ * something: days and hours, hours and minutes, or minutes. Null once over.
+ */
+export function promoTimeLeft(
+  endsAt: number,
+  nowMs: number
+): { days: number; hours: number; minutes: number } | null {
+  const seconds = Math.floor(endsAt - nowMs / 1000)
+  if (!(seconds > 0)) return null
+  return {
+    days: Math.floor(seconds / 86400),
+    hours: Math.floor((seconds % 86400) / 3600),
+    // Round the last minute up, so that "0 minutes left" never shows.
+    minutes: Math.max(1, Math.ceil((seconds % 3600) / 60)),
+  }
+}

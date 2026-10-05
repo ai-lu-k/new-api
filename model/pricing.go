@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/naming_setting"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 )
@@ -27,16 +28,18 @@ type PricingPluginVariant struct {
 }
 
 type Pricing struct {
-	BillingPluginVariants  []PricingPluginVariant               `json:"billing_plugin_variants,omitempty"`
-	ModelName              string                               `json:"model_name"`
-	Description            string                               `json:"description,omitempty"`
-	Icon                   string                               `json:"icon,omitempty"`
-	Tags                   string                               `json:"tags,omitempty"`
-	VendorID               int                                  `json:"vendor_id,omitempty"`
-	QuotaType              int                                  `json:"quota_type"`
-	ModelRatio             float64                              `json:"model_ratio"`
-	ModelPrice             float64                              `json:"model_price"`
-	PriceMultiplier        *float64                             `json:"price_multiplier,omitempty"`
+	BillingPluginVariants []PricingPluginVariant `json:"billing_plugin_variants,omitempty"`
+	ModelName             string                 `json:"model_name"`
+	Description           string                 `json:"description,omitempty"`
+	Icon                  string                 `json:"icon,omitempty"`
+	Tags                  string                 `json:"tags,omitempty"`
+	VendorID              int                    `json:"vendor_id,omitempty"`
+	QuotaType             int                    `json:"quota_type"`
+	ModelRatio            float64                `json:"model_ratio"`
+	ModelPrice            float64                `json:"model_price"`
+	PriceMultiplier       *float64               `json:"price_multiplier,omitempty"`
+	// PromoEndsAt is the Unix time a limited-time offer of this model ends.
+	PromoEndsAt            int64                                `json:"promo_ends_at,omitempty"`
 	OwnerBy                string                               `json:"owner_by"`
 	CompletionRatio        float64                              `json:"completion_ratio"`
 	CacheRatio             *float64                             `json:"cache_ratio,omitempty"`
@@ -363,6 +366,8 @@ func updatePricing() {
 			multiplier := naming_setting.PriceMultiplier(model)
 			pricing.PriceMultiplier = &multiplier
 		}
+
+		pricing.PromoEndsAt = operation_setting.GetModelPromotionDeadline(model)
 
 		// 补充模型元数据（描述、标签、供应商、状态）
 		if meta, ok := metaMap[model]; ok {

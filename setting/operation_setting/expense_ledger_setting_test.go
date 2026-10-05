@@ -87,3 +87,20 @@ func TestPublishExpenseMonthsSpreadsPrepaidExpenses(t *testing.T) {
 	assert.Len(t, publishExpenseMonths(entered, prepaid, "2026-10"), 2)
 	assert.Len(t, entered[0].Items, 1)
 }
+
+func TestCheckModelPromotionDeadlines(t *testing.T) {
+	require.NoError(t, CheckModelPromotionDeadlines(`{"deepseek-v4.1-flash-x0.001":1791388740}`))
+	require.NoError(t, CheckModelPromotionDeadlines(`{}`))
+	assert.Error(t, CheckModelPromotionDeadlines(`[1791388740]`))
+	assert.Error(t, CheckModelPromotionDeadlines(`{"":1791388740}`))
+	assert.Error(t, CheckModelPromotionDeadlines(`{"model":0}`))
+	assert.Error(t, CheckModelPromotionDeadlines(`{"model":"soon"}`))
+
+	original := modelPromotionSetting.Deadlines
+	t.Cleanup(func() { modelPromotionSetting.Deadlines = original })
+	require.NoError(t, config.UpdateConfigFromMap(&modelPromotionSetting, map[string]string{
+		"deadlines": `{"deepseek-v4.1-flash-x0.001":1791388740}`,
+	}))
+	assert.EqualValues(t, 1791388740, GetModelPromotionDeadline("deepseek-v4.1-flash-x0.001"))
+	assert.Zero(t, GetModelPromotionDeadline("deepseek-v4.1-flash-x0.5"))
+}

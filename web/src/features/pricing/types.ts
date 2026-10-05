@@ -74,6 +74,8 @@ export type PricingModel = {
    * expressions above are those of the model without it.
    */
   price_multiplier?: number
+  /** Unix seconds at which a limited-time offer of this model ends. */
+  promo_ends_at?: number
   cache_ratio?: number | null
   create_cache_ratio?: number | null
   image_ratio?: number | null
