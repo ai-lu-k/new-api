@@ -141,6 +141,7 @@ export type SystemTaskFilters = {
 }
 
 export type SiteSettings = {
+  'usage_level.thresholds': string
   Notice: string
   SystemName: string
   Logo: string

@@ -330,6 +330,12 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "usage_level.thresholds":
+		_, err = operation_setting.ParseUsageLevelThresholds(option.Value.(string))
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
 	case "expense_ledger.prepaid":
 		err = operation_setting.CheckPrepaidExpenses(option.Value.(string))
 		if err != nil {

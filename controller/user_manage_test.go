@@ -17,7 +17,9 @@ import (
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/go-redis/redis/v8"
 
@@ -708,4 +710,91 @@ func TestFinanceSummaryTellsTopUpsFromGifts(t *testing.T) {
 		found = found || strings.Contains(log.Other, `"reason":"offline_payment"`)
 	}
 	assert.True(t, found)
+}
+
+func TestUsageLevelBoundariesAndConfiguration(t *testing.T) {
+	thresholds := [7]int{0, 1, 5_000_000, 25_000_000, 100_000_000, 500_000_000, 2_500_000_000}
+	cases := []struct{ used, level int }{{-1, 0}, {0, 0}, {1, 1}, {4_999_999, 1}, {5_000_000, 2}, {24_999_999, 2}, {25_000_000, 3}, {99_999_999, 3}, {100_000_000, 4}, {499_999_999, 4}, {500_000_000, 5}, {2_499_999_999, 5}, {2_500_000_000, 6}, {3_000_000_000, 6}}
+	for _, tc := range cases {
+		t.Run(fmt.Sprintf("consumed_%d", tc.used), func(t *testing.T) {
+			level := service.CalculateUsageLevel(tc.used, thresholds)
+			assert.Equal(t, tc.level, level.Level)
+			assert.GreaterOrEqual(t, level.Progress, 0.0)
+			assert.LessOrEqual(t, level.Progress, 100.0)
+			if tc.level == 6 {
+				assert.Nil(t, level.NextLevelQuota)
+				assert.Zero(t, level.RemainingQuota)
+				return
+			}
+			require.NotNil(t, level.NextLevelQuota)
+			assert.Equal(t, thresholds[tc.level+1], *level.NextLevelQuota)
+			assert.Equal(t, thresholds[tc.level+1]-max(0, tc.used), level.RemainingQuota)
+		})
+	}
+	progress := service.CalculateUsageLevel(11_800_000, thresholds)
+	assert.Equal(t, 2, progress.Level)
+	assert.InDelta(t, 34.0, progress.Progress, 0.00001)
+	assert.Equal(t, 13_200_000, progress.RemainingQuota)
+	for _, raw := range []string{"null", "[]", "[10,50]", "[0,50,200,1000,5000]", "[10,10,200,1000,5000]", "[10,9,200,1000,5000]", "[10.5,50,200,1000,5000]", "[10,50,200,1000,1000000001]", "[10,50,200,1000,5000,6000]"} {
+		_, err := operation_setting.ParseUsageLevelThresholds(raw)
+		assert.Error(t, err, raw)
+	}
+	amounts, err := operation_setting.ParseUsageLevelThresholds("[10,50,200,1000,5000]")
+	require.NoError(t, err)
+	assert.Equal(t, [5]int64{10, 50, 200, 1000, 5000}, amounts)
+	custom := service.CalculateUsageLevel(11_800_000, [7]int{0, 1, 1_000_000, 10_000_000, 20_000_000, 100_000_000, 500_000_000})
+	assert.Equal(t, 3, custom.Level)
+}
+
+func TestSelfUsageLevelCountsGiftConsumptionAndRefunds(t *testing.T) {
+	db := setupManageUserTestDB(t)
+	previousUnit := common.QuotaPerUnit
+	previousExchange := operation_setting.USDExchangeRate
+	operation_setting.USDExchangeRate = 6.7
+	common.QuotaPerUnit = 500_000
+	common.OptionMapRWMutex.Lock()
+	previousOptions := common.OptionMap
+	common.OptionMap = map[string]string{"usage_level.thresholds": "[10,50,200,1000,5000]"}
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		common.QuotaPerUnit = previousUnit
+		operation_setting.USDExchangeRate = previousExchange
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap = previousOptions
+		common.OptionMapRWMutex.Unlock()
+	})
+	user := model.User{Username: "usage-gift-user", Password: "fixture-password", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, Group: "default", Quota: 50_000_000, AuthVersion: 1}
+	require.NoError(t, db.Create(&user).Error)
+	for _, tc := range []struct{ used, level int }{{0, 0}, {5_000_000, 2}, {4_500_000, 1}} {
+		require.NoError(t, db.Model(&model.User{}).Where("id = ?", user.Id).Update("used_quota", tc.used).Error)
+		recorder := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(recorder)
+		c.Request = httptest.NewRequest(http.MethodGet, "/api/user/self", nil)
+		c.Set("id", user.Id)
+		c.Set("role", user.Role)
+		GetSelf(c)
+		var response struct {
+			Success bool `json:"success"`
+			Data    struct {
+				ID         int                `json:"id"`
+				UsedQuota  int                `json:"used_quota"`
+				UsageLevel service.UsageLevel `json:"usage_level"`
+			} `json:"data"`
+		}
+		require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+		require.True(t, response.Success)
+		assert.Equal(t, user.Id, response.Data.ID)
+		assert.Equal(t, tc.used, response.Data.UsedQuota)
+		assert.Equal(t, tc.level, response.Data.UsageLevel.Level)
+		assert.NotContains(t, recorder.Body.String(), "fixture-password")
+		assert.NotContains(t, recorder.Body.String(), `"access_token"`)
+		assert.NotContains(t, recorder.Body.String(), `"password"`)
+	}
+	// Respect custom quota units rather than treating display exchange as usage.
+	common.QuotaPerUnit = 2_000_000
+	assert.Equal(t, [7]int{0, 1, 20_000_000, 100_000_000, 400_000_000, 2_000_000_000, 10_000_000_000}, operation_setting.GetUsageLevelThresholds())
+	// No top-up record exists: the original balance was a gift.
+	var saved model.User
+	require.NoError(t, db.First(&saved, user.Id).Error)
+	assert.Equal(t, user.Quota, saved.Quota)
 }

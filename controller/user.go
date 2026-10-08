@@ -334,6 +334,20 @@ func Register(c *gin.Context) {
 	return
 }
 
+type userWithUsageLevel struct {
+	*model.User
+	UsageLevel service.UsageLevel `json:"usage_level"`
+}
+
+func usersWithUsageLevels(users []*model.User) []userWithUsageLevel {
+	thresholds := operation_setting.GetUsageLevelThresholds()
+	result := make([]userWithUsageLevel, len(users))
+	for i, user := range users {
+		result[i] = userWithUsageLevel{User: user, UsageLevel: service.CalculateUsageLevel(user.UsedQuota, thresholds)}
+	}
+	return result
+}
+
 func GetAllUsers(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	sortOptions := model.NewUserSortOptions(c.Query("sort_by"), c.Query("sort_order"))
@@ -344,7 +358,7 @@ func GetAllUsers(c *gin.Context) {
 	}
 
 	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(users)
+	pageInfo.SetItems(usersWithUsageLevels(users))
 
 	common.ApiSuccess(c, pageInfo)
 	return
@@ -374,7 +388,7 @@ func SearchUsers(c *gin.Context) {
 	}
 
 	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(users)
+	pageInfo.SetItems(usersWithUsageLevels(users))
 	common.ApiSuccess(c, pageInfo)
 	return
 }
@@ -403,7 +417,7 @@ func GetUser(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data":    user,
+		"data":    userWithUsageLevel{User: user, UsageLevel: service.CalculateUsageLevel(user.UsedQuota, operation_setting.GetUsageLevelThresholds())},
 	})
 	return
 }
@@ -508,6 +522,7 @@ func buildSelfUserData(user *model.User) map[string]any {
 		"group":             user.Group,
 		"quota":             user.Quota,
 		"used_quota":        user.UsedQuota,
+		"usage_level":       service.CalculateUsageLevel(user.UsedQuota, operation_setting.GetUsageLevelThresholds()),
 		"request_count":     user.RequestCount,
 		"aff_code":          user.AffCode,
 		"aff_count":         user.AffCount,

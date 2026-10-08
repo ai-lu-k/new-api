@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { create } from 'zustand'
 
 import type { LoginChallenge } from '@/features/auth/secure-verification/types'
+import type { UsageLevel } from '@/features/usage-level/types'
 import type { AdminCapabilities } from '@/lib/admin-permissions'
 
 export type UserPermissions = {
@@ -38,6 +39,7 @@ export interface AuthUser {
   group?: string
   quota?: number
   used_quota?: number
+  usage_level?: UsageLevel
   request_count?: number
   aff_code?: string
   aff_count?: number

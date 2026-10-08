@@ -32,6 +32,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { UsageLevelBadge } from '@/features/usage-level/components/usage-level-badge'
 import { getCurrencyDisplay } from '@/lib/currency'
 import { formatQuota } from '@/lib/format'
 import { useSystemConfigStore } from '@/stores/system-config-store'
@@ -193,6 +194,16 @@ export function useUsersColumns(): ColumnDef<User>[] {
         size: 180,
         minSize: 160,
         meta: { mobileOrder: 40 },
+      },
+      {
+        id: 'usage_level',
+        header: t('Usage level'),
+        cell: ({ row }) => (
+          <UsageLevelBadge level={row.original.usage_level?.level} showTitle />
+        ),
+        enableSorting: false,
+        size: 160,
+        meta: { mobileOrder: 35 },
       },
       {
         accessorKey: 'group',

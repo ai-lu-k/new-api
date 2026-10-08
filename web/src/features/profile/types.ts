@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import type { UsageLevel } from '@/features/usage-level/types'
 import type { UserPermissions } from '@/stores/auth-store'
 
 // ============================================================================
@@ -53,6 +54,7 @@ export interface UserProfile {
   quota: number
   /** Total used quota */
   used_quota: number
+  usage_level?: UsageLevel
   /** Total request count */
   request_count: number
   /** Account status (1=启用, 2=禁用, 3=待审核, 4=已删除) */

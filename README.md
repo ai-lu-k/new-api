@@ -126,6 +126,7 @@ Use it to share authorized model access across a team, switch providers without 
 | Model access | Use OpenAI Chat Completions, Responses, Anthropic Messages, and Gemini APIs; stream responses and use tools, reasoning, and multimodal inputs where supported |
 | Routing | Configure model mappings, channel priorities and weights, retries, channel affinity, and multiple upstream keys |
 | Usage and costs | Manage quotas, subscriptions, usage logs, cache accounting, and expression-based pricing for different usage tiers |
+| Usage levels | Progress from LV0 to LV6 through cumulative settled consumption, including gifted balance; view badges and milestone progress, and configure thresholds under System Settings → Site → Usage levels |
 | Access control | Manage users, groups, fine-grained permissions, and API key restrictions; use OAuth/OIDC, passkeys, two-factor authentication, and login session management |
 | Asynchronous tasks | Extend image, video, and other task APIs with JavaScript plugins, including task status and output retrieval |
 | Web console | Configure channels and models, inspect usage and audit logs, and try models in the playground; available in English, Simplified Chinese, Traditional Chinese, French, Japanese, Russian, and Vietnamese |

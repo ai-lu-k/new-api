@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { SystemInfoSection } from '../general/system-info-section'
+import { UsageLevelSettingsSection } from '../general/usage-level-settings-section'
 import {
   parseHeaderNavModules,
   parseSidebarModulesAdmin,
@@ -31,6 +32,15 @@ import { createSectionRegistry } from '../utils/section-registry'
 import { SitePageSettingsCard } from './site-page-settings-card'
 
 const SITE_SECTIONS = [
+  {
+    id: 'usage-levels',
+    titleKey: 'Usage levels',
+    build: (settings: SiteSettings) => (
+      <UsageLevelSettingsSection
+        defaultValue={settings['usage_level.thresholds']}
+      />
+    ),
+  },
   {
     id: 'system-info',
     titleKey: 'System Information',

@@ -88,6 +88,7 @@ export interface ApiResponse<T = unknown> {
 // ============================================================================
 
 export interface SystemStatus {
+  usage_level_thresholds?: number[]
   success?: boolean
   message?: string
   data?: {

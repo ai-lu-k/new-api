@@ -25,6 +25,7 @@ import {
 } from './section-registry.tsx'
 
 const defaultSiteSettings: SiteSettings = {
+  'usage_level.thresholds': '[10,50,200,1000,5000]',
   Notice: '',
   SystemName: 'New API',
   Logo: '',

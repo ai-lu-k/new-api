@@ -31,6 +31,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { UsageLevelBadge } from '@/features/usage-level/components/usage-level-badge'
 import useDialogState from '@/hooks/use-dialog'
 import { useIsSidebarModuleVisible } from '@/hooks/use-sidebar-config'
 import { useUserDisplay } from '@/hooks/use-user-display'
@@ -86,6 +87,7 @@ export function ProfileDropdown() {
                 {displayName}
               </p>
               <div className='flex items-center gap-1.5'>
+                <UsageLevelBadge level={user?.usage_level?.level} />
                 <span className='text-muted-foreground text-xs'>
                   {roleLabel}
                 </span>

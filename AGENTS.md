@@ -132,6 +132,8 @@ Inside `relaykit/`, use `kitutil.*` from `relaykit/relayconvert/kitutil/json.go`
 
 Tasks that touch none of these (for example unrelated frontend work, authentication, database migrations, or protocol conversion that leaves usage untouched) do not need to read it.
 
+**User usage levels:** LV0–LV6 are derived from `users.used_quota`, including consumption of gifted balance and existing refund adjustments. Credit additions and top-ups alone do not change levels. Thresholds in `usage_level.thresholds` use internal balance units, independent of display exchange rates. Levels are presentation metadata; they must not grant administrator permissions or automatically change user groups, routing, or billing rates. Reuse the shared backend calculation for self and administrator responses instead of maintaining a second level counter.
+
 **Backend test quality:** Backend tests must protect real behavior, API contracts, billing/accounting invariants, data compatibility, or regression paths.
 
 - **Do not scatter tests for a small change:** For a focused feature or fix, extend an existing suitable test file first. If a new test file is necessary, add at most one and consolidate the key regression cases there. MUST NOT create separate test files for the same small feature across `controller/`, `service/`, `setting/`, or other layers merely because its call chain crosses those layers. Do not repeat fixtures and assertions at each layer. Keep the cases compact and focused on observable behavior; the number of production files touched is not a reason to add more test files.

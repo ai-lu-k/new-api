@@ -20,6 +20,7 @@ import { useTranslation } from 'react-i18next'
 
 import { StatusBadge } from '@/components/status-badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { UsageLevelBadge } from '@/features/usage-level/components/usage-level-badge'
 import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
 import { getRoleLabel } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
@@ -52,8 +53,9 @@ export function AccountIdentity() {
         </AvatarFallback>
       </Avatar>
       <div className='min-w-0 flex-1'>
-        <div className='flex min-w-0 items-center gap-2'>
+        <div className='flex min-w-0 flex-wrap items-center gap-2'>
           <span className='truncate font-semibold'>{name}</span>
+          <UsageLevelBadge level={user.usage_level?.level} showTitle />
           <StatusBadge
             label={getRoleLabel(user.role)}
             variant='neutral'

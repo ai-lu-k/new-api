@@ -48,6 +48,7 @@ func GetStatus(c *gin.Context) {
 	passkeySetting := system_setting.PasskeySettingsSnapshot()
 	// Read before the options are locked: it takes that lock itself.
 	homeTitle := currentSitePage().Page("/").Title
+	usageLevelThresholds := operation_setting.GetUsageLevelThresholds()
 	common.OptionMapRWMutex.RLock()
 	defer common.OptionMapRWMutex.RUnlock()
 
@@ -78,6 +79,7 @@ func GetStatus(c *gin.Context) {
 		"turnstile_site_key":          common.TurnstileSiteKey,
 		"docs_link":                   operation_setting.GetGeneralSetting().DocsLink,
 		"quota_per_unit":              common.QuotaPerUnit,
+		"usage_level_thresholds":      usageLevelThresholds,
 		// 兼容旧前端：保留 display_in_currency，同时提供新的 quota_display_type
 		"display_in_currency":           operation_setting.IsCurrencyDisplay(),
 		"quota_display_type":            operation_setting.GetQuotaDisplayType(),

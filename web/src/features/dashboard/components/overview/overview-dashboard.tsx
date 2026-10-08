@@ -29,6 +29,7 @@ import {
 } from '@/components/page-transition'
 import { getApiKeys } from '@/features/keys/api'
 import { CheckinCalendarCard } from '@/features/profile/components/checkin-calendar-card'
+import { UsageLevelCard } from '@/features/usage-level/components/usage-level-card'
 import { useStatus } from '@/hooks/use-status'
 import { ROLE } from '@/lib/roles'
 import { requireServerSuccess } from '@/lib/server-error-message'
@@ -181,6 +182,7 @@ export function OverviewDashboard() {
           {showSetupBanner && <SetupBanner steps={startSteps} />}
 
           <SummaryCards />
+          <UsageLevelCard />
 
           <div
             className={cn(
