@@ -14,6 +14,10 @@ logs
 web/dist
 web/node_modules
 .env
+# Keep real environment variants local; example files may be published.
+.env.*
+!.env.example
+!.env.*.example
 one-api
 new-api
 /__debug_bin*
@@ -44,3 +48,7 @@ relaykit/relayconvert/chat_responses_live_local_test.go
 service/openaicompat/chat_responses_live_local_test.go
 go.work
 go.work.sum
+
+# Private server operations and configuration backups must stay local.
+/_ops/
+/new-api-config-backups/

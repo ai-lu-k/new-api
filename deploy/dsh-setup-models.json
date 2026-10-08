@@ -1,16 +1,114 @@
 {
-  "deepseek/deepseek-v4.1-flash": {"name": "DeepSeek V4.1 Flash", "context_window": 1000000, "input": ["text", "image"]},
-  "deepseek-v4.1-flash": {"name": "DeepSeek V4.1 Flash（极低）"},
-  "glm-5.3": {"name": "GLM 5.3"},
-  "glm-5.3-flash": {"name": "GLM 5.3 Flash", "context_window": 1000000, "input": ["text", "image"]},
-  "glm-5.3-flashx": {"name": "GLM 5.3 FlashX"},
-  "mimo-v2.6-flash": {"name": "MiMo V2.6 Flash（特惠）", "context_window": 1000000},
-  "mimo-v2.6-pro": {"name": "MiMo V2.6 Pro（特惠）", "context_window": 1000000},
-  "xiaomi/mimo-v2.6-flash": {"name": "MiMo V2.6 Flash（稳定）", "context_window": 1000000},
-  "xiaomi/mimo-v2.6-pro": {"name": "MiMo V2.6 Pro（稳定）", "context_window": 1000000},
-  "claude-sonnet-5-5": {"name": "Claude Sonnet 5.5"},
-  "gpt-6-luna": {"name": "GPT-6 Luna"},
-  "gpt-5.6-sol": {"name": "GPT-5.6 Sol"},
-  "gpt-image-2.5-flare": {"hidden": true},
-  "jev": {"hidden": true}
+  "agnes-3.0-flash": {
+    "context_window": 1000000,
+    "input": [
+      "text",
+      "image"
+    ],
+    "name": "Agnes 3.0 Flash",
+    "reasoning_efforts": {
+      "high": "high",
+      "off": "none"
+    }
+  },
+  "claude-sonnet-5-5-x0.5": {
+    "name": "Claude Sonnet 5.5"
+  },
+  "deepseek-v4.1-flash-fast-x0.5": {
+    "compat": {
+      "thinkingFormat": "deepseek"
+    },
+    "context_window": 1000000,
+    "input": [
+      "text",
+      "image"
+    ],
+    "max_tokens": 384000,
+    "name": "DeepSeek V4.1 Flash Fast",
+    "reasoning_efforts": {
+      "high": "high",
+      "low": "low",
+      "max": "max"
+    }
+  },
+  "deepseek-v4.1-flash-x0.25": {
+    "compat": {
+      "thinkingFormat": "deepseek"
+    },
+    "context_window": 1000000,
+    "input": [
+      "text",
+      "image"
+    ],
+    "max_tokens": 384000,
+    "name": "DeepSeek V4.1 Flash",
+    "reasoning_efforts": {
+      "high": "high",
+      "low": "low",
+      "max": "max"
+    }
+  },
+  "glm-5.3-flash-x0.5": {
+    "context_window": 1000000,
+    "input": [
+      "text",
+      "image"
+    ],
+    "name": "GLM 5.3 Flash"
+  },
+  "gpt-6-luna-x0.5": {
+    "name": "GPT-6 Luna"
+  },
+  "gpt-6.1-sol-x0.25": {
+    "context_window": 1050000,
+    "input": [
+      "text",
+      "image"
+    ],
+    "max_tokens": 128000,
+    "name": "GPT-6.1 Sol",
+    "reasoning_efforts": {
+      "high": "high",
+      "low": "low",
+      "max": "max",
+      "medium": "medium",
+      "xhigh": "xhigh"
+    }
+  },
+  "gpt-image-2.5-flare-x0.5": {
+    "hidden": true
+  },
+  "grok-4.7-x0.3": {
+    "context_window": 500000,
+    "input": [
+      "text",
+      "image"
+    ],
+    "name": "Grok 4.7",
+    "reasoning_efforts": {
+      "high": "high",
+      "low": "low",
+      "medium": "medium",
+      "xhigh": "xhigh"
+    }
+  },
+  "jev": {
+    "hidden": true
+  },
+  "mimo-v2.6-flash-x0.25": {
+    "context_window": 1000000,
+    "name": "MiMo V2.6 Flash"
+  },
+  "mimo-v2.6-flash-x0.5": {
+    "context_window": 1000000,
+    "name": "MiMo V2.6 Flash"
+  },
+  "mimo-v2.6-pro-x0.25": {
+    "context_window": 1000000,
+    "name": "MiMo V2.6 Pro"
+  },
+  "mimo-v2.6-pro-x0.5": {
+    "context_window": 1000000,
+    "name": "MiMo V2.6 Pro"
+  }
 }

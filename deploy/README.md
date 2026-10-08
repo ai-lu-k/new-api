@@ -329,6 +329,15 @@ providers 文档）、`hidden`（不是对话模型的，比如生图和 `jev`�
 `/v1/chat/completions` 的进 `lu-k`，只能走 `/v1/messages` 的（Claude）进 `lu-k-messages`，只能走
 `/v1/responses` 的进 `lu-k-responses`，共用同一把密钥。
 
+仓库清单只保存可公开的模型名称和能力参数。模型新增、下线或改名后，需要同步更新这份清单；部署脚本不会
+自动把它写入线上 `dsh_setup.models`。`dsh_setup.default_model` 单独配置，当前清单可使用
+`deepseek-v4.1-flash-x0.25` 作为默认模型。`gpt-6.1-sol-x0.25` 的条目包含文本和图片输入，以及
+`low`、`medium`、`high`、`xhigh`、`max` 五个思考档位；调用时仍须使用渠道支持的协议。
+
+公开同步时只提取上述模型字段，不上传整个 `options` 表、数据库备份、渠道密钥或客户端兑换结果。实际密码
+和连接配置放在服务器的环境文件中；本地 `.env.*`（示例除外）、`_ops/` 和 `new-api-config-backups/`
+均已忽略。模型名称中的倍率不替代基础模型价格配置；线上价格、名称映射和渠道设置仍在数据库中管理。
+
 脚本的测试在 `service/dshsetup/dshsetup_test.go`：用真的 `sh` 对着几种现有配置跑一遍，逐字节比对结果；
 机器上有 `pwsh` 时同一批用例也会跑 PowerShell 版。**PowerShell 版到 2026-10-02 为止没有实际运行过**
 （开发机上没有 PowerShell），上线前要在一台真的 Windows 上试一次。
