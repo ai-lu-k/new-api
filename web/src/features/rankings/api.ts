@@ -24,6 +24,7 @@ import type {
   PrepaidExpense,
   RankingPeriod,
   RankingsSnapshot,
+  UserLevelRankings,
 } from './types'
 
 type RankingsResponse = {
@@ -36,6 +37,21 @@ export async function getRankings(
   period: RankingPeriod
 ): Promise<RankingsResponse> {
   const res = await api.get('/api/rankings', { params: { period } })
+  return res.data
+}
+
+type UserLevelRankingsResponse = {
+  success: boolean
+  message?: string
+  data: UserLevelRankings
+}
+
+/**
+ * The public user level leaderboard. The server masks account names and marks
+ * the reader's own line, so no extra request is needed to highlight it.
+ */
+export async function getUserLevelRankings(): Promise<UserLevelRankingsResponse> {
+  const res = await api.get('/api/rankings/users')
   return res.data
 }
 

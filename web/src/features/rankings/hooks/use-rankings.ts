@@ -20,13 +20,25 @@ import { useQuery } from '@tanstack/react-query'
 
 import { requireServerSuccess } from '@/lib/server-error-message'
 
-import { getRankings } from '../api'
+import { getRankings, getUserLevelRankings } from '../api'
 import type { RankingPeriod } from '../types'
 
 export function useRankings(period: RankingPeriod) {
   return useQuery({
     queryKey: ['rankings', period],
     queryFn: async () => requireServerSuccess(await getRankings(period)),
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+/**
+ * The user level leaderboard. It does not vary by period: a level is derived
+ * from lifetime settled consumption, so one cache entry serves every tab.
+ */
+export function useUserLevelRankings() {
+  return useQuery({
+    queryKey: ['rankings', 'users'],
+    queryFn: async () => requireServerSuccess(await getUserLevelRankings()),
     staleTime: 5 * 60 * 1000,
   })
 }
