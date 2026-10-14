@@ -71,22 +71,19 @@ func GetUserUsageRow(userId int) (*UserUsageRow, error) {
 	return &rows[0], nil
 }
 
-// GetUserUsageRank counts how many ranked accounts consumed strictly more, so
-// the returned count + 1 is the position GetTopUsersByUsage publishes for that
-// amount.
-func GetUserUsageRank(usedQuota int) (int64, error) {
+// GetUserUsageRank uses the same consumption and id ordering as the published
+// page, including when an equally consuming account is below its cut-off.
+func GetUserUsageRank(usedQuota int, userId int) (int64, error) {
 	var ahead int64
-	err := rankedUsers().Where("used_quota > ?", usedQuota).Count(&ahead).Error
+	err := rankedUsers().Where("used_quota > ? OR (used_quota = ? AND id < ?)", usedQuota, usedQuota, userId).Count(&ahead).Error
 	return ahead + 1, err
 }
 
 // GetUserLevelCounts buckets the ranked population by usage level, in one scan.
 //
-// The level is derived with a CASE expression and that same expression is then
-// repeated as the group key: GORM quotes a Group() argument as a single
-// identifier, so neither a positional reference (GROUP BY 1) nor an output
-// alias survives that trip. The soft-delete scope is written out because a raw
-// statement does not inherit it from the model.
+// Derive the level once in a subquery, then group its named column. Repeating
+// a parameterized CASE as the group key fails PostgreSQL and strict MySQL's
+// grouping checks. The inner User query retains the soft-delete scope.
 func GetUserLevelCounts(thresholds [7]int) ([]UserLevelCount, error) {
 	conditions := make([]string, 0, 6)
 	levelArgs := make([]any, 0, 6)
@@ -96,19 +93,8 @@ func GetUserLevelCounts(thresholds [7]int) ([]UserLevelCount, error) {
 	}
 	levelExpr := "CASE " + strings.Join(conditions, " ") + " ELSE 0 END"
 
-	statement := "SELECT " + levelExpr + " AS level, COUNT(*) AS users FROM users" +
-		" WHERE deleted_at IS NULL AND role = ? AND status = ? AND used_quota > 0" +
-		" GROUP BY " + levelExpr +
-		" ORDER BY level ASC"
-
-	// Placeholders bind in the order they appear: the CASE in the select list,
-	// then the WHERE filters, then the CASE repeated as the group key.
-	args := make([]any, 0, len(levelArgs)*2+2)
-	args = append(args, levelArgs...)
-	args = append(args, common.RoleCommonUser, common.UserStatusEnabled)
-	args = append(args, levelArgs...)
-
 	var rows []UserLevelCount
-	err := DB.Raw(statement, args...).Scan(&rows).Error
+	err := DB.Table("(?) AS ranked_usage", rankedUsers().Select(levelExpr+" AS level", levelArgs...)).
+		Select("level, COUNT(*) AS users").Group("level").Order("level ASC").Scan(&rows).Error
 	return rows, err
 }

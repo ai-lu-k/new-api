@@ -18,10 +18,15 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useTranslation } from 'react-i18next'
 
+import {
+  StaticDataTable,
+  type StaticDataTableColumn,
+} from '@/components/data-table'
 import { UsageLevelBadge } from '@/features/usage-level/components/usage-level-badge'
 import { useStatus } from '@/hooks/use-status'
 import { toIntlLocale } from '@/i18n/languages'
 import { formatQuotaWithCurrency } from '@/lib/currency'
+import { formatNumber } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import type {
@@ -107,7 +112,7 @@ function Ladder(props: { rows: UserLevelLadderRow[] }) {
                   : formatQuotaWithCurrency(row.min_quota, { locale })}
               </p>
               <p className='text-foreground mt-2 text-sm font-semibold tabular-nums'>
-                {row.users.toLocaleString()}
+                {formatNumber(row.users, locale)}
                 <span className='text-muted-foreground/80 ml-1 text-[11px] font-normal'>
                   {t('accounts')}
                 </span>
@@ -128,7 +133,56 @@ function Ladder(props: { rows: UserLevelLadderRow[] }) {
 
 /** The published page of heaviest consumers. */
 function Board(props: { rows: RankedUser[] }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
+
+  const columns: StaticDataTableColumn<RankedUser>[] = [
+    {
+      id: 'rank',
+      header: t('Rank'),
+      className: 'w-12 px-4 py-2',
+      cellClassName: 'text-muted-foreground px-4 py-2 font-mono tabular-nums',
+      cell: (row) => row.rank,
+    },
+    {
+      id: 'account',
+      header: t('Account'),
+      className: 'px-2 py-2',
+      cellClassName: 'px-2 py-2',
+      cell: (row) => (
+        <>
+          <span className='font-medium'>{row.name}</span>
+          {row.is_me && (
+            <span className='bg-primary/10 text-primary ml-2 rounded px-1.5 py-0.5 text-[10px] font-medium'>
+              {t('You')}
+            </span>
+          )}
+        </>
+      ),
+    },
+    {
+      id: 'level',
+      header: t('Level'),
+      className: 'px-2 py-2',
+      cellClassName: 'px-2 py-2',
+      cell: (row) => <UsageLevelBadge level={row.level} />,
+    },
+    {
+      id: 'consumed',
+      header: t('Consumed'),
+      className: 'px-4 py-2 text-right',
+      cellClassName: 'px-4 py-2 text-right font-mono tabular-nums',
+      cell: (row) => formatQuotaWithCurrency(row.used_quota, { locale }),
+    },
+    {
+      id: 'requests',
+      header: t('Requests'),
+      className: 'hidden px-4 py-2 text-right sm:table-cell',
+      cellClassName:
+        'text-muted-foreground hidden px-4 py-2 text-right font-mono tabular-nums sm:table-cell',
+      cell: (row) => formatNumber(row.request_count, locale),
+    },
+  ]
 
   return (
     <section className='bg-card overflow-hidden rounded-lg border'>
@@ -141,55 +195,16 @@ function Board(props: { rows: RankedUser[] }) {
         </p>
       </header>
 
-      <div className='overflow-x-auto'>
-        <table className='w-full text-sm'>
-          <thead>
-            <tr className='text-muted-foreground/80 border-b text-left text-[11px] tracking-wide uppercase'>
-              <th className='w-12 px-4 py-2 font-medium'>{t('Rank')}</th>
-              <th className='px-2 py-2 font-medium'>{t('Account')}</th>
-              <th className='px-2 py-2 font-medium'>{t('Level')}</th>
-              <th className='px-4 py-2 text-right font-medium'>
-                {t('Consumed')}
-              </th>
-              <th className='hidden px-4 py-2 text-right font-medium sm:table-cell'>
-                {t('Requests')}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {props.rows.map((row) => (
-              <tr
-                key={row.rank}
-                className={cn(
-                  'border-b last:border-0',
-                  row.is_me && 'bg-primary/5'
-                )}
-              >
-                <td className='text-muted-foreground px-4 py-2 font-mono tabular-nums'>
-                  {row.rank}
-                </td>
-                <td className='px-2 py-2'>
-                  <span className='font-medium'>{row.name}</span>
-                  {row.is_me && (
-                    <span className='bg-primary/10 text-primary ml-2 rounded px-1.5 py-0.5 text-[10px] font-medium'>
-                      {t('You')}
-                    </span>
-                  )}
-                </td>
-                <td className='px-2 py-2'>
-                  <UsageLevelBadge level={row.level} />
-                </td>
-                <td className='px-4 py-2 text-right font-mono tabular-nums'>
-                  {formatQuotaWithCurrency(row.used_quota)}
-                </td>
-                <td className='text-muted-foreground hidden px-4 py-2 text-right font-mono tabular-nums sm:table-cell'>
-                  {row.request_count.toLocaleString()}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <StaticDataTable
+        tableClassName='w-full text-sm'
+        columns={columns}
+        data={props.rows}
+        getRowKey={(row) => row.rank}
+        getRowClassName={(row) =>
+          cn('border-b last:border-0', row.is_me && 'bg-primary/5')
+        }
+        headerRowClassName='text-muted-foreground/80 text-left text-[11px] tracking-wide uppercase'
+      />
     </section>
   )
 }

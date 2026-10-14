@@ -97,7 +97,7 @@ func GetUserLevelRankingsSnapshot(callerId int) (*UserLevelRankingsResponse, err
 			return nil, err
 		}
 		if mine != nil && mine.UsedQuota > 0 {
-			rank, err := model.GetUserUsageRank(mine.UsedQuota)
+			rank, err := model.GetUserUsageRank(mine.UsedQuota, mine.Id)
 			if err != nil {
 				return nil, err
 			}
