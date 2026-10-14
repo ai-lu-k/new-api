@@ -300,6 +300,17 @@
     # what was there. Returns $true when a backup was made.
     function Write-Document([string]$Path, $Document, $Lines, [string]$Stamp) {
         $text = ($Lines -join $Document.Eol) + $Document.Eol
+        # Restrict the credentials file before writing any key or making a
+        # backup. Windows retains its profile ACL; Unix PowerShell needs 0600.
+        if ([System.IO.Path]::GetFileName($Path) -ceq '.credentials.yaml' -and
+            [System.Environment]::OSVersion.Platform -ne [System.PlatformID]::Win32NT) {
+            if (-not (Test-Path -LiteralPath $Path)) {
+                $file = [System.IO.File]::Open($Path, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+                $file.Dispose()
+            }
+            & chmod 600 ([System.IO.Path]::GetFullPath($Path))
+            if ($LASTEXITCODE -ne 0) { throw '无法限制凭据文件的访问权限，配置已停止。' }
+        }
         if ($null -ne $Document.Text -and $Document.Text -ceq $text) { return $false }
         $backedUp = $false
         if ($null -ne $Document.Text) {

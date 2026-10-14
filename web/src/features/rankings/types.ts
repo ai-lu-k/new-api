@@ -137,7 +137,7 @@ export type RankingsSnapshot = {
   vendor_share_history: VendorShareSeries
 }
 
-export type RankingsView = 'models' | 'expenses' | 'about'
+export type RankingsView = 'models' | 'levels' | 'expenses' | 'about'
 
 /** One line of what the site paid in a month. */
 export type ExpenseItem = {
@@ -178,4 +178,36 @@ export type ExpenseLedgerData = {
   /** The months as the operator entered them; the editor works on these. */
   entered: ExpenseMonth[]
   prepaid: PrepaidExpense[]
+}
+
+/**
+ * One published line of the user level leaderboard. The name arrives from the
+ * server already masked, because this page is public.
+ */
+export type RankedUser = {
+  rank: number
+  name: string
+  level: number
+  /** Lifetime settled consumption, in raw quota units. */
+  used_quota: number
+  request_count: number
+  /** Marks the signed-in reader's own line. */
+  is_me?: boolean
+}
+
+/** One rung of the ladder: what it costs and how many accounts reached it. */
+export type UserLevelLadderRow = {
+  level: number
+  /** Quota needed to reach this level; LV0 is 0 and LV1 the first unit. */
+  min_quota: number
+  users: number
+}
+
+export type UserLevelRankings = {
+  levels: UserLevelLadderRow[]
+  users: RankedUser[]
+  /** Every ranked account, not only the published page. */
+  total_users: number
+  /** The reader's own line, when they have settled consumption. */
+  me?: RankedUser
 }

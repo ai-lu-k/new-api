@@ -503,6 +503,13 @@ refs:
 					info, err := os.Stat(credentials)
 					require.NoError(t, err)
 					assert.Equal(t, os.FileMode(0o600), info.Mode().Perm(), "DSH refuses a credentials file others can read")
+					for _, backup := range backups(t, home) {
+						if strings.HasPrefix(filepath.Base(backup), ".credentials.yaml.") {
+							info, err := os.Stat(backup)
+							require.NoError(t, err)
+							assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+						}
+					}
 				}
 
 				again := runSetup(t, shell, home, configured)
@@ -539,6 +546,23 @@ refs:
 			}
 		})
 	}
+}
+
+func TestPowerShellStopsBeforeWritingKeyIfPermissionChangeFails(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix permissions do not apply")
+	}
+	if _, err := exec.LookPath("pwsh"); err != nil {
+		t.Skip("pwsh is not installed")
+	}
+	bin := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(bin, "chmod"), []byte("#!/bin/sh\nexit 1\n"), 0o700))
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	home := t.TempDir()
+	run := runSetup(t, "ps1", home, configured)
+	assert.Contains(t, run.output, "无法限制凭据文件的访问权限")
+	assert.NotContains(t, run.output, "sk-test0123456789")
+	assert.Empty(t, readFile(t, filepath.Join(home, ".credentials.yaml")), "permission failure must stop before any secret is written")
 }
 
 func indent(block string, by int) string {

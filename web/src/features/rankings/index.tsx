@@ -20,11 +20,11 @@ import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
 import { PublicLayout } from '@/components/layout'
+import { PageTransition } from '@/components/page-transition'
+import { Skeleton } from '@/components/ui/skeleton'
 import { AboutContent } from '@/features/about'
 import { useStatus } from '@/hooks/use-status'
 import { parseHeaderNavModulesFromStatus } from '@/lib/nav-modules'
-import { PageTransition } from '@/components/page-transition'
-import { Skeleton } from '@/components/ui/skeleton'
 
 import {
   ExpenseLedger,
@@ -32,8 +32,9 @@ import {
   ModelsSection,
   PulseSection,
   RankingsHero,
+  UserLevelsSection,
 } from './components'
-import { useRankings } from './hooks/use-rankings'
+import { useRankings, useUserLevelRankings } from './hooks/use-rankings'
 import type { RankingPeriod, RankingsView } from './types'
 
 const VALID_PERIODS: RankingPeriod[] = ['today', 'week', 'month', 'year']
@@ -55,13 +56,18 @@ export function Rankings() {
     parseHeaderNavModulesFromStatus(status as Record<string, unknown> | null)
       ?.about !== false
   const views: RankingsView[] = showAbout
-    ? ['models', 'expenses', 'about']
-    : ['models', 'expenses']
+    ? ['models', 'levels', 'expenses', 'about']
+    : ['models', 'levels', 'expenses']
   const view: RankingsView =
     search.section && views.includes(search.section) ? search.section : 'models'
 
   const rankingsQuery = useRankings(period)
   const snapshot = rankingsQuery.data?.data
+
+  // A level comes from lifetime settled consumption, so this tab ignores the
+  // period switch entirely.
+  const levelsQuery = useUserLevelRankings()
+  const levels = levelsQuery.data?.data
 
   const handlePeriodChange = (next: RankingPeriod) => {
     navigate({
@@ -123,6 +129,20 @@ export function Rankings() {
                 droppers={snapshot.top_droppers}
               />
             </>
+          )}
+
+          {view === 'levels' && levelsQuery.isLoading && <RankingsLoading />}
+          {view === 'levels' && !levelsQuery.isLoading && !levels && (
+            <RankingsError
+              message={
+                levelsQuery.error instanceof Error
+                  ? levelsQuery.error.message
+                  : t('Unable to load level data')
+              }
+            />
+          )}
+          {view === 'levels' && !levelsQuery.isLoading && levels && (
+            <UserLevelsSection data={levels} />
           )}
         </PageTransition>
       </div>

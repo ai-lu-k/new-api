@@ -31,24 +31,29 @@ const PERIODS: { id: RankingPeriod; labelKey: string }[] = [
 
 const VIEWS: { id: RankingsView; labelKey: string }[] = [
   { id: 'models', labelKey: 'Model rankings' },
+  { id: 'levels', labelKey: 'Usage levels' },
   { id: 'expenses', labelKey: 'Expenses' },
   { id: 'about', labelKey: 'About' },
 ]
 
-const HEADINGS: Record<RankingsView, { title: string; description: string }> =
-  {
-    models: {
-      title: 'Rankings',
-      description:
-        'Discover the most-used models and rising vendors on the platform, updated from live usage data.',
-    },
-    expenses: {
-      title: 'Expenses',
-      description:
-        'What running this site costs each month, published item by item.',
-    },
-    about: { title: 'About', description: '' },
-  }
+const HEADINGS: Record<RankingsView, { title: string; description: string }> = {
+  models: {
+    title: 'Rankings',
+    description:
+      'Discover the most-used models and rising vendors on the platform, updated from live usage data.',
+  },
+  levels: {
+    title: 'Usage levels',
+    // The same rule sentence the profile page's level card carries.
+    description: 'Grow with your total consumption, including gifted balance.',
+  },
+  expenses: {
+    title: 'Expenses',
+    description:
+      'What running this site costs each month, published item by item.',
+  },
+  about: { title: 'About', description: '' },
+}
 
 type RankingsHeroProps = {
   /** The sections to offer; one that is switched off is left out. */
