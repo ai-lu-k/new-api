@@ -35,6 +35,7 @@ export const MESSAGE_STATUS = {
 // API endpoints
 export const API_ENDPOINTS = {
   CHAT_COMPLETIONS: '/pg/chat/completions',
+  IMAGE_GENERATIONS: '/pg/images/generations',
   USER_MODELS: '/api/user/models',
   USER_GROUPS: '/api/user/self/groups',
 } as const
@@ -54,7 +55,37 @@ export const DEFAULT_CONFIG: PlaygroundConfig = {
   presence_penalty: 0,
   seed: null,
   stream: true,
+  image_size: '',
+  image_quality: '',
+  image_n: 1,
 }
+
+// Image generation parameters. Empty values mean "let the upstream decide"
+// and are dropped from the request body.
+export type ImageParameterOption = {
+  value: string
+  /** i18n key; omitted for literal values such as `1024x1024`. */
+  labelKey?: string
+}
+
+export const IMAGE_SIZE_OPTIONS: ImageParameterOption[] = [
+  { value: '', labelKey: 'Default' },
+  { value: '1024x1024' },
+  { value: '1536x1024' },
+  { value: '1024x1536' },
+  { value: '512x512' },
+]
+
+export const IMAGE_QUALITY_OPTIONS: ImageParameterOption[] = [
+  { value: '', labelKey: 'Default' },
+  { value: 'low', labelKey: 'Low' },
+  { value: 'medium', labelKey: 'Medium' },
+  { value: 'high', labelKey: 'High' },
+  { value: 'auto', labelKey: 'Auto' },
+]
+
+export const IMAGE_COUNT_MIN = 1
+export const IMAGE_COUNT_MAX = 10
 
 export const DEFAULT_PARAMETER_ENABLED: ParameterEnabled = {
   temperature: true,

@@ -215,6 +215,18 @@ func (s *StreamStatus) IsNormalEnd() bool {
 		s.EndReason == StreamEndReasonHandlerStop
 }
 
+// IsSuccessfulResponse requires both a normal transport end and a successful
+// protocol result. A transport [DONE] cannot override an error or a missing
+// terminal in a protocol that requires one.
+func (s *StreamStatus) IsSuccessfulResponse() bool {
+	if s == nil {
+		return true
+	}
+	outcome := s.OutcomeSnapshot()
+	return s.IsNormalEnd() && !outcome.HasErrors &&
+		(outcome.Response == ResponseOutcomeCompleted || outcome.Response == ResponseOutcomeUnknown && !outcome.ExpectsTerminal)
+}
+
 func (s *StreamStatus) Summary() string {
 	if s == nil {
 		return "StreamStatus<nil>"

@@ -25,7 +25,16 @@ import {
   getFreshAuthHeaders,
   refreshAuthentication,
 } from '@/lib/auth-session'
+import {
+  blockEnvironmentRecovery,
+  confirmEnvironmentRecovery,
+  getAppEnvironment,
+  isEnvironmentRecoveryBlocked,
+  getEnvironmentHeaders,
+  requestEnvironmentReload,
+} from '@/lib/environment'
 import { handleServerError } from '@/lib/handle-server-error'
+import { getPreviewHeaders } from '@/lib/preview-mode'
 import {
   getServerErrorMessage,
   safeServerErrorMessage,
@@ -63,7 +72,7 @@ api.get = ((url: string, config: ApiRequestConfig = {}) => {
 
   const params = config.params ? JSON.stringify(config.params) : '{}'
   const sessionSID = useAuthStore.getState().auth.session?.sid || 'anonymous'
-  const key = `${sessionSID}:${url}?${params}`
+  const key = `${getAppEnvironment()}:${sessionSID}:${url}?${params}`
   const existingRequest = inFlightGet.get(key)
   if (existingRequest) return existingRequest
 
@@ -85,6 +94,13 @@ function redirectToSignIn(): void {
 
 api.interceptors.response.use(
   (response) => {
+    if (
+      response.config.url?.startsWith('/api/') &&
+      response.config.url.split('?')[0] !== '/api/environment' &&
+      response.data?.success === true
+    ) {
+      confirmEnvironmentRecovery()
+    }
     if (response.config.acceptAuthRotation && response.data?.success === true) {
       applyAuthRotation(response.data.data)
     }
@@ -95,6 +111,27 @@ api.interceptors.response.use(
     const config = error?.config as ApiRequestConfig | undefined
     const skipErrorHandler = config?.skipErrorHandler
     const status = error?.response?.status
+    if (error?.response?.data?.code === 'LEGAL_CONSENT_REQUIRED') {
+      window.dispatchEvent(new Event('legal-consent-required'))
+    }
+
+    if (
+      status === 409 &&
+      error?.response?.data?.code === 'ENVIRONMENT_CHANGED'
+    ) {
+      // A second mismatch inside the guard window is not reloaded again; the
+      // error surfaces so the page reports it instead of refreshing forever.
+      requestEnvironmentReload()
+      throw error
+    }
+
+    if (
+      error?.response?.data?.code === 'ENVIRONMENT_UNAVAILABLE' &&
+      getAppEnvironment() === 'staging'
+    ) {
+      blockEnvironmentRecovery()
+      throw error
+    }
 
     if (status === 401) {
       if (config && !config.skipAuthRefresh && !config.authRetry) {
@@ -145,11 +182,23 @@ api.interceptors.response.use(
 )
 
 api.interceptors.request.use(async (config) => {
+  if (
+    isEnvironmentRecoveryBlocked() &&
+    config.url?.split('?')[0] !== '/api/environment'
+  ) {
+    throw new axios.CanceledError('Environment recovery stopped', config)
+  }
+  for (const [name, value] of Object.entries(getEnvironmentHeaders())) {
+    config.headers.set(name, value)
+  }
+  for (const [name, value] of Object.entries(getPreviewHeaders())) {
+    config.headers.set(name, value)
+  }
   if (config.singleUseAuthorization || config.headers.has('X-Security-Proof')) {
     // Refresh before spending a proof/flow, never by replaying its request.
     config.skipAuthRefresh = true
     try {
-      const headers = await getFreshAuthHeaders()
+      const headers = await getFreshAuthHeaders({ allowAnonymous: true })
       for (const [name, value] of Object.entries(headers)) {
         config.headers.set(name, value)
       }

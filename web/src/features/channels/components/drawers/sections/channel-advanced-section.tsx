@@ -61,7 +61,7 @@ export function ChannelAdvancedSection(props: ChannelAdvancedSectionProps) {
         render={
           <button
             type='button'
-            className='hover:bg-muted/40 border-border/60 flex w-full items-center justify-between rounded-lg border px-3 py-3 text-left transition-colors'
+            className='hover:bg-muted/40 border-border/60 flex w-full items-center justify-between rounded-lg border px-3 py-3 text-left transition-colors duration-(--motion-fast) ease-(--ease-out)'
             aria-expanded={props.open}
           />
         }
@@ -84,7 +84,7 @@ export function ChannelAdvancedSection(props: ChannelAdvancedSectionProps) {
         </div>
         <ChevronDown
           className={cn(
-            'text-muted-foreground h-4 w-4 shrink-0 transition-transform',
+            'text-muted-foreground h-4 w-4 shrink-0 transition-transform duration-(--motion-fast) ease-(--ease-out)',
             props.open && 'rotate-180'
           )}
           aria-hidden='true'

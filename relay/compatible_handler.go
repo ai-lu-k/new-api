@@ -47,6 +47,16 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 		return newConvertRequestFailedError(c, info, err)
 	}
 
+	// Channel image budget: keep the request body inside the upstream's size
+	// limit by compressing and dropping old data-URL images before the
+	// adaptor converts the request. Passthrough channels forward raw bytes,
+	// so there is no decoded request to rewrite here.
+	if info.RelayMode == relayconstant.RelayModeChatCompletions && !info.ChannelSetting.PassThroughBodyEnabled {
+		if err := service.ApplyChatImageBudget(c.Request.Context(), info, request); err != nil {
+			return types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusRequestEntityTooLarge, types.ErrOptionWithSkipRetry())
+		}
+	}
+
 	includeUsage := true
 	// 判断用户是否需要返回使用情况
 	if request.StreamOptions != nil {
@@ -168,7 +178,7 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 		}
 	}
 
-	usage, newApiErr := adaptor.DoResponse(c, httpResp, info)
+	usage, newApiErr := HandleUpstreamResponse(c, httpResp, info, adaptor)
 	if newApiErr != nil {
 		// reset status code 重置状态码
 		service.ResetStatusCode(newApiErr, statusCodeMappingStr)

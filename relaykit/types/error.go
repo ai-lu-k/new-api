@@ -50,6 +50,10 @@ const (
 	ErrorCodeDoRequestFailed    ErrorCode = "do_request_failed"
 	ErrorCodeGetChannelFailed   ErrorCode = "get_channel_failed"
 	ErrorCodeGenRelayInfoFailed ErrorCode = "gen_relay_info_failed"
+	// Channel capacity states, not upstream faults. Exceeded means every
+	// eligible channel is at its configured generation limit.
+	ErrorCodeChannelConcurrencyExceeded    ErrorCode = "channel_concurrency_exceeded"
+	ErrorCodeChannelConcurrencyUnavailable ErrorCode = "channel_concurrency_unavailable"
 
 	// channel error
 	ErrorCodeChannelNoAvailableKey        ErrorCode = "channel:no_available_key"
@@ -92,10 +96,15 @@ type NewAPIError struct {
 	RelayError     any
 	skipRetry      bool
 	recordErrorLog *bool
-	errorType      ErrorType
-	errorCode      ErrorCode
-	StatusCode     int
-	Metadata       json.RawMessage
+	// channelCapacityFallback marks a rejection by a channel-wide generation
+	// cap. The caller may retry the same request on another eligible channel,
+	// which is an internal routing hint: the status code and error code stay
+	// those of the capacity rejection itself.
+	channelCapacityFallback bool
+	errorType               ErrorType
+	errorCode               ErrorCode
+	StatusCode              int
+	Metadata                json.RawMessage
 }
 
 // Unwrap enables errors.Is / errors.As to work with NewAPIError by exposing the underlying error.
@@ -177,20 +186,81 @@ func (e *NewAPIError) SetMessage(message string) {
 	e.Err = errors.New(message)
 }
 
+// upstreamErrorType is the neutral type a caller sees for a failure that came
+// from a provider. The provider's own type names the software it runs and its
+// code names the provider, so neither is echoed back.
+const upstreamErrorType = "upstream_error"
+
+// standardErrorTypes are the OpenAI error types a client already understands.
+// Any other value names the provider's own taxonomy, so it is replaced.
+var standardErrorTypes = map[string]bool{
+	"invalid_request_error":    true,
+	"authentication_error":     true,
+	"permission_error":         true,
+	"not_found_error":          true,
+	"rate_limit_error":         true,
+	"insufficient_quota":       true,
+	"api_error":                true,
+	"server_error":             true,
+	"overloaded_error":         true,
+	"tokens":                   true,
+	"requests":                 true,
+	"content_policy_violation": true,
+}
+
+// standardErrorCodes are the OpenAI error codes a client already understands.
+var standardErrorCodes = map[string]bool{
+	"content_moderation_failed":  true,
+	"invalid_request_error":      true,
+	"authentication_error":       true,
+	"permission_error":           true,
+	"not_found_error":            true,
+	"rate_limit_error":           true,
+	"rate_limit_exceeded":        true,
+	"insufficient_quota":         true,
+	"context_length_exceeded":    true,
+	"invalid_api_key":            true,
+	"model_not_found":            true,
+	"server_error":               true,
+	"content_policy_violation":   true,
+	"invalid_prompt":             true,
+	"billing_hard_limit_reached": true,
+}
+
+// neutralErrorType keeps a name the client already knows and replaces one that
+// only identifies the provider.
+func neutralErrorType(value string) string {
+	if standardErrorTypes[value] {
+		return value
+	}
+	return upstreamErrorType
+}
+
+// neutralErrorCode does the same for the machine-readable code.
+func neutralErrorCode(value any) any {
+	if text, ok := value.(string); ok && standardErrorCodes[text] {
+		return text
+	}
+	return string(ErrorCodeBadResponseStatusCode)
+}
+
 func (e *NewAPIError) ToOpenAIError() OpenAIError {
 	var result OpenAIError
 	switch e.errorType {
 	case ErrorTypeOpenAIError:
 		if openAIError, ok := e.RelayError.(OpenAIError); ok {
 			result = openAIError
+			result.Type = neutralErrorType(openAIError.Type)
+			result.Code = neutralErrorCode(openAIError.Code)
+			// message stays: masking already removed URLs and hosts
 		}
 	case ErrorTypeClaudeError:
 		if claudeError, ok := e.RelayError.(ClaudeError); ok {
 			result = OpenAIError{
 				Message: e.Error(),
-				Type:    claudeError.Type,
+				Type:    neutralErrorType(claudeError.Type),
 				Param:   "",
-				Code:    e.errorCode,
+				Code:    neutralErrorCode(string(e.errorCode)),
 			}
 		}
 	default:
@@ -217,12 +287,13 @@ func (e *NewAPIError) ToClaudeError() ClaudeError {
 		if openAIError, ok := e.RelayError.(OpenAIError); ok {
 			result = ClaudeError{
 				Message: e.Error(),
-				Type:    fmt.Sprintf("%v", openAIError.Code),
+				Type:    neutralErrorType(openAIError.Type),
 			}
 		}
 	case ErrorTypeClaudeError:
 		if claudeError, ok := e.RelayError.(ClaudeError); ok {
 			result = claudeError
+			result.Type = neutralErrorType(claudeError.Type)
 		}
 	default:
 		result = ClaudeError{
@@ -388,6 +459,24 @@ func ErrOptionWithNoRecordErrorLog() NewAPIErrorOptions {
 	return func(e *NewAPIError) {
 		e.recordErrorLog = kitutil.GetPointer(false)
 	}
+}
+
+// ErrOptionWithChannelCapacityFallback marks a rejection by a channel-wide
+// generation cap, which another eligible channel may still have room for. It is
+// a routing hint for the caller, not a change of status code or error code.
+func ErrOptionWithChannelCapacityFallback() NewAPIErrorOptions {
+	return func(e *NewAPIError) {
+		e.channelCapacityFallback = true
+	}
+}
+
+// IsChannelCapacityFallback reports whether a channel-wide cap, rather than this
+// user's own limit, rejected the attempt.
+func IsChannelCapacityFallback(err *NewAPIError) bool {
+	if err == nil {
+		return false
+	}
+	return err.channelCapacityFallback
 }
 
 func ErrOptionWithStatusCode(statusCode int) NewAPIErrorOptions {

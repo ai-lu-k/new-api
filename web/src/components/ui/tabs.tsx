@@ -57,15 +57,25 @@ const tabsListVariants = cva(
 function TabsList({
   className,
   variant = 'default',
+  children,
   ...props
 }: TabsPrimitive.List.Props & VariantProps<typeof tabsListVariants>) {
   return (
     <TabsPrimitive.List
       data-slot='tabs-list'
       data-variant={variant}
-      className={cn(tabsListVariants({ variant }), className)}
+      // The black block is one element that travels between the tabs, so the
+      // selection reads as a move instead of two blinks. Labels sit above it
+      // and only swap colour; nothing paints its own background.
+      className={cn('relative', tabsListVariants({ variant }), className)}
       {...props}
-    />
+    >
+      <TabsPrimitive.Indicator
+        data-slot='tabs-indicator'
+        className='bg-foreground pointer-events-none absolute top-[var(--active-tab-top)] left-0 z-0 h-[var(--active-tab-height)] w-[var(--active-tab-width)] translate-x-[var(--active-tab-left)] rounded-md transition-[translate,width] duration-(--motion-base) ease-(--ease-morph)'
+      />
+      {children}
+    </TabsPrimitive.List>
   )
 }
 
@@ -74,10 +84,18 @@ function TabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
     <TabsPrimitive.Tab
       data-slot='tabs-trigger'
       className={cn(
-        "text-foreground/60 hover:text-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:outline-ring dark:text-muted-foreground dark:hover:text-foreground relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-1.5 py-0.5 text-sm font-medium whitespace-nowrap transition-all group-data-vertical/tabs:w-full group-data-vertical/tabs:justify-start focus-visible:ring-[3px] focus-visible:outline-1 disabled:pointer-events-none disabled:opacity-50 has-data-[icon=inline-end]:pr-1 has-data-[icon=inline-start]:pl-1 aria-disabled:pointer-events-none aria-disabled:opacity-50 group-data-[variant=default]/tabs-list:data-active:shadow-sm group-data-[variant=line]/tabs-list:data-active:shadow-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        // Hover must not reach the selected tab: the black block already
+        // carries the label, and `hover:` is emitted after `data-active:` in
+        // the cascade, so an unguarded hover would paint the label black on
+        // black. Guard the hover colour instead of escalating specificity.
+        "text-foreground/60 not-data-[active]:hover:text-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:outline-ring dark:text-muted-foreground dark:not-data-[active]:hover:text-foreground relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-1.5 py-0.5 text-sm font-medium whitespace-nowrap transition-[color,background-color,border-color,box-shadow] duration-(--motion-fast) ease-(--ease-out) group-data-vertical/tabs:w-full group-data-vertical/tabs:justify-start focus-visible:ring-[3px] focus-visible:outline-1 disabled:pointer-events-none disabled:opacity-50 has-data-[icon=inline-end]:pr-1 has-data-[icon=inline-start]:pl-1 aria-disabled:pointer-events-none aria-disabled:opacity-50 group-data-[variant=default]/tabs-list:data-active:shadow-sm group-data-[variant=line]/tabs-list:data-active:shadow-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         'group-data-[variant=line]/tabs-list:bg-transparent group-data-[variant=line]/tabs-list:data-active:bg-transparent dark:group-data-[variant=line]/tabs-list:data-active:border-transparent dark:group-data-[variant=line]/tabs-list:data-active:bg-transparent',
-        'data-active:bg-background data-active:text-foreground dark:data-active:border-input dark:data-active:bg-input/30 dark:data-active:text-foreground',
-        'after:bg-foreground after:absolute after:opacity-0 after:transition-opacity group-data-horizontal/tabs:after:inset-x-0 group-data-horizontal/tabs:after:bottom-[-5px] group-data-horizontal/tabs:after:h-0.5 group-data-vertical/tabs:after:inset-y-0 group-data-vertical/tabs:after:-right-1 group-data-vertical/tabs:after:w-0.5 group-data-[variant=line]/tabs-list:data-active:after:opacity-100',
+        // The filled "inverted" selection belongs to the boxed variant only.
+        // The line variant keeps a transparent track and an underline, so it
+        // must darken its label instead of painting it `text-background`.
+        'relative z-10 data-active:bg-transparent data-active:text-background dark:data-active:bg-transparent dark:data-active:text-background',
+        'group-data-[variant=line]/tabs-list:data-active:text-background',
+        'after:hidden',
         className
       )}
       {...props}
@@ -95,4 +113,29 @@ function TabsContent({ className, ...props }: TabsPrimitive.Panel.Props) {
   )
 }
 
-export { Tabs, TabsList, TabsTrigger, TabsContent, tabsListVariants }
+/**
+ * The selected-tab marker. Base UI publishes the active tab's box as
+ * `--active-tab-*` custom properties, so the bar slides with `translate`
+ * instead of being re-laid out on every change.
+ */
+function TabsIndicator({ className, ...props }: TabsPrimitive.Indicator.Props) {
+  return (
+    <TabsPrimitive.Indicator
+      data-slot='tabs-indicator'
+      className={cn(
+        'pointer-events-none absolute top-[var(--active-tab-top)] left-0 z-0 h-[var(--active-tab-height)] w-[var(--active-tab-width)] translate-x-[var(--active-tab-left)] rounded-md bg-transparent transition-[translate] duration-(--motion-base) ease-(--ease-morph)',
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+export {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+  TabsIndicator,
+  tabsListVariants,
+}

@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { ColumnDef } from '@tanstack/react-table'
-import { GitBranch, Sparkles, KeyRound } from 'lucide-react'
+import { GitBranch, Sparkles } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -47,9 +47,15 @@ import {
 import { pluginUsageSchema } from '@/features/pricing/lib/plugin-pricing'
 import { taskUsageUnitLabel } from '@/features/pricing/lib/task-price-display'
 import type { BillingUsageSchema } from '@/features/pricing/types'
+import { toIntlLocale } from '@/i18n/languages'
 import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
 import { formatBillingCurrencyFromUSD } from '@/lib/currency'
-import { formatLogQuota, formatTimestampToDate } from '@/lib/format'
+import {
+  formatLogQuota,
+  formatNumber,
+  formatTimestampToDate,
+} from '@/lib/format'
+import { textActionClass } from '@/lib/text-action'
 import { cn } from '@/lib/utils'
 import { useSystemConfigStore } from '@/stores/system-config-store'
 
@@ -58,6 +64,7 @@ import type { UsageLog } from '../../data/schema'
 import {
   formatModelName,
   decodeBillingExprB64,
+  truncateMiddle,
   getTieredBillingSummary,
   hasAnyCacheTokens,
   parseLogOther,
@@ -343,7 +350,8 @@ export function useCommonLogsColumns(
   isRoot: boolean,
   showBillingSource = false
 ): ColumnDef<UsageLog>[] {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const currency = useSystemConfigStore((state) => state.config.currency)
   return useMemo(() => {
     const columns: ColumnDef<UsageLog>[] = [
@@ -376,7 +384,7 @@ export function useCommonLogsColumns(
           return value.includes(String(row.original.type))
         },
         enableHiding: false,
-        size: 180,
+        size: 156,
       },
     ]
 
@@ -422,7 +430,7 @@ export function useCommonLogsColumns(
                 <Tooltip>
                   <TooltipTrigger
                     render={
-                      <div className='flex max-w-[160px] flex-col gap-0.5' />
+                      <div className='flex max-w-[76px] flex-col gap-0.5' />
                     }
                   >
                     <div className='relative inline-flex w-fit items-center gap-1'>
@@ -541,6 +549,7 @@ export function useCommonLogsColumns(
               </TooltipProvider>
             )
           },
+          size: 92,
         },
         {
           id: 'user',
@@ -600,72 +609,11 @@ export function useCommonLogsColumns(
               </button>
             )
           },
+          size: 102,
         }
       )
     }
 
-    columns.push({
-      accessorKey: 'token_name',
-      header: t('Token'),
-      cell: function TokenNameCell({ row }) {
-        const { sensitiveVisible } = useUsageLogsContext()
-        const log = row.original
-        if (!isDisplayableLogType(log.type)) return null
-
-        const tokenName = log.token_name
-        if (!tokenName) return null
-
-        const other = parseLogOther(log.other)
-        const displayName = sensitiveVisible ? tokenName : '••••'
-        let group = log.group
-        if (!group) group = other?.group || ''
-        const groupRatio = getGroupRatio(other)
-
-        return (
-          <div className='flex max-w-[200px] flex-col gap-0.5'>
-            <TooltipProvider delay={300}>
-              <Tooltip>
-                <TooltipTrigger render={<div className='max-w-full' />}>
-                  <StatusBadge
-                    label={displayName}
-                    icon={KeyRound}
-                    copyText={sensitiveVisible ? tokenName : undefined}
-                    size='sm'
-                    showDot={false}
-                    className='border-border/60 bg-muted/30 text-foreground h-6 max-w-full gap-1.5 overflow-hidden rounded-md border px-2 py-0.5 [font-family:var(--font-body)]'
-                  />
-                </TooltipTrigger>
-                {sensitiveVisible && tokenName.length > 16 && (
-                  <TooltipContent side='top' className='max-w-xs break-all'>
-                    {tokenName}
-                  </TooltipContent>
-                )}
-              </Tooltip>
-            </TooltipProvider>
-            {(group || groupRatio != null) && (
-              <span className='block max-w-full truncate text-xs leading-none'>
-                {group ? (
-                  <GroupBadge
-                    group={group}
-                    label={sensitiveVisible ? undefined : '••••'}
-                    type='text'
-                    size='sm'
-                    className='inline align-baseline text-xs leading-none [&>span]:leading-none'
-                  />
-                ) : null}
-                {group && groupRatio != null ? ' ' : null}
-                {groupRatio != null ? (
-                  <span className='text-muted-foreground/60 relative top-px align-baseline tabular-nums'>
-                    {formatRatioCompact(groupRatio)}x
-                  </span>
-                ) : null}
-              </span>
-            )}
-          </div>
-        )
-      },
-      size: 160,
-    })
     columns.push(
       {
         accessorKey: 'model_name',
@@ -677,16 +625,83 @@ export function useCommonLogsColumns(
           const modelInfo = formatModelName(log)
 
           return (
-            <div className='flex w-fit flex-col gap-0.5'>
+            <div className='flex w-fit max-w-[188px] flex-col gap-0.5'>
               <ModelBadge
                 modelName={modelInfo.name}
                 actualModel={modelInfo.actualModel}
                 responseModel={modelInfo.responseModel}
+                truncate
+                hideIcon
               />
             </div>
           )
         },
         meta: { mobileTitle: true },
+        size: 204,
+      },
+      {
+        accessorKey: 'token_name',
+        header: t('Token Name'),
+        cell: function TokenNameCell({ row }) {
+          const { sensitiveVisible } = useUsageLogsContext()
+          const log = row.original
+          if (!isDisplayableLogType(log.type)) return null
+
+          const tokenName = log.token_name
+          if (!tokenName) return null
+
+          const other = parseLogOther(log.other)
+          const displayName = sensitiveVisible
+            ? truncateMiddle(tokenName, 12, 4)
+            : '••••'
+          let group = log.group
+          if (!group) group = other?.group || ''
+          const groupRatio = getGroupRatio(other)
+          if (!isAdmin && group === 'default') group = ''
+
+          return (
+            <div className='flex max-w-[112px] flex-col gap-0.5'>
+              <TooltipProvider delay={300}>
+                <Tooltip>
+                  <TooltipTrigger render={<div className='max-w-full' />}>
+                    <StatusBadge
+                      label={displayName}
+                      copyText={sensitiveVisible ? tokenName : undefined}
+                      size='sm'
+                      showDot={false}
+                      className='border-border/60 bg-muted/30 text-foreground h-6 max-w-full gap-1.5 overflow-hidden rounded-md border px-2 py-0.5 [font-family:var(--font-body)]'
+                    />
+                  </TooltipTrigger>
+                  {sensitiveVisible && tokenName.length > 16 && (
+                    <TooltipContent side='top' className='max-w-xs break-all'>
+                      {tokenName}
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+              </TooltipProvider>
+              {(group || groupRatio != null) && (
+                <span className='block max-w-full truncate text-xs leading-none'>
+                  {group ? (
+                    <GroupBadge
+                      group={group}
+                      label={sensitiveVisible ? undefined : '••••'}
+                      type='text'
+                      size='sm'
+                      className='inline align-baseline text-xs leading-none [&>span]:leading-none'
+                    />
+                  ) : null}
+                  {group && groupRatio != null ? ' ' : null}
+                  {groupRatio != null ? (
+                    <span className='text-muted-foreground/60 relative top-px align-baseline tabular-nums'>
+                      {formatRatioCompact(groupRatio)}x
+                    </span>
+                  ) : null}
+                </span>
+              )}
+            </div>
+          )
+        },
+        size: 130,
       },
       {
         accessorKey: 'is_stream',
@@ -713,10 +728,12 @@ export function useCommonLogsColumns(
           )
         },
         meta: { label: t('Stream') },
+        size: 76,
       },
       {
         accessorKey: 'prompt_tokens',
         header: 'Tokens',
+        size: 118,
         cell: ({ row }) => {
           const log = row.original
           if (!isDisplayableLogType(log.type)) return null
@@ -738,21 +755,21 @@ export function useCommonLogsColumns(
             : other?.cache_creation_tokens || 0
 
           return (
-            <div className='flex flex-col gap-0.5'>
-              <span className='font-mono text-xs font-medium tabular-nums'>
-                {promptTokens.toLocaleString()} /{' '}
-                {completionTokens.toLocaleString()}
+            <div className='flex flex-col items-end gap-0.5'>
+              <span className='font-mono text-xs font-medium whitespace-nowrap tabular-nums'>
+                {formatNumber(promptTokens, locale)} /{' '}
+                {formatNumber(completionTokens, locale)}
               </span>
               {(cacheReadTokens > 0 || cacheWriteTokens > 0) && (
-                <div className='flex items-center gap-1 text-[11px]'>
+                <div className='flex items-center justify-end gap-1 text-[11px] tabular-nums'>
                   {cacheReadTokens > 0 && (
                     <span className='text-muted-foreground/60'>
-                      {t('Cache')}↓ {cacheReadTokens.toLocaleString()}
+                      {t('Cache')}↓ {formatNumber(cacheReadTokens, locale)}
                     </span>
                   )}
                   {cacheWriteTokens > 0 && (
                     <span className='text-muted-foreground/60'>
-                      ↑ {cacheWriteTokens.toLocaleString()}
+                      ↑ {formatNumber(cacheWriteTokens, locale)}
                     </span>
                   )}
                 </div>
@@ -762,27 +779,9 @@ export function useCommonLogsColumns(
         },
       },
       {
-        accessorKey: 'quota',
-        header: t('Cost'),
-        cell: ({ row }) => {
-          const log = row.original
-          if (!isDisplayableLogType(log.type)) return null
-
-          const quota = row.getValue('quota') as number
-          const other = parseLogOther(log.other)
-          return (
-            <LogCostDisplay
-              quota={quota}
-              other={other}
-              showBillingSource={showBillingSource}
-            />
-          )
-        },
-      },
-
-      {
         accessorKey: 'use_time',
         header: t('Timing'),
+        size: 96,
         cell: ({ row }) => {
           const log = row.original
           if (!isTimingLogType(log.type)) return null
@@ -796,6 +795,26 @@ export function useCommonLogsColumns(
               completionTokens={log.completion_tokens}
               frtMs={other?.frt}
               isStream={log.is_stream}
+            />
+          )
+        },
+      },
+
+      {
+        accessorKey: 'quota',
+        header: t('Cost'),
+        size: 96,
+        cell: ({ row }) => {
+          const log = row.original
+          if (!isDisplayableLogType(log.type)) return null
+
+          const quota = row.getValue('quota') as number
+          const other = parseLogOther(log.other)
+          return (
+            <LogCostDisplay
+              quota={quota}
+              other={other}
+              showBillingSource={showBillingSource}
             />
           )
         },
@@ -842,12 +861,7 @@ export function useCommonLogsColumns(
           )
           if (primary) {
             detailPreview = (
-              <span
-                className={cn(
-                  'truncate leading-snug group-hover:underline',
-                  primaryTextClass
-                )}
-              >
+              <span className={cn('truncate leading-snug', primaryTextClass)}>
                 {primary.text}
                 {hasMore && (
                   <span className='text-muted-foreground/40 ml-0.5'>
@@ -858,7 +872,7 @@ export function useCommonLogsColumns(
             )
           } else if (log.content) {
             detailPreview = (
-              <span className='text-muted-foreground truncate group-hover:underline'>
+              <span className='text-muted-foreground truncate'>
                 {log.content}
               </span>
             )
@@ -866,9 +880,14 @@ export function useCommonLogsColumns(
 
           return (
             <>
+              {/* The row's detail entry is an action, so it keeps the
+                  underline at rest instead of reading as plain data. */}
               <button
                 type='button'
-                className='group flex max-w-[200px] items-center gap-1 text-left text-xs'
+                className={cn(
+                  'flex max-w-[126px] items-center gap-1 text-left text-[13px]',
+                  textActionClass
+                )}
                 onClick={() => setDialogOpen(true)}
                 title={t('Click to view full details')}
               >
@@ -884,13 +903,13 @@ export function useCommonLogsColumns(
             </>
           )
         },
-        size: 180,
-        maxSize: 200,
+        size: 142,
+        maxSize: 152,
       }
     )
 
     return columns
     // Log formatters read currency settings from the store.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [t, isAdmin, isRoot, showBillingSource, currency])
+  }, [t, isAdmin, isRoot, showBillingSource, currency, locale])
 }

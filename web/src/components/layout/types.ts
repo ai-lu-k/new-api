@@ -97,6 +97,8 @@ export type TopNavLink = {
   disabled?: boolean
   requiresAuth?: boolean
   external?: boolean
+  /** Decorative treatment for a link that should stand out, e.g. a live event. */
+  accent?: 'glitch'
 }
 
 /**

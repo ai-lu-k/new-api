@@ -17,9 +17,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { RotateCcw, Save } from 'lucide-react'
+import { motion, useReducedMotion } from 'motion/react'
 import {
   createContext,
   useContext,
+  useState,
   type ComponentProps,
   type ReactNode,
   type RefObject,
@@ -28,16 +30,21 @@ import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
+import { MOTION_SHIFT, MOTION_TRANSITION } from '@/lib/motion'
 
 type SettingsPageContextValue = {
   actionsContainer: HTMLDivElement | null
   titleStatusContainer: HTMLSpanElement | null
+  saveBarStatusContainer: HTMLSpanElement | null
+  setSaveBarStatusContainer: (element: HTMLSpanElement | null) => void
   suppressSectionHeader: boolean
 }
 
 const SettingsPageContext = createContext<SettingsPageContextValue>({
   actionsContainer: null,
   titleStatusContainer: null,
+  saveBarStatusContainer: null,
+  setSaveBarStatusContainer: () => undefined,
   suppressSectionHeader: false,
 })
 
@@ -49,11 +56,18 @@ type SettingsPageProviderProps = {
 }
 
 export function SettingsPageProvider(props: SettingsPageProviderProps) {
+  // State (not a ref) so the dirty marker re-renders once its slot in the save
+  // bar exists.
+  const [saveBarStatusContainer, setSaveBarStatusContainer] =
+    useState<HTMLSpanElement | null>(null)
+
   return (
     <SettingsPageContext.Provider
       value={{
         actionsContainer: props.actionsContainer,
         titleStatusContainer: props.titleStatusContainer ?? null,
+        saveBarStatusContainer,
+        setSaveBarStatusContainer,
         suppressSectionHeader: props.suppressSectionHeader ?? true,
       }}
     >
@@ -80,6 +94,20 @@ export function SettingsPageTitleStatusPortal(
   return createPortal(props.children, titleStatusContainer)
 }
 
+/**
+ * Status marker rendered inside the sticky save bar, next to the actions it
+ * belongs to, so an unsaved form is flagged where the user is looking.
+ */
+export function SettingsPageSaveBarStatusPortal(
+  props: SettingsPageTitleStatusPortalProps
+) {
+  const { saveBarStatusContainer } = useContext(SettingsPageContext)
+
+  if (!saveBarStatusContainer) return null
+
+  return createPortal(props.children, saveBarStatusContainer)
+}
+
 type SettingsPageActionsPortalProps = {
   children: ReactNode
 }
@@ -87,14 +115,26 @@ type SettingsPageActionsPortalProps = {
 export function SettingsPageActionsPortal(
   props: SettingsPageActionsPortalProps
 ) {
-  const { actionsContainer } = useContext(SettingsPageContext)
+  const { actionsContainer, setSaveBarStatusContainer } =
+    useContext(SettingsPageContext)
+  const shouldReduce = useReducedMotion()
 
   if (!actionsContainer) return null
 
   return createPortal(
-    <div className='flex flex-wrap items-center justify-end gap-2'>
+    // The save bar rises 4px as the section's actions take their slot.
+    <motion.div
+      initial={shouldReduce ? false : { opacity: 0, y: MOTION_SHIFT.micro }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={MOTION_TRANSITION.base}
+      className='flex w-full flex-wrap items-center justify-end gap-2'
+    >
+      <span
+        ref={setSaveBarStatusContainer}
+        className='mr-auto inline-flex min-w-0 items-center'
+      />
       {props.children}
-    </div>,
+    </motion.div>,
     actionsContainer
   )
 }

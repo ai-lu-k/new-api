@@ -29,6 +29,19 @@ vi.mock('@lobehub/icons/es/Mistral/components/Color.js', () => {
   throw new Error('Icon chunk unavailable')
 })
 
+describe('custom brand icons', () => {
+  it('uses an existing custom icon when one is registered', () => {
+    const names = getLobeIconNames()
+    expect(names).toContain('SGLang')
+
+    render(<>{getLobeIcon('SGLang', 18)}</>)
+    expect(screen.getByRole('presentation', { hidden: true })).toHaveAttribute(
+      'src',
+      expect.stringContaining('sglang')
+    )
+  })
+})
+
 describe('Lobe icons', () => {
   it.each([
     '/build/web/node_modules/@lobehub/icons/es/',

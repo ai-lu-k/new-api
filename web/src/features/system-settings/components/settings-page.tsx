@@ -57,6 +57,7 @@ type SettingsPageFrameProps = {
 }
 
 function SettingsPageFrame(props: SettingsPageFrameProps) {
+  const { t } = useTranslation()
   const [actionsContainer, setActionsContainer] =
     useState<HTMLDivElement | null>(null)
   const [titleStatusContainer, setTitleStatusContainer] =
@@ -67,7 +68,14 @@ function SettingsPageFrame(props: SettingsPageFrameProps) {
       actionsContainer={actionsContainer}
       titleStatusContainer={titleStatusContainer}
     >
-      <SectionPageLayout>
+      <SectionPageLayout
+        fixedContent
+        pageIndex={
+          <>
+            {t('System Administration')} / {t('Settings')}
+          </>
+        }
+      >
         <SectionPageLayout.Title>
           <span className='inline-flex max-w-full min-w-0 items-center gap-2 align-middle'>
             <span className='truncate'>{props.title}</span>
@@ -77,15 +85,17 @@ function SettingsPageFrame(props: SettingsPageFrameProps) {
             />
           </span>
         </SectionPageLayout.Title>
-        <SectionPageLayout.Actions>
-          <div
-            ref={setActionsContainer}
-            className='flex flex-wrap items-center justify-end gap-2'
-          />
-        </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
-          <div className='flex h-full min-h-0 w-full flex-col gap-4'>
-            {props.children}
+          <div className='flex h-full min-h-0 w-full flex-col'>
+            <div className='min-h-0 flex-1 space-y-4 overflow-y-auto pr-1'>
+              {props.children}
+            </div>
+            {/* Save bar: the actions every settings section portals into sit
+                at the bottom of the content, not in the page header. */}
+            <div
+              ref={setActionsContainer}
+              className='bg-background flex flex-wrap items-center justify-end gap-2 border-t pt-2.5 empty:hidden'
+            />
           </div>
         </SectionPageLayout.Content>
       </SectionPageLayout>

@@ -22,10 +22,9 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { SectionPanel } from '@/components/section-panel'
 import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import { TitledCard } from '@/components/ui/titled-card'
 import { updateUserSettings } from '@/features/profile/api'
 import { parseUserSettings } from '@/features/profile/lib/format'
 import type { UserProfile } from '@/features/profile/types'
@@ -64,23 +63,29 @@ export function PrivacyCard(props: PrivacyCardProps) {
   })
 
   return (
-    <TitledCard
+    <SectionPanel
       title={t('Record IP Address')}
-      description={t('Log IP address for usage and error logs')}
-      disableHoverEffect
+      level='card'
+      contentClassName='pt-1'
     >
-      <div className='flex items-center justify-between gap-4'>
-        <Label htmlFor='security-record-ip'>{t('Record IP Address')}</Label>
-        <Switch
-          id='security-record-ip'
-          checked={recordIpLog}
-          onCheckedChange={setRecordIpLog}
-          disabled={save.isPending}
-        />
-      </div>
-      <div className='mt-4 flex justify-end'>
+      {/* The switch keeps the group's name through aria-label, so the card
+          title is not repeated as a second, identical field label. */}
+      <div className='flex flex-wrap items-center justify-between gap-3'>
+        <div className='flex min-w-0 items-center gap-3'>
+          <Switch
+            id='security-record-ip'
+            aria-label={t('Record IP Address')}
+            checked={recordIpLog}
+            onCheckedChange={setRecordIpLog}
+            disabled={save.isPending}
+          />
+          <p className='text-muted-foreground text-[13px]'>
+            {t('Log IP address for usage and error logs')}
+          </p>
+        </div>
         <Button
           type='button'
+          className='min-h-11 sm:min-h-8'
           onClick={() => save.mutate()}
           disabled={save.isPending}
         >
@@ -88,6 +93,6 @@ export function PrivacyCard(props: PrivacyCardProps) {
           {save.isPending ? t('Saving...') : t('Save Settings')}
         </Button>
       </div>
-    </TitledCard>
+    </SectionPanel>
   )
 }

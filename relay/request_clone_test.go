@@ -9,13 +9,19 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/setting/config"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"github.com/jinzhu/copier"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestRequestDeepCopyResponses(t *testing.T) {
@@ -302,5 +308,114 @@ func BenchmarkRequestDeepCopy(b *testing.B) {
 				}
 			})
 		}
+	}
+}
+
+func TestTokenPlanOutputLimitPreservesPassthroughFields(t *testing.T) {
+	for _, test := range []struct {
+		name, body string
+		request    dto.Request
+		want       uint
+		fails      bool
+	}{
+		{"chat default", `{"model":"example","messages":[],"vendor_option":true}`, &dto.GeneralOpenAIRequest{}, 4096, false},
+		{"responses default", `{"model":"example","input":"hi","vendor_option":true}`, &dto.OpenAIResponsesRequest{}, 4096, false},
+		{"claude explicit", `{"max_tokens":123,"vendor_option":true}`, &dto.ClaudeRequest{MaxTokens: uintPointerForCloneTest(123)}, 123, false},
+		{"gemini default", `{"contents":[],"generationConfig":{"temperature":0},"vendor_option":true}`, &dto.GeminiChatRequest{}, 4096, false},
+		{"zero output rejected", `{"max_tokens":0}`, &dto.GeneralOpenAIRequest{MaxTokens: uintPointerForCloneTest(0)}, 0, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest("POST", "/v1/test", bytes.NewBufferString(test.body))
+			c.Request.Header.Set("Content-Type", "application/json")
+			t.Cleanup(func() { common.CleanupBodyStorage(c) })
+			info := &relaycommon.RelayInfo{Request: test.request, TokenPlan: true}
+			err := prepareTokenPlanOutputLimit(c, info)
+			if test.fails {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, test.want, info.TokenPlanOutputLimit)
+			var fields map[string]json.RawMessage
+			require.NoError(t, common.Unmarshal(info.BillingRequestInput.Body, &fields))
+			assert.JSONEq(t, "true", string(fields["vendor_option"]))
+			storage, err := common.GetBodyStorage(c)
+			require.NoError(t, err)
+			forwarded, err := storage.Bytes()
+			require.NoError(t, err)
+			assert.Equal(t, info.BillingRequestInput.Body, forwarded)
+		})
+	}
+}
+
+func uintPointerForCloneTest(value uint) *uint { return &value }
+
+func TestTokenPlanReservationDiscountPreservesOutputAndActualPrice(t *testing.T) {
+	t.Setenv("CRYPTO_SECRET", "token-plan-test-encryption-secret-32-bytes")
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+	previousDB, previousRedis, previousBatch := model.DB, common.RedisEnabled, common.BatchUpdateEnabled
+	model.DB, common.RedisEnabled, common.BatchUpdateEnabled = db, false, false
+	t.Cleanup(func() {
+		model.DB, common.RedisEnabled, common.BatchUpdateEnabled = previousDB, previousRedis, previousBatch
+		_ = sqlDB.Close()
+	})
+	require.NoError(t, db.AutoMigrate(&model.Option{}, &model.User{}, &model.Token{}, &model.TokenPlanAccount{}, &model.TokenPlanWeek{}, &model.TokenPlanReservation{}))
+	user := model.User{Username: "reservation-test", Status: common.UserStatusEnabled, UsedQuota: 1, LevelQuota: 1, Quota: 1000000}
+	require.NoError(t, db.Create(&user).Error)
+	account, err := model.EnsureTokenPlanAccount(user.Id)
+	require.NoError(t, err)
+	token, err := model.GetTokenByIds(account.TokenId, user.Id)
+	require.NoError(t, err)
+	saved := map[string]string{}
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error { saved[key] = value; return nil }))
+	t.Cleanup(func() { require.NoError(t, config.GlobalConfig.LoadFromDB(saved)) })
+	previousRatios := ratio_setting.ModelRatio2JSONString()
+	previousCompletions := ratio_setting.CompletionRatio2JSONString()
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"plan-priced":1}`))
+	require.NoError(t, ratio_setting.UpdateCompletionRatioByJSONString(`{"plan-priced":2}`))
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(previousRatios))
+		require.NoError(t, ratio_setting.UpdateCompletionRatioByJSONString(previousCompletions))
+	})
+	for _, mode := range []string{"legacy", "expression", "fixed"} {
+		t.Run(mode, func(t *testing.T) {
+			options := map[string]string{
+				"group_ratio_setting.group_ratio":      `{"default":1}`,
+				"billing_setting.billing_mode":         `{}`,
+				"quota_setting.pre_consume_multiplier": `1`,
+			}
+			if mode == "expression" {
+				options["billing_setting.billing_mode"] = `{"plan-priced":"tiered_expr"}`
+				options["billing_setting.billing_expr"] = `{"plan-priced":"tier(\"base\", p * 2 + c * 4)"}`
+			}
+			if mode == "fixed" {
+				options["billing_setting.billing_mode"] = `{"plan-priced":"tiered_expr"}`
+				options["billing_setting.billing_expr"] = `{"plan-priced":"tier(\"request\", fixed(0.01))"}`
+			}
+			require.NoError(t, config.GlobalConfig.LoadFromDB(options))
+			request := &dto.GeneralOpenAIRequest{Model: "plan-priced", MaxTokens: uintPointerForCloneTest(10000), Messages: []dto.Message{{Role: "user", Content: "Hello"}}}
+			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+			ctx.Request = httptest.NewRequest("POST", "/v1/chat/completions", nil)
+			info := &relaycommon.RelayInfo{Request: request, OriginModelName: "plan-priced", UsingGroup: "default", UserGroup: "default", UserId: user.Id, TokenId: token.Id, TokenKey: token.Key, TokenUnlimited: true, TokenPlan: true}
+			require.Nil(t, PrepareRequestBilling(ctx, info))
+			assert.EqualValues(t, 10000, *request.MaxTokens, "pre-consume discount must not shorten output")
+			if mode == "fixed" {
+				assert.EqualValues(t, 5000, info.FinalPreConsumedQuota, "fixed known charges retain full reservation")
+			} else {
+				assert.InDelta(t, 2000, info.FinalPreConsumedQuota, 20, "only 10% of maximum output cost is reserved")
+			}
+			if mode == "expression" {
+				result, err := billingexpr.ComputeTieredQuotaWithRequest(info.TieredBillingSnapshot, billingexpr.TokenParams{P: 100, Len: 100, C: 1000}, billingexpr.RequestInput{})
+				require.NoError(t, err)
+				assert.EqualValues(t, 2100, result.ActualQuotaAfterGroup, "actual settlement remains full price")
+			}
+			info.Billing.Refund(ctx)
+		})
 	}
 }

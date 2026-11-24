@@ -110,7 +110,7 @@ it('hides the mobile filter group while keeping reset and quick actions accessib
   expect(
     screen.queryByRole('button', { name: /^Status/ })
   ).not.toBeInTheDocument()
-  for (const name of ['Reset', 'Refresh', 'Card view', 'View']) {
+  for (const name of ['Reset', 'Refresh', 'Card view', 'Toggle columns']) {
     expect(screen.getByRole('button', { name })).toBeVisible()
     expect(screen.getByRole('button', { name })).toBeEnabled()
   }

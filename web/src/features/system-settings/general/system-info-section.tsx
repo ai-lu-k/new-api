@@ -17,10 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useQueryClient } from '@tanstack/react-query'
+import { useEffect, useRef, useState } from 'react'
 import type { Resolver } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import * as z from 'zod'
 
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Form,
   FormControl,
@@ -31,7 +35,11 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { publishLegalVersion } from '@/features/legal/api'
+import { useLegalVersion } from '@/features/legal/use-legal-version'
+import { requireServerSuccess } from '@/lib/server-error-message'
 
 import { FormDirtyIndicator } from '../components/form-dirty-indicator'
 import { FormNavigationGuard } from '../components/form-navigation-guard'
@@ -60,6 +68,8 @@ const _systemInfoSchema = z.object({
   legal: z.object({
     user_agreement: z.string().optional(),
     privacy_policy: z.string().optional(),
+    user_agreement_en: z.string().optional(),
+    privacy_policy_en: z.string().optional(),
   }),
 })
 
@@ -77,6 +87,10 @@ function normalizeValue(value: unknown): string {
 export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
+  const legal = useLegalVersion()
+  const queryClient = useQueryClient()
+  const [materialLegalUpdate, setMaterialLegalUpdate] = useState(true)
+  const legalBaseVersion = useRef<number | null>(null)
 
   const normalizedDefaults: SystemInfoFormValues = {
     SystemName: normalizeValue(defaultValues.SystemName),
@@ -92,6 +106,8 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
     legal: {
       user_agreement: normalizeValue(defaultValues.legal?.user_agreement),
       privacy_policy: normalizeValue(defaultValues.legal?.privacy_policy),
+      user_agreement_en: normalizeValue(defaultValues.legal?.user_agreement_en),
+      privacy_policy_en: normalizeValue(defaultValues.legal?.privacy_policy_en),
     },
   }
 
@@ -116,6 +132,8 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
     legal: z.object({
       user_agreement: z.string().optional(),
       privacy_policy: z.string().optional(),
+      user_agreement_en: z.string().optional(),
+      privacy_policy_en: z.string().optional(),
     }),
   })
 
@@ -127,8 +145,9 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
         SystemInfoFormValues
       >,
       defaultValues: normalizedDefaults,
-      onSubmit: async (_data, changedFields) => {
+      onSubmit: async (data, changedFields) => {
         for (const [key, value] of Object.entries(changedFields)) {
+          if (key.startsWith('legal.')) continue
           let v = normalizeValue(value)
           if (key === 'ServerAddress' || key === 'TaskPublicAddress') {
             v = v.replace(/\/+$/, '')
@@ -138,8 +157,60 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
             value: v,
           })
         }
+        const legalChanged = Object.keys(changedFields).some((key) =>
+          key.startsWith('legal.')
+        )
+        if (legalChanged) {
+          if (!legal.isSuccess || legalBaseVersion.current === null) {
+            throw new Error(t('Unable to load legal documents'))
+          }
+          const published = requireServerSuccess(
+            await publishLegalVersion({
+              user_agreement: data.legal.user_agreement ?? '',
+              privacy_policy: data.legal.privacy_policy ?? '',
+              user_agreement_en: data.legal.user_agreement_en ?? '',
+              privacy_policy_en: data.legal.privacy_policy_en ?? '',
+              material: materialLegalUpdate,
+              expected_version: legalBaseVersion.current,
+            })
+          )
+          legalBaseVersion.current = published.data.id
+          const needsReacceptance =
+            Boolean(
+              published.data.user_agreement || published.data.privacy_policy
+            ) &&
+            published.data.required_version !== legal.version?.required_version
+          // A material publication also applies to its publisher. Let the
+          // consent gate finish before refetching protected settings.
+          if (!needsReacceptance) {
+            await queryClient.invalidateQueries({
+              queryKey: ['system-options'],
+            })
+          }
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ['legal-version'] }),
+            queryClient.invalidateQueries({ queryKey: ['legal-consent'] }),
+            queryClient.invalidateQueries({ queryKey: ['status'] }),
+          ])
+          toast.success(t('Setting updated successfully'))
+        }
       },
     })
+
+  // The published revision is the source of truth for all four documents; the
+  // options payload only carries the original pair. Seed once from the revision
+  // so an editor never republishes a document it did not mean to touch.
+  const seededLegal = useRef(false)
+  useEffect(() => {
+    if (seededLegal.current || isDirty || !legal.isSuccess) return
+    seededLegal.current = true
+    const version = legal.version
+    legalBaseVersion.current = version?.id ?? 0
+    form.setValue('legal.user_agreement', version?.user_agreement ?? '')
+    form.setValue('legal.privacy_policy', version?.privacy_policy ?? '')
+    form.setValue('legal.user_agreement_en', version?.user_agreement_en ?? '')
+    form.setValue('legal.privacy_policy_en', version?.privacy_policy_en ?? '')
+  }, [form, isDirty, legal.isSuccess, legal.version])
 
   return (
     <>
@@ -327,6 +398,18 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
                 />
               </SettingsFormGridItem>
 
+              <div className='flex items-start gap-3'>
+                <Checkbox
+                  id='material-legal-update'
+                  checked={materialLegalUpdate}
+                  onCheckedChange={(checked) =>
+                    setMaterialLegalUpdate(checked === true)
+                  }
+                />
+                <Label htmlFor='material-legal-update'>
+                  {t('Important update: require users to agree again')}
+                </Label>
+              </div>
               <FormField
                 control={form.control}
                 name='legal.user_agreement'
@@ -336,7 +419,7 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
                     <FormControl>
                       <Textarea
                         placeholder={t(
-                          'Provide Markdown, HTML, or an external URL for the user agreement'
+                          'Provide the full user agreement as Markdown or HTML'
                         )}
                         rows={6}
                         {...field}
@@ -344,7 +427,7 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
                     </FormControl>
                     <FormDescription>
                       {t(
-                        'Leave empty to disable the agreement requirement. Supports Markdown, HTML, or a full URL to redirect users.'
+                        'Published documents are archived by version. External URLs cannot be published.'
                       )}
                     </FormDescription>
                     <FormMessage />
@@ -361,7 +444,7 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
                     <FormControl>
                       <Textarea
                         placeholder={t(
-                          'Provide Markdown, HTML, or an external URL for the privacy policy'
+                          'Provide the full privacy policy as Markdown or HTML'
                         )}
                         rows={6}
                         {...field}
@@ -369,7 +452,57 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
                     </FormControl>
                     <FormDescription>
                       {t(
-                        'Leave empty to disable the privacy policy requirement. Supports Markdown, HTML, or a full URL to redirect users.'
+                        'Published documents are archived by version. External URLs cannot be published.'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='legal.user_agreement_en'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('User Agreement (English)')}</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder={t(
+                          'Provide the full user agreement in English as Markdown or HTML'
+                        )}
+                        rows={6}
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Served when the interface is in English. Leave it empty to keep showing the document above.'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='legal.privacy_policy_en'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Privacy Policy (English)')}</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder={t(
+                          'Provide the full privacy policy in English as Markdown or HTML'
+                        )}
+                        rows={6}
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Served when the interface is in English. Leave it empty to keep showing the document above.'
                       )}
                     </FormDescription>
                     <FormMessage />

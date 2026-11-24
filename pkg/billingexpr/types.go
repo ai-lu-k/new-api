@@ -14,6 +14,9 @@ type RequestInput struct {
 	// ImageCount is a validated billing quantity, separate from the frozen
 	// request's n. Settlement can replace it with the actual returned count.
 	ImageCount *int
+	// Chars is the number of characters a text-to-speech request synthesizes,
+	// the billing quantity for per-character speech pricing.
+	Chars *int
 }
 
 // TokenParams holds all token dimensions passed into an Expr evaluation.
@@ -50,6 +53,7 @@ const (
 // TraceResult holds side-channel info captured while an expression runs.
 type TraceResult struct {
 	ImageCount   *int               `json:"image_count,omitempty"`
+	Chars        *int               `json:"chars,omitempty"`
 	BillingUnit  BillingUnit        `json:"billing_unit"`
 	FixedPrice   *float64           `json:"fixed_price,omitempty"`
 	MatchedTier  string             `json:"matched_tier"`
@@ -63,6 +67,7 @@ type TraceResult struct {
 // compiled program pointers.
 type BillingSnapshot struct {
 	EstimatedImageCount       *int           `json:"estimated_image_count,omitempty"`
+	EstimatedChars            *int           `json:"estimated_chars,omitempty"`
 	BillingMode               string         `json:"billing_mode"`
 	ModelName                 string         `json:"model_name"`
 	ExprString                string         `json:"expr_string"`
@@ -89,6 +94,7 @@ type TieredResult struct {
 	// the shared injection path, not as additional snapshot state.
 	BillingTokens          *TokenParams       `json:"-"`
 	ImageCount             *int               `json:"image_count,omitempty"`
+	Chars                  *int               `json:"chars,omitempty"`
 	BillingUnit            BillingUnit        `json:"billing_unit"`
 	FixedPrice             *float64           `json:"fixed_price,omitempty"`
 	ActualQuotaBeforeGroup float64            `json:"actual_quota_before_group"`

@@ -27,6 +27,7 @@ import * as React from 'react'
 import { TableCell, TableRow } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 
+import { getRowDiffKey } from './list-signature'
 import { TruncatedCell } from './truncated-cell'
 import type { DataTableColumnClassName } from './types'
 
@@ -35,6 +36,14 @@ type DataTableRowProps<TData> = {
   className?: string
   getColumnClassName?: DataTableColumnClassName
   cellRenderColumns?: TanstackTable<TData>['options']['columns']
+  /**
+   * @deprecated Nothing is animated per row any more. The list container hands
+   * items over as a group (kept ones move, gone ones fall, new ones rise), see
+   * `useListDiffTransition`. Accepted so existing call sites keep compiling.
+   */
+  entranceSignature?: string
+  /** @deprecated See `entranceSignature`; ignored. */
+  entranceIndex?: number
 } & Omit<React.ComponentProps<typeof TableRow>, 'children'>
 
 type DataTableRowInnerProps<TData> = DataTableRowProps<TData> & {
@@ -53,18 +62,27 @@ function DataTableRowInner<TData>({
   className,
   getColumnClassName,
   cellRenderColumns,
+  entranceSignature,
+  entranceIndex,
   visibleColumnIds,
   ...rowProps
 }: DataTableRowInnerProps<TData>) {
-  // Destructured only to keep them out of `rowProps` (not valid DOM attrs)
-  // and to feed the memo comparator below; intentionally unused here.
+  // Destructured only to keep them out of `rowProps` (not valid DOM attrs);
+  // the entrance props are deprecated and deliberately unused.
   void cellRenderColumns
   void visibleColumnIds
+  void entranceSignature
+  void entranceIndex
 
   return (
     <TableRow
+      // What survives a page / sort / filter change. The list container reads
+      // it to move this row instead of replaying an entrance.
+      data-diff-key={getRowDiffKey(row)}
       data-state={isSelected ? 'selected' : undefined}
-      className={className}
+      // Hover and selection are colour-only transitions; both ride the fast
+      // token so a row reacts in the same 140 ms as every other micro state.
+      className={cn('duration-(--motion-fast) ease-(--ease-out)', className)}
       {...rowProps}
     >
       {row.getVisibleCells().map((cell) => {

@@ -38,6 +38,8 @@ func PrepareMidjourneyTaskBilling(relayInfo *relaycommon.RelayInfo, task *model.
 	task.Quota = 0
 	task.TokenId = 0
 	task.BillingChannelId = 0
+	task.TokenPlanWeekId = 0
+	task.TokenPlanReservationId = 0
 	if !shouldBill {
 		return false, nil
 	}
@@ -49,6 +51,13 @@ func PrepareMidjourneyTaskBilling(relayInfo *relaycommon.RelayInfo, task *model.
 	}
 	if relayInfo.BillingSource == BillingSourceSubscription {
 		return false, errors.New("legacy Midjourney billing does not support subscriptions")
+	}
+	if relayInfo.TokenPlan {
+		if relayInfo.Billing == nil || relayInfo.TokenPlanWeekId <= 0 {
+			return false, errors.New("Token Plan reservation is missing")
+		}
+		task.TokenPlanWeekId = relayInfo.TokenPlanWeekId
+		task.TokenPlanReservationId = relayInfo.TokenPlanReservationId
 	}
 
 	task.Quota = quota
@@ -71,11 +80,24 @@ func SettleMidjourneyTaskBilling(relayInfo *relaycommon.RelayInfo, task *model.M
 		return false, errors.New("Midjourney task must be persisted before billing")
 	}
 
-	result, billingErr := postConsumeQuotaWithResult(relayInfo, task.Quota, 0, true)
+	var result postConsumeQuotaResult
+	var billingErr error
+	if relayInfo.TokenPlan {
+		if relayInfo.Billing == nil {
+			return false, errors.New("Token Plan reservation is missing")
+		}
+		billingErr = relayInfo.Billing.Settle(task.Quota)
+		result.FundingApplied = !relayInfo.Billing.NeedsRefund()
+		result.TokenApplied = result.FundingApplied
+	} else {
+		result, billingErr = postConsumeQuotaWithResult(relayInfo, task.Quota, 0, true)
+	}
 	if !result.FundingApplied {
 		task.Quota = 0
 		task.TokenId = 0
 		task.BillingChannelId = 0
+		task.TokenPlanWeekId = 0
+		task.TokenPlanReservationId = 0
 		if updateErr := task.UpdateBillingState(); updateErr != nil {
 			return false, errors.Join(billingErr, fmt.Errorf("clear Midjourney billing state: %w", updateErr))
 		}
@@ -99,8 +121,16 @@ func RefundMidjourneyQuota(ctx context.Context, task *model.Midjourney, reason s
 		return true
 	}
 
-	if err := model.IncreaseUserQuota(task.UserId, quota, false); err != nil {
-		logger.LogWarn(ctx, fmt.Sprintf("退还 Midjourney 用户额度失败 task %s: %s", task.MjId, err.Error()))
+	var fundingErr error
+	if task.TokenPlanReservationId > 0 {
+		_, fundingErr = model.SettleTokenPlanRequest(task.UserId, task.TokenPlanReservationId, 0)
+	} else if task.TokenPlanWeekId > 0 {
+		fundingErr = model.AdjustTokenPlanQuota(task.UserId, task.TokenPlanWeekId, -int64(quota), false)
+	} else {
+		fundingErr = model.IncreaseUserQuota(task.UserId, quota, false)
+	}
+	if fundingErr != nil {
+		logger.LogWarn(ctx, fmt.Sprintf("退还 Midjourney 用户额度失败 task %s: %s", task.MjId, fundingErr.Error()))
 		return false
 	}
 
@@ -114,11 +144,16 @@ func RefundMidjourneyQuota(ctx context.Context, task *model.Midjourney, reason s
 	}
 
 	billingChannelId := task.GetBillingChannelId()
-	model.UpdateUserUsedQuota(task.UserId, -quota)
+	if task.TokenPlanWeekId <= 0 && task.TokenPlanReservationId <= 0 {
+		model.UpdateUserUsedQuota(task.UserId, -quota)
+	}
 	model.UpdateChannelUsedQuota(billingChannelId, -quota)
 	other := model.NewLogOther()
 	other.SetPublic("task_id", task.MjId)
 	other.SetPublic("reason", reason)
+	if task.TokenPlanWeekId > 0 {
+		other.SetPublic("billing_source", BillingSourceTokenPlan)
+	}
 	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
 		UserId:    task.UserId,
 		LogType:   model.LogTypeRefund,

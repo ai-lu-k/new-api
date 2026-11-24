@@ -16,217 +16,158 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { VChart } from '@visactor/react-vchart'
-import { BarChart3, Trophy } from 'lucide-react'
-import { useMemo } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { useChartTheme } from '@/lib/use-chart-theme'
-import { VCHART_OPTION } from '@/lib/vchart'
+import { SectionPanel } from '@/components/section-panel'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
-import { formatTokens } from '../lib/format'
-import type { ModelHistorySeries, ModelRanking, RankingPeriod } from '../types'
-import { ModelLeaderboard } from './model-leaderboard'
+import { formatCalls, formatTokens } from '../lib/format'
+import { bucketCalls, bucketTotals } from '../lib/traffic'
+import type {
+  ImageModelHistorySeries,
+  ModelHistorySeries,
+  ModelKind,
+  RankingPeriod,
+} from '../types'
+import { TrafficPlot } from './traffic-plot'
 
 const PERIOD_DESCRIPTIONS: Record<RankingPeriod, string> = {
-  today: 'Hourly token usage by model across the last 24 hours',
-  week: 'Weekly token usage by model across the past few weeks',
-  month: 'Daily token usage by model across the past month',
-  year: 'Weekly token usage by model across the past year',
+  today: 'Traffic routed in each of the last 24 hours',
+  week: 'Traffic routed in each of the past few weeks',
+  month: 'Traffic routed on each of the past 30 days',
+  year: 'Traffic routed in each of the past weeks',
 }
 
-const TOOLTIP_MAX_ROWS = 10
+const KIND_LABELS: Record<ModelKind, string> = {
+  text: 'Text models',
+  image: 'Image models',
+  audio: 'Audio models',
+  decision: 'Decision models',
+}
+
+const KIND_TABS: ModelKind[] = ['text', 'image', 'audio', 'decision']
+
+const PERIODS: Array<{ id: RankingPeriod; labelKey: string }> = [
+  { id: 'today', labelKey: 'Today' },
+  { id: 'week', labelKey: 'Week' },
+  { id: 'month', labelKey: 'Month' },
+  { id: 'year', labelKey: 'Year' },
+]
+
+const EMPTY_HISTORY: ModelHistorySeries = { points: [], models: [], buckets: 0 }
+const EMPTY_IMAGE_HISTORY: ImageModelHistorySeries = {
+  points: [],
+  models: [],
+  buckets: 0,
+}
 
 type ModelsSectionProps = {
   history: ModelHistorySeries
-  rows: ModelRanking[]
+  imageHistory?: ImageModelHistorySeries
+  audioHistory?: ImageModelHistorySeries
+  decisionHistory?: ModelHistorySeries
   period: RankingPeriod
+  onPeriodChange: (period: RankingPeriod) => void
 }
 
 /**
- * Combined "Top Models" card: a stacked bar chart showing token usage by
- * model over time, paired below with a two-column LLM Leaderboard. The
- * chart anchors the eye while the leaderboard provides the detailed key.
+ * The public traffic block: one line carrying the site's total per bucket, and
+ * a family switch that narrows the same line to text, image or decision models.
+ * Per-model volume is never shown; a family total is the finest the public page
+ * goes.
+ *
+ * Text and decision models are counted in tokens and image models in calls,
+ * because that is how each is billed. The two are never added together: the
+ * line and its unit switch with the family.
  */
 export function ModelsSection(props: ModelsSectionProps) {
   const { t } = useTranslation()
-  const { resolvedTheme, themeReady } = useChartTheme()
-  const chartTextColor =
-    resolvedTheme === 'dark'
-      ? 'rgba(255, 255, 255, 0.68)'
-      : 'rgba(15, 23, 42, 0.58)'
-  const chartGridColor =
-    resolvedTheme === 'dark'
-      ? 'rgba(255, 255, 255, 0.12)'
-      : 'rgba(15, 23, 42, 0.12)'
+  const [kind, setKind] = useState<ModelKind>('text')
 
-  // Order points so the largest model appears at the bottom of every stack.
-  const orderedPoints = useMemo(() => {
-    const order = new Map(
-      props.history.models.map((m, idx) => [m.name, idx] as const)
-    )
-    return [...props.history.points].sort((a, b) => {
-      const tsCmp = a.ts.localeCompare(b.ts)
-      if (tsCmp !== 0) return tsCmp
-      return (order.get(a.model) ?? 999) - (order.get(b.model) ?? 999)
-    })
-  }, [props.history])
-
-  const totalTokens = useMemo(
-    () => props.rows.reduce((s, r) => s + r.total_tokens, 0),
-    [props.rows]
-  )
-
-  const spec = useMemo(() => {
-    if (orderedPoints.length === 0) return null
-    return {
-      type: 'bar' as const,
-      data: [{ id: 'models-history', values: orderedPoints }],
-      xField: 'label',
-      yField: 'tokens',
-      seriesField: 'model',
-      stack: true,
-      legends: { visible: false },
-      axes: [
-        {
-          orient: 'bottom',
-          label: {
-            style: { fill: chartTextColor, fontSize: 10 },
-            autoHide: true,
-            autoLimit: true,
-          },
-          tick: { visible: false },
-        },
-        {
-          orient: 'left',
-          label: {
-            formatMethod: (val: number | string) => formatTokens(Number(val)),
-            style: { fill: chartTextColor, fontSize: 10 },
-          },
-          grid: {
-            visible: true,
-            style: { lineDash: [3, 3], stroke: chartGridColor },
-          },
-        },
-      ],
-      tooltip: {
-        mark: {
-          content: [
-            {
-              key: (datum: Record<string, unknown>) =>
-                String(datum?.model ?? ''),
-              value: (datum: Record<string, unknown>) =>
-                formatTokens(Number(datum?.tokens) || 0),
-            },
-          ],
-        },
-        dimension: {
-          title: {
-            value: (datum: Record<string, unknown>) =>
-              String(datum?.label ?? ''),
-          },
-          content: [
-            {
-              key: (datum: Record<string, unknown>) =>
-                String(datum?.model ?? ''),
-              value: (datum: Record<string, unknown>) =>
-                Number(datum?.tokens) || 0,
-            },
-          ],
-          updateContent: (
-            array: Array<{ key: string; value: string | number }>
-          ) => {
-            array.sort((a, b) => Number(b.value) - Number(a.value))
-            const sum = array.reduce((s, x) => s + (Number(x.value) || 0), 0)
-            const visible = array.slice(0, TOOLTIP_MAX_ROWS)
-            const overflow = array.slice(TOOLTIP_MAX_ROWS)
-            const result = visible.map((item) => ({
-              key: item.key,
-              value: formatTokens(Number(item.value) || 0),
-            }))
-            if (overflow.length > 0) {
-              const otherSum = overflow.reduce(
-                (s, item) => s + (Number(item.value) || 0),
-                0
-              )
-              result.push({
-                key: t('+{{count}} more', { count: overflow.length }),
-                value: formatTokens(otherSum),
-              })
-            }
-            result.unshift({ key: t('Total:'), value: formatTokens(sum) })
-            return result
-          },
-        },
-      },
-      animationAppear: { duration: 500 },
-    }
-  }, [chartGridColor, chartTextColor, orderedPoints, t])
+  // Speech is billed per character or per call, never in tokens, so its
+  // traffic joins the image board in calls.
+  const countedByCalls = kind === 'image' || kind === 'audio'
+  const callHistory =
+    kind === 'audio'
+      ? (props.audioHistory ?? EMPTY_IMAGE_HISTORY)
+      : (props.imageHistory ?? EMPTY_IMAGE_HISTORY)
+  const totals = countedByCalls
+    ? bucketCalls(callHistory.points)
+    : bucketTotals(tokenPoints(kind, props))
+  const total = totals.points.reduce((sum, point) => sum + point.value, 0)
 
   return (
-    <section className='bg-card overflow-hidden rounded-lg border'>
-      {/* Chart block ----------------------------------------------------- */}
-      <header className='flex items-start justify-between gap-4 px-5 py-4'>
-        <div className='min-w-0 flex-1'>
-          <h2 className='text-foreground inline-flex items-center gap-2 text-base font-semibold'>
-            <BarChart3 className='text-primary size-4' />
-            {t('Top Models')}
-          </h2>
-          <p className='text-muted-foreground mt-1 text-sm'>
-            {t(PERIOD_DESCRIPTIONS[props.period])}
-          </p>
-        </div>
-        <div className='shrink-0 text-right'>
-          <div className='text-foreground font-mono text-2xl font-semibold tabular-nums'>
-            {formatTokens(totalTokens)}
+    <SectionPanel
+      title={t('Platform traffic')}
+      description={t(PERIOD_DESCRIPTIONS[props.period])}
+      actions={
+        <div className='text-right'>
+          <div className='text-foreground text-2xl font-bold tabular-nums'>
+            {countedByCalls ? formatCalls(total) : formatTokens(total)}
           </div>
-          <div className='text-muted-foreground/80 text-[10px] font-medium tracking-widest uppercase'>
-            {t('tokens')}
+          <div className='text-muted-foreground text-[11px] font-medium tracking-widest uppercase'>
+            {countedByCalls ? t('calls') : t('tokens')}
           </div>
         </div>
-      </header>
+      }
+    >
+      <div className='mb-3 flex min-w-0 flex-wrap items-center justify-between gap-3'>
+        <Tabs
+          value={kind}
+          onValueChange={(value) => setKind(value as ModelKind)}
+        >
+          <TabsList aria-label={t('Model family')}>
+            {KIND_TABS.map((tab) => (
+              <TabsTrigger key={tab} value={tab} className='px-2.5 text-xs'>
+                {t(KIND_LABELS[tab])}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
 
-      <div className='px-5 pb-5'>
-        <div className='h-60 sm:h-72'>
-          {themeReady && spec ? (
-            <VChart
-              key={`models-history-${resolvedTheme}-${props.period}`}
-              spec={{
-                ...spec,
-                theme: resolvedTheme === 'dark' ? 'dark' : 'light',
-                background: 'transparent',
-              }}
-              option={VCHART_OPTION}
-            />
-          ) : (
-            <div className='text-muted-foreground/80 flex h-full items-center justify-center text-xs'>
-              {t('No history data available')}
-            </div>
-          )}
-        </div>
+        <Tabs
+          value={props.period}
+          onValueChange={(value) =>
+            props.onPeriodChange(value as RankingPeriod)
+          }
+        >
+          <TabsList aria-label={t('Period')}>
+            {PERIODS.map((item) => (
+              <TabsTrigger
+                key={item.id}
+                value={item.id}
+                className='px-2.5 text-xs'
+              >
+                {t(item.labelKey)}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
       </div>
 
-      {/* Leaderboard block ----------------------------------------------- */}
-      <div className='border-t'>
-        <header className='px-5 pt-4 pb-2'>
-          <h3 className='text-foreground inline-flex items-center gap-2 text-sm font-semibold'>
-            <Trophy className='size-3.5 text-amber-500' />
-            {t('LLM Leaderboard')}
-          </h3>
-          <p className='text-muted-foreground/80 mt-0.5 text-xs'>
-            {t('Compare the most popular models on the platform')}
-          </p>
-        </header>
-        {props.rows.length === 0 ? (
-          <div className='text-muted-foreground/80 px-5 py-8 text-center text-sm'>
-            {t('No models match the selected filters')}
-          </div>
-        ) : (
-          <div className='px-5 pt-1 pb-4'>
-            <ModelLeaderboard rows={props.rows} />
-          </div>
-        )}
-      </div>
-    </section>
+      {totals.points.length > 0 ? (
+        <TrafficPlot
+          points={totals.points}
+          peakLabel={totals.peakLabel}
+          showToday={props.period === 'week' || props.period === 'month'}
+        />
+      ) : (
+        <div className='text-muted-foreground flex h-40 items-center justify-center text-[13px]'>
+          {t('No history data available')}
+        </div>
+      )}
+    </SectionPanel>
   )
+}
+
+/** The token series a family is counted from. */
+function tokenPoints(
+  kind: ModelKind,
+  props: ModelsSectionProps
+): ModelHistorySeries['points'] {
+  if (kind === 'decision') {
+    return (props.decisionHistory ?? EMPTY_HISTORY).points
+  }
+  return props.history.points
 }

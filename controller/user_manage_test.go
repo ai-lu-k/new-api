@@ -17,7 +17,9 @@ import (
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/go-redis/redis/v8"
 
@@ -66,7 +68,7 @@ func setupManageUserTestDB(t *testing.T) *gorm.DB {
 			}
 		}
 	})
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.CasbinRule{}, &model.AuthzRole{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.CasbinRule{}, &model.AuthzRole{}, &model.Option{}))
 	require.NoError(t, logDB.AutoMigrate(&model.Log{}, &model.AuditLog{}))
 	versionQuery := "SELECT version()"
 	if dialect == "sqlite" {
@@ -221,7 +223,7 @@ func TestManageUserQuotaRecordsTopupAndAudit(t *testing.T) {
 			require.NoError(t, db.Create(&user).Error)
 			createQuotaTestOperator(t, db, common.RoleRootUser)
 
-			recorder := performManageUserRequest(t, fmt.Sprintf(`{"id":%d,"action":"add_quota","mode":%q,"value":%d}`, user.Id, tc.mode, tc.value))
+			recorder := performManageUserRequest(t, fmt.Sprintf(`{"id":%d,"action":"add_quota","mode":%q,"value":%d,"reason":"gift"}`, user.Id, tc.mode, tc.value))
 			assert.Equal(t, http.StatusOK, recorder.Code)
 			require.Contains(t, recorder.Body.String(), `"success":true`)
 			require.NoError(t, db.First(&user, user.Id).Error)
@@ -253,6 +255,9 @@ func TestManageUserQuotaRecordsTopupAndAudit(t *testing.T) {
 			expectedParams := model.AuditFields{"target_user_id": user.Id, "target_username": user.Username, "mode": tc.mode, "requested_quota": tc.value, "from": 1000, "to": tc.wantQuota}
 			if tc.mode != "override" {
 				expectedParams["quota"] = tc.value
+			}
+			if tc.mode == "add" {
+				expectedParams["reason"] = "gift"
 			}
 			expected, err := common.Marshal(expectedParams)
 			require.NoError(t, err)
@@ -304,7 +309,7 @@ func TestManageUserQuotaFailuresDoNotRecordTopup(t *testing.T) {
 					}
 				}))
 			}
-			recorder := performManageUserRequest(t, fmt.Sprintf(`{"id":%d,"action":"add_quota","mode":%q,"value":%d}`, user.Id, tc.mode, tc.value))
+			recorder := performManageUserRequest(t, fmt.Sprintf(`{"id":%d,"action":"add_quota","mode":%q,"value":%d,"reason":"gift"}`, user.Id, tc.mode, tc.value))
 			assert.Contains(t, recorder.Body.String(), `"success":false`)
 			require.NoError(t, db.First(&user, user.Id).Error)
 			assert.Equal(t, 1000, user.Quota)
@@ -344,7 +349,7 @@ func TestManageUserQuotaLogFailureKeepsSuccessfulAdjustment(t *testing.T) {
 					tx.AddError(errors.New("quota log unavailable"))
 				}
 			}))
-			recorder := performManageUserRequest(t, fmt.Sprintf(`{"id":%d,"action":"add_quota","mode":"add","value":500}`, user.Id))
+			recorder := performManageUserRequest(t, fmt.Sprintf(`{"id":%d,"action":"add_quota","mode":"add","value":500,"reason":"gift"}`, user.Id))
 			assert.Contains(t, recorder.Body.String(), `"success":true`)
 			require.NoError(t, db.First(&user, user.Id).Error)
 			assert.Equal(t, 1500, user.Quota)
@@ -398,7 +403,7 @@ func TestManageUserQuotaTargetsAndWalletBounds(t *testing.T) {
 			}
 			recorder := httptest.NewRecorder()
 			c, _ := gin.CreateTestContext(recorder)
-			c.Request = httptest.NewRequest(http.MethodPost, "/api/user/manage", strings.NewReader(fmt.Sprintf(`{"id":%d,"action":"add_quota","mode":%q,"value":%d}`, tc.targetID, tc.mode, tc.value)))
+			c.Request = httptest.NewRequest(http.MethodPost, "/api/user/manage", strings.NewReader(fmt.Sprintf(`{"id":%d,"action":"add_quota","mode":%q,"value":%d,"reason":"gift"}`, tc.targetID, tc.mode, tc.value)))
 			role := tc.operatorRole
 			if role == 0 {
 				role = common.RoleRootUser
@@ -418,7 +423,11 @@ func TestManageUserQuotaTargetsAndWalletBounds(t *testing.T) {
 			assert.False(t, audits[0].Success)
 			params, err := common.Marshal(audits[0].Other.Op.Params)
 			require.NoError(t, err)
-			expected, err := common.Marshal(model.AuditFields{"target_user_id": tc.targetID, "mode": tc.mode, "requested_quota": tc.value, "failure_reason": tc.reason})
+			expectedParams := model.AuditFields{"target_user_id": tc.targetID, "mode": tc.mode, "requested_quota": tc.value, "failure_reason": tc.reason}
+			if tc.mode == "add" {
+				expectedParams["reason"] = "gift"
+			}
+			expected, err := common.Marshal(expectedParams)
 			require.NoError(t, err)
 			assert.JSONEq(t, string(expected), string(params))
 			assert.NotContains(t, audits[0].Content, user.Username)
@@ -441,7 +450,7 @@ func TestManageUserQuotaMiddlewareKeepsOneOperationPerRequest(t *testing.T) {
 		body, action string
 		success      bool
 	}{
-		{`{"id":9999,"action":"add_quota","mode":"add","value":100}`, "user.quota_add", true},
+		{`{"id":9999,"action":"add_quota","mode":"add","value":100,"reason":"gift"}`, "user.quota_add", true},
 		{`{"id":9999,"action":"add_quota","mode":"subtract","value":0}`, "user.quota_subtract", false},
 		{`{"id":9999,"action":"add_quota","mode":"invalid","value":1}`, "generic", false},
 		{`{"id":`, "generic", false},
@@ -506,7 +515,7 @@ func TestManageUserQuotaConcurrentSnapshots(t *testing.T) {
 	results := make(chan result, 2)
 	for _, value := range []int{10, 20} {
 		go func(value int) {
-			adjustment, err := model.AdjustUserQuota(user.Id, common.RoleRootUser, "add", value)
+			adjustment, err := model.AdjustUserQuota(user.Id, common.RoleRootUser, "add", value, model.QuotaAddReasonGift)
 			results <- result{adjustment, err, value}
 		}(value)
 	}
@@ -589,7 +598,7 @@ func TestManageUserQuotaCacheUsesCommittedIntegerDifference(t *testing.T) {
 					}
 				}))
 			}
-			recorder := performManageUserRequest(t, fmt.Sprintf(`{"id":%d,"action":"add_quota","mode":%q,"value":%d}`, user.Id, tc.mode, tc.value))
+			recorder := performManageUserRequest(t, fmt.Sprintf(`{"id":%d,"action":"add_quota","mode":%q,"value":%d,"reason":"gift"}`, user.Id, tc.mode, tc.value))
 			assert.Contains(t, recorder.Body.String(), fmt.Sprintf(`"success":%t`, !tc.failUpdate))
 			require.NoError(t, db.First(&user, user.Id).Error)
 			assert.Equal(t, tc.after, user.Quota)
@@ -605,4 +614,276 @@ func TestManageUserQuotaCacheUsesCommittedIntegerDifference(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestManageUserQuotaAddNeedsReason(t *testing.T) {
+	for name, extra := range map[string]string{
+		"no reason":               ``,
+		"unknown reason":          `,"reason":"because"`,
+		"other without a note":    `,"reason":"other","reason_note":"  "`,
+		"paid without an amount":  `,"reason":"offline_payment"`,
+		"paid with a zero amount": `,"reason":"offline_payment","paid_amount":0`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			db := setupManageUserTestDB(t)
+			createQuotaTestOperator(t, db, common.RoleRootUser)
+			user := model.User{Username: "quota-owner", Role: common.RoleCommonUser, Quota: 1000, AffCode: "quota-owner-aff"}
+			require.NoError(t, db.Create(&user).Error)
+
+			recorder := performManageUserRequest(t, fmt.Sprintf(`{"id":%d,"action":"add_quota","mode":"add","value":500%s}`, user.Id, extra))
+			assert.Contains(t, recorder.Body.String(), `"success":false`)
+			require.NoError(t, db.First(&user, user.Id).Error)
+			assert.Equal(t, 1000, user.Quota)
+		})
+	}
+}
+
+func TestFinanceSummaryTellsTopUpsFromGifts(t *testing.T) {
+	db := setupManageUserTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.TopUp{}, &model.Checkin{}, &model.Redemption{}, &model.UpstreamTopUp{}, &model.CampaignAward{}))
+	createQuotaTestOperator(t, db, common.RoleRootUser)
+	user := model.User{Username: "quota-owner", Role: common.RoleCommonUser, Quota: 0, AffCode: "quota-owner-aff"}
+	require.NoError(t, db.Create(&user).Error)
+	unit := int(common.QuotaPerUnit)
+
+	// Three manual additions: one paid for outside the checkout, two given away.
+	for _, body := range []string{
+		fmt.Sprintf(`{"id":%d,"action":"add_quota","mode":"add","value":%d,"reason":"offline_payment","paid_amount":18.5,"reason_note":"bank transfer"}`, user.Id, 20*unit),
+		fmt.Sprintf(`{"id":%d,"action":"add_quota","mode":"add","value":%d,"reason":"compensation"}`, user.Id, 3*unit),
+		fmt.Sprintf(`{"id":%d,"action":"add_quota","mode":"add","value":%d,"reason":"other","reason_note":"event prize"}`, user.Id, 2*unit),
+	} {
+		require.Contains(t, performManageUserRequest(t, body).Body.String(), `"success":true`)
+	}
+
+	now := time.Now()
+	lastMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).AddDate(0, -1, 0).Add(time.Hour).Unix()
+	require.NoError(t, db.Create(&[]model.TopUp{
+		{UserId: user.Id, Money: 30, TradeNo: "paid-now", PaymentMethod: "alipay", Status: common.TopUpStatusSuccess, CompleteTime: now.Unix()},
+		{UserId: user.Id, Money: 7.25, TradeNo: "paid-last-month", PaymentMethod: "wxpay", Status: common.TopUpStatusSuccess, CompleteTime: lastMonth},
+		{UserId: user.Id, Money: 99, TradeNo: "never-paid", PaymentMethod: "alipay", Status: common.TopUpStatusPending, CompleteTime: now.Unix()},
+		{UserId: user.Id, Money: 50, TradeNo: "from-balance", PaymentMethod: model.PaymentMethodBalance, Status: common.TopUpStatusSuccess, CompleteTime: now.Unix()},
+	}).Error)
+	require.NoError(t, db.Create(&model.Checkin{UserId: user.Id, CheckinDate: now.Format("2006-01-02"), QuotaAwarded: unit / 2, CreatedAt: now.Unix()}).Error)
+	require.NoError(t, db.Create(&model.Redemption{Key: "0123456789abcdef0123456789abcdef", Status: common.RedemptionCodeStatusUsed, Quota: 4 * unit, RedeemedTime: now.Unix()}).Error)
+	require.NoError(t, db.Create(&model.Redemption{Key: "fedcba9876543210fedcba9876543210", Status: common.RedemptionCodeStatusEnabled, Quota: 9 * unit}).Error)
+	require.NoError(t, db.Create(&model.CampaignAward{UserId: user.Id, Kind: model.CampaignAwardSolve, ChallengeId: "c1", Quota: unit / 4, CreatedAt: now.Unix()}).Error)
+	// Payments a bound new-api gateway reported are money out, converted to
+	// CNY; a failed payment is not.
+	require.NoError(t, db.Create(&[]model.UpstreamTopUp{
+		{AccountId: 1, TradeNo: "upstream-now", Paid: 20, Rate: 7.2, Status: "success", PaidAt: now.Unix()},
+		{AccountId: 1, TradeNo: "upstream-last-month", Paid: 10, Rate: 1, Status: "success", PaidAt: lastMonth},
+		{AccountId: 1, TradeNo: "upstream-failed", Paid: 99, Rate: 1, Status: "failed", PaidAt: now.Unix()},
+	}).Error)
+
+	months, err := buildFinanceSummary(now, 2, nil)
+	require.NoError(t, err)
+	require.Len(t, months, 2)
+	current, previous := months[0], months[1]
+	assert.Equal(t, now.Format("2006-01"), current.Month)
+	assert.Equal(t, 30.0, current.OnlineTopUp)
+	assert.Equal(t, 18.5, current.ManualTopUp)
+	assert.Equal(t, 5.0, current.GiftManual)
+	assert.Equal(t, 0.5, current.GiftCheckin)
+	assert.Equal(t, 4.0, current.GiftRedemption)
+	assert.Equal(t, 0.25, current.GiftEvent)
+	assert.Equal(t, 7.25, previous.OnlineTopUp)
+	assert.Equal(t, 144.0, current.Expenses)
+	assert.Equal(t, 10.0, previous.Expenses)
+	assert.Zero(t, previous.ManualTopUp)
+	assert.Zero(t, previous.GiftManual)
+	assert.Zero(t, previous.GiftEvent)
+
+	// The total reaches back past the months that are listed.
+	total, err := buildFinanceTotal(now, nil)
+	require.NoError(t, err)
+	assert.Equal(t, 37.25, total.OnlineTopUp)
+	assert.Equal(t, 18.5, total.ManualTopUp)
+	assert.Equal(t, 154.0, total.Expenses)
+	assert.Equal(t, 5.0, total.GiftManual)
+	assert.Empty(t, total.Month)
+
+	// A test account can be left out of every figure.
+	without, err := buildFinanceSummary(now, 2, []int{user.Id})
+	require.NoError(t, err)
+	assert.Zero(t, without[0].OnlineTopUp)
+	assert.Zero(t, without[0].ManualTopUp)
+	assert.Zero(t, without[0].GiftManual)
+	assert.Zero(t, without[0].GiftCheckin)
+	assert.Zero(t, without[1].OnlineTopUp)
+	other, err := buildFinanceSummary(now, 2, []int{user.Id + 1000})
+	require.NoError(t, err)
+	assert.Equal(t, 30.0, other[0].OnlineTopUp)
+
+	// The person receiving the quota sees why it was added.
+	logs, _, err := model.GetUserLogs(user.Id, model.LogTypeTopup, 0, 0, "", "", 0, 20, "", "", "")
+	require.NoError(t, err)
+	require.Len(t, logs, 3)
+	found := false
+	for _, log := range logs {
+		found = found || strings.Contains(log.Other, `"reason":"offline_payment"`)
+	}
+	assert.True(t, found)
+}
+
+func TestUsageLevelBoundariesAndConfiguration(t *testing.T) {
+	thresholds := [7]int{0, 1, 5_000_000, 25_000_000, 100_000_000, 500_000_000, 2_500_000_000}
+	cases := []struct{ used, level int }{{-1, 0}, {0, 0}, {1, 1}, {4_999_999, 1}, {5_000_000, 2}, {24_999_999, 2}, {25_000_000, 3}, {99_999_999, 3}, {100_000_000, 4}, {499_999_999, 4}, {500_000_000, 5}, {2_499_999_999, 5}, {2_500_000_000, 6}, {3_000_000_000, 6}}
+	for _, tc := range cases {
+		t.Run(fmt.Sprintf("consumed_%d", tc.used), func(t *testing.T) {
+			level := service.CalculateUsageLevel(tc.used, thresholds)
+			assert.Equal(t, tc.level, level.Level)
+			assert.GreaterOrEqual(t, level.Progress, 0.0)
+			assert.LessOrEqual(t, level.Progress, 100.0)
+			if tc.level == 6 {
+				assert.Nil(t, level.NextLevelQuota)
+				assert.Zero(t, level.RemainingQuota)
+				return
+			}
+			require.NotNil(t, level.NextLevelQuota)
+			assert.Equal(t, thresholds[tc.level+1], *level.NextLevelQuota)
+			assert.Equal(t, thresholds[tc.level+1]-max(0, tc.used), level.RemainingQuota)
+		})
+	}
+	progress := service.CalculateUsageLevel(11_800_000, thresholds)
+	assert.Equal(t, 2, progress.Level)
+	assert.InDelta(t, 34.0, progress.Progress, 0.00001)
+	assert.Equal(t, 13_200_000, progress.RemainingQuota)
+	for _, raw := range []string{"null", "[]", "[10,50]", "[0,50,200,1000,5000]", "[10,10,200,1000,5000]", "[10,9,200,1000,5000]", "[10.5,50,200,1000,5000]", "[10,50,200,1000,1000000001]", "[10,50,200,1000,5000,6000]"} {
+		_, err := operation_setting.ParseUsageLevelThresholds(raw)
+		assert.Error(t, err, raw)
+	}
+	amounts, err := operation_setting.ParseUsageLevelThresholds("[10,50,200,1000,5000]")
+	require.NoError(t, err)
+	assert.Equal(t, [5]int64{10, 50, 200, 1000, 5000}, amounts)
+	custom := service.CalculateUsageLevel(11_800_000, [7]int{0, 1, 1_000_000, 10_000_000, 20_000_000, 100_000_000, 500_000_000})
+	assert.Equal(t, 3, custom.Level)
+}
+
+func TestSelfUsageLevelCountsGiftConsumptionAndRefunds(t *testing.T) {
+	db := setupManageUserTestDB(t)
+	previousUnit := common.QuotaPerUnit
+	previousExchange := operation_setting.USDExchangeRate
+	operation_setting.USDExchangeRate = 6.7
+	common.QuotaPerUnit = 500_000
+	common.OptionMapRWMutex.Lock()
+	previousOptions := common.OptionMap
+	common.OptionMap = map[string]string{"usage_level.thresholds": "[10,50,200,1000,5000]"}
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		common.QuotaPerUnit = previousUnit
+		operation_setting.USDExchangeRate = previousExchange
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap = previousOptions
+		common.OptionMapRWMutex.Unlock()
+	})
+	user := model.User{Username: "usage-gift-user", Password: "fixture-password", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, Group: "default", Quota: 50_000_000, AuthVersion: 1}
+	require.NoError(t, db.Create(&user).Error)
+	for _, tc := range []struct{ used, level int }{{0, 0}, {5_000_000, 2}, {4_500_000, 1}} {
+		require.NoError(t, db.Model(&model.User{}).Where("id = ?", user.Id).Update("used_quota", tc.used).Error)
+		// The level follows paid consumption; the statistics counter is
+		// independent of it.
+		require.NoError(t, db.Model(&model.User{}).Where("id = ?", user.Id).Update("level_quota", tc.used).Error)
+		recorder := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(recorder)
+		c.Request = httptest.NewRequest(http.MethodGet, "/api/user/self", nil)
+		c.Set("id", user.Id)
+		c.Set("role", user.Role)
+		GetSelf(c)
+		var response struct {
+			Success bool `json:"success"`
+			Data    struct {
+				ID         int                `json:"id"`
+				UsedQuota  int                `json:"used_quota"`
+				UsageLevel service.UsageLevel `json:"usage_level"`
+			} `json:"data"`
+		}
+		require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+		require.True(t, response.Success)
+		assert.Equal(t, user.Id, response.Data.ID)
+		assert.Equal(t, tc.used, response.Data.UsedQuota)
+		assert.Equal(t, tc.level, response.Data.UsageLevel.Level)
+		assert.NotContains(t, recorder.Body.String(), "fixture-password")
+		assert.NotContains(t, recorder.Body.String(), `"access_token"`)
+		assert.NotContains(t, recorder.Body.String(), `"password"`)
+	}
+	// Respect custom quota units rather than treating display exchange as usage.
+	common.QuotaPerUnit = 2_000_000
+	assert.Equal(t, [7]int{0, 1, 20_000_000, 100_000_000, 400_000_000, 2_000_000_000, 10_000_000_000}, operation_setting.GetUsageLevelThresholds())
+	// No top-up record exists: the original balance was a gift.
+	var saved model.User
+	require.NoError(t, db.First(&saved, user.Id).Error)
+	assert.Equal(t, user.Quota, saved.Quota)
+}
+
+func TestSelfUsageSourceReportsOnlyOwnLifetimeSplit(t *testing.T) {
+	db := setupManageUserTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.TopUp{}, &model.Checkin{}, &model.Redemption{}, &model.CampaignAward{}, &model.TokenPlanReservation{}))
+	// The wallet split is read from the balance ledgers, which only exist once
+	// the one-time backfill ran; state that explicitly instead of depending on a
+	// marker another test happened to leave behind.
+	require.NoError(t, db.Create(&model.Option{Key: model.UsageLevelGiftExclusionMigrationKey, Value: "true"}).Error)
+	previousUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 500_000
+	t.Cleanup(func() { common.QuotaPerUnit = previousUnit })
+
+	newUser := func(name string, usedQuota, quota, bonusQuota int) *model.User {
+		user := &model.User{Username: name, Password: "fixture-password", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, Group: "default", AffCode: "aff-" + name, AuthVersion: 1}
+		require.NoError(t, db.Create(user).Error)
+		// bonus_quota is the gift share of the wallet the settlement ledger
+		// keeps; the API must read the split from it, not rebuild it.
+		require.NoError(t, db.Model(&model.User{}).Where("id = ?", user.Id).Updates(map[string]any{"used_quota": usedQuota, "quota": quota, "bonus_quota": bonusQuota}).Error)
+		return user
+	}
+	// 4M consumed against a 10M gift redemption leaves 6M of that gift in the
+	// wallet, which is exactly what the ledger holds: the split is exact.
+	caller := newUser("usage-source-caller", 4_000_000, 6_000_000, 6_000_000)
+	require.NoError(t, db.Create(&model.Redemption{Key: "usage-source-caller-gift", Status: common.RedemptionCodeStatusUsed, UsedUserId: caller.Id, Quota: 10_000_000}).Error)
+	// A gift that was spent before the ledgers were seeded is no longer in the
+	// wallet, so the balance is ordinary money even though the old ledger gap
+	// still suggests otherwise: 12M consumed against 5M paid leaves a 7M gap,
+	// which used to be reported as 3M of surviving gift.
+	spent := newUser("usage-source-spent-gift", 12_000_000, 6_000_000, 0)
+	require.NoError(t, db.Create(&model.Redemption{Key: "usage-source-spent-gift", Status: common.RedemptionCodeStatusUsed, UsedUserId: spent.Id, Quota: 10_000_000}).Error)
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", spent.Id).Update("level_quota", 5_000_000).Error)
+	// Nothing spent from the gift balance: the wallet holds no gift at all.
+	other := newUser("usage-source-other", 90_000_000, 0, 0)
+	require.NoError(t, db.Create(&model.Redemption{Key: "usage-source-other-gift", Status: common.RedemptionCodeStatusUsed, UsedUserId: other.Id, Quota: 1_000_000}).Error)
+	// Nothing consumed and nothing granted: zero gift usage that is fully known.
+	quiet := newUser("usage-source-quiet", 0, 0, 0)
+
+	for _, tc := range []struct {
+		name   string
+		userId int
+		path   string
+		want   model.UserUsageSource
+	}{
+		{"own account", caller.Id, "/api/user/self/usage-source", model.UserUsageSource{GiftUsed: 4_000_000, GiftPlanUsed: 4_000_000, GiftQuota: 10_000_000, GiftRemaining: 6_000_000, GiftKnown: true}},
+		{"foreign user id ignored", caller.Id, fmt.Sprintf("/api/user/self/usage-source?user_id=%d", other.Id), model.UserUsageSource{GiftUsed: 4_000_000, GiftPlanUsed: 4_000_000, GiftQuota: 10_000_000, GiftRemaining: 6_000_000, GiftKnown: true}},
+		{"gift spent before the ledgers were seeded", spent.Id, "/api/user/self/usage-source", model.UserUsageSource{GiftUsed: 10_000_000, GiftPlanUsed: 10_000_000, GiftQuota: 10_000_000, GiftKnown: true}},
+		{"other account", other.Id, "/api/user/self/usage-source", model.UserUsageSource{GiftUsed: 1_000_000, GiftPlanUsed: 1_000_000, GiftQuota: 1_000_000, GiftKnown: true}},
+		{"no activity", quiet.Id, "/api/user/self/usage-source", model.UserUsageSource{GiftKnown: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodGet, tc.path, nil)
+			c.Set("id", tc.userId)
+			c.Set("role", common.RoleCommonUser)
+			GetSelfUsageSource(c)
+			require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+			var response struct {
+				Success bool                  `json:"success"`
+				Data    model.UserUsageSource `json:"data"`
+			}
+			require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+			require.True(t, response.Success)
+			assert.Equal(t, tc.want, response.Data)
+		})
+	}
+
+	engine := gin.New()
+	engine.GET("/api/user/self/usage-source", middleware.UserAuth(), GetSelfUsageSource)
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/user/self/usage-source", nil))
+	assert.Equal(t, http.StatusUnauthorized, recorder.Code, recorder.Body.String())
 }

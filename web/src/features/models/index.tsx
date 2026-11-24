@@ -46,15 +46,22 @@ import {
 
 const route = getRouteApi('/_authenticated/models/$section')
 
+// Descriptions must name an existing i18n key: a literal that no locale defines
+// falls back to English and shows up untranslated in the Chinese UI.
 const SECTION_META: Record<
   ModelsSectionId,
-  { titleKey: string; tabKey: string }
+  { titleKey: string; tabKey: string; descriptionKey?: string }
 > = {
   metadata: {
     titleKey: 'Model management',
     tabKey: 'Models',
+    descriptionKey: 'Manage catalog visibility and pricing.',
   },
-  vendors: { titleKey: 'Vendor management', tabKey: 'Vendors' },
+  vendors: {
+    titleKey: 'Vendor management',
+    tabKey: 'Vendors',
+    descriptionKey: 'Search, add, and edit model vendors.',
+  },
   deployments: {
     titleKey: 'Deployments',
     tabKey: 'Deployments',
@@ -123,8 +130,14 @@ function ModelsContent() {
       <SectionPageLayout
         fixedContent
         stackActionsOnMobile={activeSection === 'metadata'}
+        pageIndex={<>{t('Admin area')} / 03</>}
       >
         <SectionPageLayout.Title>{t(meta.titleKey)}</SectionPageLayout.Title>
+        {meta.descriptionKey != null && (
+          <SectionPageLayout.Description>
+            {t(meta.descriptionKey)}
+          </SectionPageLayout.Description>
+        )}
         <SectionPageLayout.Actions>{actions}</SectionPageLayout.Actions>
         <SectionPageLayout.Content>
           <div className='flex h-full min-h-0 flex-col gap-4'>

@@ -721,6 +721,60 @@ func TestChannelSettingsValidateHTTPTransport(t *testing.T) {
 	assert.Contains(t, err.Error(), "http2_connection_shards")
 }
 
+func TestChannelSettingsValidateConcurrencyLimit(t *testing.T) {
+	require.NoError(t, (*ChannelSettings)(nil).ValidateConcurrencyLimit())
+	require.NoError(t, (&ChannelSettings{}).ValidateConcurrencyLimit())
+	require.NoError(t, (&ChannelSettings{ConcurrencyLimit: 1}).ValidateConcurrencyLimit())
+	require.NoError(t, (&ChannelSettings{ConcurrencyLimit: MaxChannelConcurrency}).ValidateConcurrencyLimit())
+
+	err := (&ChannelSettings{ConcurrencyLimit: -1}).ValidateConcurrencyLimit()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "concurrency_limit")
+
+	err = (&ChannelSettings{ConcurrencyLimit: MaxChannelConcurrency + 1}).ValidateConcurrencyLimit()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "concurrency_limit")
+
+	encoded, err := json.Marshal(ChannelSettings{ConcurrencyLimit: 4})
+	require.NoError(t, err)
+	assert.Contains(t, string(encoded), `"concurrency_limit":4`)
+	encoded, err = json.Marshal(ChannelSettings{})
+	require.NoError(t, err)
+	assert.NotContains(t, string(encoded), "concurrency_limit", "unlimited stays absent")
+}
+
+func TestChannelSettingsValidateConcurrencyTotal(t *testing.T) {
+	require.NoError(t, (*ChannelSettings)(nil).ValidateConcurrencyTotal())
+	require.NoError(t, (&ChannelSettings{ConcurrencyLimit: 5}).ValidateConcurrencyTotal(), "no pool status URL means no channel-wide cap")
+	require.NoError(t, (&ChannelSettings{ConcurrencyTotalUrl: "http://pool.example.test:8788/health"}).ValidateConcurrencyTotal())
+	require.NoError(t, (&ChannelSettings{ConcurrencyTotalUrl: "https://pool.example.com/health", ConcurrencyTotalPerAccount: MaxConcurrencyTotalPerAccount}).ValidateConcurrencyTotal())
+
+	err := (&ChannelSettings{ConcurrencyTotalUrl: "pool.example.test:8788/health"}).ValidateConcurrencyTotal()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "concurrency_total_url")
+
+	err = (&ChannelSettings{ConcurrencyTotalUrl: "/health"}).ValidateConcurrencyTotal()
+	require.Error(t, err)
+
+	err = (&ChannelSettings{ConcurrencyTotalPerAccount: MaxConcurrencyTotalPerAccount + 1}).ValidateConcurrencyTotal()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "concurrency_total_per_account")
+
+	require.NoError(t, (&ChannelSettings{ConcurrencyTotalLimit: 1}).ValidateConcurrencyTotal(), "a fixed channel-wide cap needs no pool status URL")
+	require.NoError(t, (&ChannelSettings{ConcurrencyTotalLimit: MaxChannelConcurrency}).ValidateConcurrencyTotal())
+	err = (&ChannelSettings{ConcurrencyTotalLimit: -1}).ValidateConcurrencyTotal()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "concurrency_total_limit")
+	err = (&ChannelSettings{ConcurrencyTotalLimit: MaxChannelConcurrency + 1}).ValidateConcurrencyTotal()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "concurrency_total_limit")
+
+	encoded, err := json.Marshal(ChannelSettings{ConcurrencyTotalUrl: "http://pool.example.test:8788/health"})
+	require.NoError(t, err)
+	assert.Contains(t, string(encoded), `"concurrency_total_url":"http://pool.example.test:8788/health"`)
+	assert.NotContains(t, string(encoded), "concurrency_total_per_account", "the default factor stays absent")
+}
+
 func TestChannelOtherSettingsValidateToolLossPolicy(t *testing.T) {
 	require.NoError(t, (*ChannelOtherSettings)(nil).ValidateToolLossPolicy())
 	require.NoError(t, (&ChannelOtherSettings{}).ValidateToolLossPolicy())

@@ -22,8 +22,10 @@ import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
 import type { NavGroup } from '@/components/layout/types'
+import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { CacheStatsDialog } from '@/features/system-settings/general/channel-affinity/cache-stats-dialog'
+import { useMediaQuery } from '@/hooks'
 import { useSidebarConfig } from '@/hooks/use-sidebar-config'
 
 import { UserInfoDialog } from './components/dialogs/user-info-dialog'
@@ -45,7 +47,7 @@ const TASK_LOG_SECTIONS = ['drawing', 'task'] as const
 
 const SECTION_META: Record<UsageLogsSectionId, { titleKey: string }> = {
   common: {
-    titleKey: 'Common Logs',
+    titleKey: 'Usage Logs',
   },
   drawing: {
     titleKey: 'Drawing Logs',
@@ -58,6 +60,7 @@ const SECTION_META: Record<UsageLogsSectionId, { titleKey: string }> = {
 function UsageLogsContent() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const isMobile = useMediaQuery('(max-width: 640px)')
   const params = route.useParams()
   const activeCategory: UsageLogsSectionId =
     params.section && isUsageLogsSectionId(params.section)
@@ -70,8 +73,12 @@ function UsageLogsContent() {
     affinityTarget,
     affinityDialogOpen,
     setAffinityDialogOpen,
+    sensitiveVisible,
+    setSensitiveVisible,
   } = useUsageLogsContext()
-  const { canManageScope, viewScope, setViewScope } = useLogsViewScope()
+  const { canManageScope, viewScope, setViewScope, isRootView } =
+    useLogsViewScope()
+  const searchParams = route.useSearch()
   const tabNavGroups = useMemo<NavGroup[]>(
     () => [
       {
@@ -117,21 +124,63 @@ function UsageLogsContent() {
     [setViewScope]
   )
 
-  const pageMeta =
-    activeCategory === 'common' ? SECTION_META.common : SECTION_META.task
+  const pageMeta = SECTION_META[activeCategory]
   const showTaskSwitcher =
     activeCategory !== 'common' && visibleSections.length > 1
 
   return (
     <>
-      <SectionPageLayout fixedContent>
+      <SectionPageLayout
+        fixedContent={activeCategory !== 'common'}
+        pageIndex={
+          activeCategory === 'common' ? (
+            <>{t('Personal workspace')} / 03</>
+          ) : undefined
+        }
+      >
         <SectionPageLayout.Title>
           {t(pageMeta.titleKey)}
         </SectionPageLayout.Title>
+        {activeCategory === 'common' && (
+          <SectionPageLayout.Description>
+            {t('Detailed request logs for investigations.')}
+          </SectionPageLayout.Description>
+        )}
         <SectionPageLayout.Actions>
+          {activeCategory === 'common' && !isMobile && (
+            <Button
+              type='button'
+              variant='outline'
+              onClick={() => setSensitiveVisible(!sensitiveVisible)}
+            >
+              {sensitiveVisible
+                ? t('Hide sensitive data')
+                : t('Show sensitive data')}
+            </Button>
+          )}
+          {activeCategory === 'common' && isRootView && (
+            <Button
+              type='button'
+              variant='outline'
+              onClick={() =>
+                void navigate({
+                  to: '/relay-funnel',
+                  search: {
+                    startTime: searchParams.startTime,
+                    endTime: searchParams.endTime,
+                    model: searchParams.model,
+                  },
+                })
+              }
+            >
+              {t('Request funnel')}
+            </Button>
+          )}
           {canManageScope && (
             <Tabs value={viewScope} onValueChange={handleViewScopeChange}>
-              <TabsList>
+              <TabsList variant='line' className='relative'>
+                {/* One marker that travels, so the scope change reads as a
+                    move instead of two blinks (contract §9.1). */}
                 <TabsTrigger value='all'>{t('All')}</TabsTrigger>
                 <TabsTrigger value='self'>{t('Only Mine')}</TabsTrigger>
               </TabsList>
@@ -139,10 +188,23 @@ function UsageLogsContent() {
           )}
         </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
-          <div className='flex h-full min-h-0 flex-col gap-4'>
+          <div
+            className={
+              activeCategory === 'common'
+                ? 'space-y-4'
+                : 'flex h-full min-h-0 flex-col gap-4'
+            }
+          >
+            {/* The section lives in the URL, so the panels are routes and
+                cannot be rendered here. The indicator is the piece that still
+                carries direction: it slides toward the section the reader
+                picked while the page itself hands over (contract §9.4). */}
             {showTaskSwitcher && (
               <Tabs value={activeCategory} onValueChange={handleSectionChange}>
-                <TabsList className='max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto'>
+                <TabsList
+                  variant='line'
+                  className='relative max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto'
+                >
                   {visibleSections.map((section) => (
                     <TabsTrigger key={section} value={section}>
                       {t(SECTION_META[section].titleKey)}
@@ -152,7 +214,10 @@ function UsageLogsContent() {
               </Tabs>
             )}
             <div className='min-h-0 flex-1'>
-              <UsageLogsTable logCategory={activeCategory} />
+              <UsageLogsTable
+                logCategory={activeCategory}
+                sensitiveToggleInHeader={!isMobile}
+              />
             </div>
           </div>
         </SectionPageLayout.Content>

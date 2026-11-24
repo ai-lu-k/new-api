@@ -16,82 +16,125 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { lazy, Suspense, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { ErrorState } from '@/components/error-state'
+import { LoadingState } from '@/components/loading-state'
+import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
+import type { LegalVersion } from '@/features/legal/types'
 import { cn } from '@/lib/utils'
 
 import type { SystemStatus } from '../types'
 
+const LegalDocumentDialog = lazy(() =>
+  import('@/features/legal/legal-document-dialog').then((module) => ({
+    default: module.LegalDocumentDialog,
+  }))
+)
+
+type DocumentKind = 'user_agreement' | 'privacy_policy'
+
 interface LegalConsentProps {
-  status: SystemStatus | null
+  status: Pick<
+    SystemStatus,
+    'user_agreement_enabled' | 'privacy_policy_enabled'
+  > | null
+  version?: LegalVersion | null
   checked: boolean
   onCheckedChange: (nextValue: boolean) => void
   className?: string
+  isLoading?: boolean
+  hasError?: boolean
+  onRetry?: () => void
 }
 
-export function LegalConsent({
-  status,
-  checked,
-  onCheckedChange,
-  className,
-}: LegalConsentProps) {
+export function LegalConsent(props: LegalConsentProps) {
   const { t } = useTranslation()
-  const hasUserAgreement = Boolean(status?.user_agreement_enabled)
-  const hasPrivacyPolicy = Boolean(status?.privacy_policy_enabled)
+  const [document, setDocument] = useState<{
+    kind: DocumentKind
+    versionId: number
+  } | null>(null)
+  const hasUserAgreement = Boolean(props.status?.user_agreement_enabled)
+  const hasPrivacyPolicy = Boolean(props.status?.privacy_policy_enabled)
+  const visibleDocument =
+    document?.versionId === props.version?.id ? document : null
 
-  if (!hasUserAgreement && !hasPrivacyPolicy) {
-    return null
+  if (props.isLoading) return <LoadingState inline />
+  if (props.hasError) {
+    return <ErrorState className='min-h-0 py-2' onRetry={props.onRetry} />
   }
-
-  const handleChange = (value: boolean) => {
-    onCheckedChange(value === true)
-  }
+  if (!hasUserAgreement && !hasPrivacyPolicy) return null
 
   return (
-    <div
-      className={cn(
-        'border-border/60 bg-muted/40 flex items-start gap-3 rounded-md border p-3',
-        className
-      )}
-    >
-      <Checkbox
-        id='legal-consent'
-        checked={checked}
-        onCheckedChange={handleChange}
-        className='mt-0.5'
-      />
-      <Label
-        htmlFor='legal-consent'
-        className='text-muted-foreground items-start gap-1 text-left text-xs leading-5 font-normal'
-      >
-        <span>
-          {t('I have read and agree to the')}{' '}
+    <>
+      <div className={cn('flex items-start gap-2.5', props.className)}>
+        <Checkbox
+          id='legal-consent'
+          checked={props.checked}
+          onCheckedChange={(value) => props.onCheckedChange(value === true)}
+          className='mt-0.5'
+        />
+        <div className='text-muted-foreground text-left text-xs leading-5'>
+          <Label
+            htmlFor='legal-consent'
+            className='inline text-xs leading-5 font-normal'
+          >
+            {t('I have read and agree to the')}{' '}
+          </Label>
           {hasUserAgreement && (
-            <a
-              href='/user-agreement'
-              target='_blank'
-              rel='noopener noreferrer'
-              className='text-primary hover:underline'
+            <Button
+              type='button'
+              variant='link'
+              aria-haspopup='dialog'
+              className='h-auto rounded-sm p-0 text-xs leading-5 font-normal'
+              disabled={!props.version}
+              onClick={() => {
+                if (props.version) {
+                  setDocument({
+                    kind: 'user_agreement',
+                    versionId: props.version.id,
+                  })
+                }
+              }}
             >
               {t('User Agreement')}
-            </a>
+            </Button>
           )}
-          {hasUserAgreement && hasPrivacyPolicy && ' and the '}
+          {hasUserAgreement && hasPrivacyPolicy && t(' and the ')}
           {hasPrivacyPolicy && (
-            <a
-              href='/privacy-policy'
-              target='_blank'
-              rel='noopener noreferrer'
-              className='text-primary hover:underline'
+            <Button
+              type='button'
+              variant='link'
+              aria-haspopup='dialog'
+              className='h-auto rounded-sm p-0 text-xs leading-5 font-normal'
+              disabled={!props.version}
+              onClick={() => {
+                if (props.version) {
+                  setDocument({
+                    kind: 'privacy_policy',
+                    versionId: props.version.id,
+                  })
+                }
+              }}
             >
               {t('Privacy Policy')}
-            </a>
+            </Button>
           )}
           .
-        </span>
-      </Label>
-    </div>
+        </div>
+      </div>
+      {visibleDocument && props.version && (
+        <Suspense fallback={<LoadingState inline />}>
+          <LegalDocumentDialog
+            version={props.version}
+            document={visibleDocument.kind}
+            onClose={() => setDocument(null)}
+          />
+        </Suspense>
+      )}
+    </>
   )
 }

@@ -39,7 +39,9 @@ const BRAND_AND_LITERAL_KEYS = new Set([
   'API2GPT',
   'AccessKey / SecretAccessKey',
   'AZURE_OPENAI_ENDPOINT *',
+  'AutomationBench',
   'Baidu V2',
+  'Briefcase Elo',
   'CC Switch',
   'ChatGPT',
   'ChatGPT Subscription (Codex)',
@@ -48,14 +50,17 @@ const BRAND_AND_LITERAL_KEYS = new Set([
   'Client Secret',
   'Cloudflare',
   'Cohere',
+  'CritPt v2 Hard',
   'credit',
   'DeepSeek',
   'Discord',
   'DoubaoVideo',
   'FastGPT',
+  'FrontierCode 2.0',
   'Gemini',
   'Gemini Image 4K',
   'GitHub',
+  'HLE-Diamond',
   'Jimeng',
   'JustSong',
   'LingYiWanWu',
@@ -88,6 +93,8 @@ const BRAND_AND_LITERAL_KEYS = new Set([
   'SunoAPI',
   'Telegram',
   'Tencent',
+  'Terminal-Bench 4.0',
+  'Terminal-Bench-Science',
   'TTFT P50',
   'TTFT P95',
   'TTFT P99',
@@ -231,8 +238,9 @@ function isLikelyUntranslated({ locale, baseValue, value }) {
   if (locale === 'ru') return true
 
   // For fr/vi: still useful but noisier; keep it conservative.
-  if (locale === 'fr' || locale === 'vi')
+  if (locale === 'fr' || locale === 'vi') {
     return /\b(the|and|or|to|with|please)\b/i.test(s)
+  }
 
   return false
 }

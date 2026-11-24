@@ -76,8 +76,17 @@ export function TaskPlugins() {
   }
   return (
     <>
-      <SectionPageLayout fixedContent>
+      <SectionPageLayout
+        fixedContent
+        stackActionsOnMobile
+        pageIndex={<>{t('Admin area')} / 06</>}
+      >
         <SectionPageLayout.Title>{t('Task Plugins')}</SectionPageLayout.Title>
+        <SectionPageLayout.Description>
+          {t(
+            'Plugins that add upstream platforms and task billing to the gateway.'
+          )}
+        </SectionPageLayout.Description>
         <SectionPageLayout.Actions>
           <div className='flex items-center gap-2'>
             <Switch

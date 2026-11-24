@@ -2523,3 +2523,28 @@ func TestReasoningEffortOverrideIsAuditedWithoutDebugMode(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"set reasoning.effort = max"}, info.ParamOverrideAudit)
 }
+
+func TestTokenPlanOutputCeilingSurvivesChannelOverrides(t *testing.T) {
+	for _, test := range []struct {
+		name, body string
+		override   map[string]any
+		want       string
+		fails      bool
+	}{
+		{"passthrough", `{"max_tokens":4096}`, nil, `{"max_tokens":4096}`, false},
+		{"larger override is capped", `{"max_tokens":4096}`, map[string]any{"max_tokens": 99999}, `{"max_tokens":4096}`, false},
+		{"smaller override is retained", `{"max_tokens":4096}`, map[string]any{"max_tokens": 1024}, `{"max_tokens":1024}`, false},
+		{"missing ceiling fails closed", `{"messages":[]}`, nil, "", true},
+		{"extra candidates fail closed", `{"max_tokens":4096,"n":2}`, nil, "", true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			output, err := ApplyParamOverrideWithRelayInfo([]byte(test.body), &RelayInfo{TokenPlan: true, TokenPlanOutputLimit: 4096, ChannelMeta: &ChannelMeta{ParamOverride: test.override}})
+			if test.fails {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.JSONEq(t, test.want, string(output))
+		})
+	}
+}

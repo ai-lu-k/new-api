@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -23,9 +24,14 @@ var userSortColumns = map[string]string{
 	"id":            "id",
 	"username":      "username",
 	"quota":         "quota",
+	"used_quota":    "used_quota",
 	"group":         "group",
 	"created_at":    "created_at",
 	"last_login_at": "last_login_at",
+	// Levels are a monotonic function of paid consumption, so ordering by the
+	// stored value sorts by level without evaluating thresholds in SQL. Gift
+	// spending moves used_quota only and must not reorder the level column.
+	"usage_level": "level_quota",
 }
 
 type UserSortOptions struct {
@@ -36,7 +42,8 @@ type UserSortOptions struct {
 func NewUserSortOptions(sortBy string, sortOrder string) UserSortOptions {
 	normalizedSortBy := strings.ToLower(strings.TrimSpace(sortBy))
 	normalizedSortOrder := strings.ToLower(strings.TrimSpace(sortOrder))
-	if _, ok := userSortColumns[normalizedSortBy]; !ok {
+	_, columnSortable := userSortColumns[normalizedSortBy]
+	if !columnSortable && !isUsageSourceSortKey(normalizedSortBy) {
 		normalizedSortBy = "id"
 		normalizedSortOrder = "desc"
 	} else if normalizedSortOrder != "asc" {
@@ -77,6 +84,7 @@ func resolveUserSortOptions(sortOptions []UserSortOptions) UserSortOptions {
 // User if you add sensitive fields, don't forget to clean them in setupLogin function.
 // Otherwise, the sensitive information will be saved on local storage in plain text!
 type User struct {
+	RegistrationRisk     *RegistrationRisk          `json:"-" gorm:"-:all"`
 	Id                   int                        `json:"id"`
 	Username             string                     `json:"username" gorm:"unique;index" validate:"max=20"`
 	Password             string                     `json:"password" gorm:"not null;" validate:"min=8,max=128"`
@@ -95,6 +103,7 @@ type User struct {
 	AccessToken          *string                    `json:"-" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
 	AccessTokenCreatedAt *int64                     `json:"-" gorm:"type:bigint;column:access_token_created_at"`
 	Quota                int                        `json:"quota" gorm:"type:int;default:0"`
+	TokenPlanWalletHold  int64                      `json:"-" gorm:"column:token_plan_reserved_quota;not null;default:0"`
 	UsedQuota            int                        `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
 	RequestCount         int                        `json:"request_count" gorm:"type:int;default:0;"`               // request number
 	Group                string                     `json:"group" gorm:"type:varchar(64);default:'default'"`
@@ -112,6 +121,16 @@ type User struct {
 	LastLoginAt          int64                      `json:"last_login_at" gorm:"default:0;column:last_login_at"`
 	AuthVersion          int64                      `json:"-" gorm:"type:bigint;not null;default:1;column:auth_version"`
 	AdminPermissions     map[string]map[string]bool `json:"admin_permissions,omitempty" gorm:"-:all"`
+
+	ModelDailyTokenDefaults ModelTokenLimits  `json:"model_daily_token_defaults,omitempty" gorm:"-:all"`
+	ModelDailyTokenLimits   *ModelTokenLimits `json:"model_daily_token_limits,omitempty" gorm:"type:text"`
+
+	// LevelQuota is the consumption paid from the user's own money and the only
+	// input of CalculateUsageLevel. BonusQuota is the still-unspent part of the
+	// handed-out balance. Both move with used_quota in one statement; see
+	// model/usage_level_ledger.go.
+	LevelQuota int `json:"-" gorm:"type:bigint;not null;default:0;column:level_quota"`
+	BonusQuota int `json:"-" gorm:"type:bigint;not null;default:0;column:bonus_quota"`
 }
 
 func (user *User) ToBaseUser() *UserBase {
@@ -401,7 +420,7 @@ func lockNormalizedEmail(tx *gorm.DB, email string) error {
 		}
 	case common.UsingMainDatabase(common.DatabaseTypeMySQL):
 		var ids []int
-		if err := tx.Raw("SELECT id FROM users WHERE email = ? FOR UPDATE", email).Scan(&ids).Error; err != nil {
+		if err := lockForUpdate(tx).Unscoped().Model(&User{}).Where("email = ?", email).Pluck("id", &ids).Error; err != nil {
 			return err
 		}
 	}
@@ -415,6 +434,11 @@ func GetMaxUserId() int {
 }
 
 func GetAllUsers(pageInfo *common.PageInfo, sortOptions ...UserSortOptions) (users []*User, total int64, err error) {
+	order := resolveUserSortOptions(sortOptions)
+	if isUsageSourceSortKey(order.SortBy) {
+		return pageUsersByUsageSource(DB.Unscoped().Model(&User{}), pageInfo.GetStartIdx(), pageInfo.GetPageSize(), order)
+	}
+
 	// Start transaction
 	tx := DB.Begin()
 	if tx.Error != nil {
@@ -434,7 +458,6 @@ func GetAllUsers(pageInfo *common.PageInfo, sortOptions ...UserSortOptions) (use
 	}
 
 	// Get paginated users within same transaction
-	order := resolveUserSortOptions(sortOptions)
 	err = order.Apply(tx.Unscoped()).Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Omit("password", "access_token").Find(&users).Error
 	if err != nil {
 		tx.Rollback()
@@ -454,6 +477,11 @@ func SearchUsers(keyword string, group string, role *int, status *int, startIdx 
 	var total int64
 	var err error
 
+	order := resolveUserSortOptions(sortOptions)
+	if isUsageSourceSortKey(order.SortBy) {
+		return pageUsersByUsageSource(searchUsersQuery(DB.Unscoped().Model(&User{}), keyword, group, role, status), startIdx, num, order)
+	}
+
 	// 开始事务
 	tx := DB.Begin()
 	if tx.Error != nil {
@@ -466,15 +494,38 @@ func SearchUsers(keyword string, group string, role *int, status *int, startIdx 
 	}()
 
 	// 构建基础查询
-	query := tx.Unscoped().Model(&User{})
+	query := searchUsersQuery(tx.Unscoped().Model(&User{}), keyword, group, role, status)
 
-	// 构建搜索条件
+	// 获取总数
+	err = query.Count(&total).Error
+	if err != nil {
+		tx.Rollback()
+		return nil, 0, err
+	}
+
+	// 获取分页数据
+	err = order.Apply(query.Omit("password", "access_token")).Limit(num).Offset(startIdx).Find(&users).Error
+	if err != nil {
+		tx.Rollback()
+		return nil, 0, err
+	}
+
+	// 提交事务
+	if err = tx.Commit().Error; err != nil {
+		return nil, 0, err
+	}
+
+	return users, total, nil
+}
+
+// searchUsersQuery applies the admin list's keyword and filter conditions, so
+// both the paged database sort and the in-Go funding sort see the same rows.
+func searchUsersQuery(query *gorm.DB, keyword string, group string, role *int, status *int) *gorm.DB {
 	likeCondition := "username LIKE ? OR email LIKE ? OR display_name LIKE ?"
 	likeArgs := []any{"%" + keyword + "%", "%" + keyword + "%", "%" + keyword + "%"}
 
 	// 尝试将关键字转换为整数ID
-	keywordInt, err := strconv.Atoi(keyword)
-	if err == nil {
+	if keywordInt, err := strconv.Atoi(keyword); err == nil {
 		// 如果是数字，同时搜索ID和其他字段
 		likeCondition = "id = ? OR " + likeCondition
 		likeArgs = append([]any{keywordInt}, likeArgs...)
@@ -494,28 +545,7 @@ func SearchUsers(keyword string, group string, role *int, status *int, startIdx 
 			query = query.Where("deleted_at IS NULL").Where("status = ?", *status)
 		}
 	}
-
-	// 获取总数
-	err = query.Count(&total).Error
-	if err != nil {
-		tx.Rollback()
-		return nil, 0, err
-	}
-
-	// 获取分页数据
-	order := resolveUserSortOptions(sortOptions)
-	err = order.Apply(query.Omit("password", "access_token")).Limit(num).Offset(startIdx).Find(&users).Error
-	if err != nil {
-		tx.Rollback()
-		return nil, 0, err
-	}
-
-	// 提交事务
-	if err = tx.Commit().Error; err != nil {
-		return nil, 0, err
-	}
-
-	return users, total, nil
+	return query
 }
 
 func GetUserById(id int, selectAll bool) (*User, error) {
@@ -545,7 +575,7 @@ func GetSelfUserById(id int) (*User, error) {
 	err := DB.Model(&User{}).Select([]string{
 		"id", "username", "display_name", "role", "status", "email",
 		"github_id", "discord_id", "oidc_id", "wechat_id", "telegram_id",
-		"group", "quota", "used_quota", "request_count", "aff_code", "aff_count",
+		"group", "quota + token_plan_reserved_quota AS quota", "used_quota", "level_quota", "request_count", "aff_code", "aff_count",
 		"aff_quota", "aff_history", "inviter_id", "linux_do_id", "setting",
 		"stripe_customer", "auth_version",
 		"CASE WHEN password <> '' THEN 1 ELSE 0 END AS has_password",
@@ -561,6 +591,20 @@ func GetUserIdByAffCode(affCode string) (int, error) {
 	var user User
 	err := DB.Select("id").First(&user, "aff_code = ?", affCode).Error
 	return user.Id, err
+}
+
+// GetUserByAffCode resolves an invite code to its owner. Registration surfaces
+// an unknown code instead of silently dropping the attribution.
+func GetUserByAffCode(affCode string) (*User, error) {
+	code := strings.TrimSpace(affCode)
+	if code == "" {
+		return nil, gorm.ErrRecordNotFound
+	}
+	var user User
+	if err := DB.Select("id", "username", "status").First(&user, "aff_code = ?", code).Error; err != nil {
+		return nil, err
+	}
+	return &user, nil
 }
 
 func DeleteUserById(id int) (err error) {
@@ -579,9 +623,10 @@ func HardDeleteUserById(id int) error {
 	return user.HardDelete()
 }
 
+// inviteUser grants the optional quota reward. The invite count is maintained
+// by the referral reward path so it always matches a recorded invitation.
 func inviteUser(inviterId int) error {
 	result := DB.Model(&User{}).Where("id = ?", inviterId).Updates(map[string]any{
-		"aff_count":   gorm.Expr("aff_count + ?", 1),
 		"aff_quota":   gorm.Expr("aff_quota + ?", common.QuotaForInviter),
 		"aff_history": gorm.Expr("aff_history + ?", common.QuotaForInviter),
 	})
@@ -618,9 +663,10 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 		return errors.New("邀请额度不足！")
 	}
 
-	// 更新用户额度
+	// 更新用户额度。邀请返利同样是赠送额度，转入钱包后依然不计入等级。
 	user.AffQuota -= quota
 	user.Quota += quota
+	user.BonusQuota += quota
 
 	// 保存用户状态
 	if err := tx.Save(user).Error; err != nil {
@@ -689,6 +735,10 @@ func (user *User) Insert(inviterId int) error {
 				return err
 			}
 			user.Quota = common.QuotaForNewUser
+			// The signup grant is money the platform gave away: it must never
+			// buy level progress. Risk-gated registrations start at zero here
+			// and get the same treatment in ReleaseRegistrationReward.
+			user.BonusQuota = user.Quota
 			user.AffCode = common.GetRandomString(4)
 
 			// 初始化用户设置，包括默认的边栏配置
@@ -724,12 +774,19 @@ func (user *User) finishInsert(inviterId int) {
 		}
 	}
 
+	if user.RegistrationRisk != nil {
+		if err := ReleaseRegistrationReward(user.Id, time.Now()); err != nil {
+			common.SysError(fmt.Sprintf("registration reward release failed for %d: %v", user.Id, err))
+		}
+		return
+	}
 	if common.QuotaForNewUser > 0 {
 		RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("新用户注册赠送 %s", logger.LogQuota(common.QuotaForNewUser)))
 	}
 	if inviterId != 0 && operation_setting.IsPaymentComplianceConfirmed() {
 		if common.QuotaForInvitee > 0 {
-			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
+			_ = CreditGiftQuota(DB, user.Id, common.QuotaForInvitee)
+			_ = cacheIncrUserQuota(user.Id, int64(common.QuotaForInvitee))
 			RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
 		}
 		if common.QuotaForInviter > 0 {
@@ -748,11 +805,34 @@ func (user *User) FinishInsert(inviterId int) {
 // This is used for OAuth registration where user creation and binding need to be atomic.
 // Post-creation tasks (sidebar config, logs, inviter rewards) are handled after the transaction commits.
 func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
+	if user.RegistrationRisk != nil {
+		if err := lockRegistrationRewards(tx); err != nil {
+			return err
+		}
+		// Reject missing/expired verification before allocating a user ID. The
+		// reward lock keeps the risk decision serialized across registrations.
+		now := time.Now()
+		proof, proofErr := RegistrationProofWithTx(tx, user.RegistrationRisk, now)
+		if proofErr == nil {
+			user.Email = proof.Email
+		}
+		reason, err := registrationRiskReason(tx, user.RegistrationRisk, now)
+		if err != nil {
+			return err
+		}
+		if reason != "" && proofErr != nil {
+			return ErrRegistrationVerificationRequired
+		}
+	}
 	return withNormalizedEmailLock(tx, user.Email, func(tx *gorm.DB) error {
 		if err := user.prepareForInsert(tx); err != nil {
 			return err
 		}
 		user.Quota = common.QuotaForNewUser
+		user.BonusQuota = user.Quota
+		if user.RegistrationRisk != nil {
+			user.Quota, user.BonusQuota = 0, 0
+		}
 		user.AffCode = common.GetRandomString(4)
 
 		// 初始化用户设置
@@ -761,7 +841,13 @@ func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 			user.SetSetting(defaultSetting)
 		}
 
-		return tx.Create(user).Error
+		if err := tx.Create(user).Error; err != nil {
+			return err
+		}
+		if user.RegistrationRisk != nil {
+			return RecordRegistrationReward(tx, user, inviterId, user.RegistrationRisk, time.Now())
+		}
+		return nil
 	})
 }
 
@@ -781,12 +867,19 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 		}
 	}
 
+	if user.RegistrationRisk != nil {
+		if err := ReleaseRegistrationReward(user.Id, time.Now()); err != nil {
+			common.SysError(fmt.Sprintf("registration reward release failed for %d: %v", user.Id, err))
+		}
+		return
+	}
 	if common.QuotaForNewUser > 0 {
 		RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("新用户注册赠送 %s", logger.LogQuota(common.QuotaForNewUser)))
 	}
 	if inviterId != 0 && operation_setting.IsPaymentComplianceConfirmed() {
 		if common.QuotaForInvitee > 0 {
-			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
+			_ = CreditGiftQuota(DB, user.Id, common.QuotaForInvitee)
+			_ = cacheIncrUserQuota(user.Id, int64(common.QuotaForInvitee))
 			RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
 		}
 		if common.QuotaForInviter > 0 {
@@ -844,8 +937,11 @@ func (user *User) UpdateWithTx(tx *gorm.DB, updatePassword bool) error {
 	}
 	if err = tx.Model(&current).Omit(
 		"access_token",
+		"model_daily_token_limits",
 		"quota",
 		"used_quota",
+		"level_quota",
+		"bonus_quota",
 		"request_count",
 		"aff_count",
 		"aff_quota",
@@ -895,6 +991,16 @@ func (user *User) EditWithTx(tx *gorm.DB, updatePassword bool) error {
 	}
 	if updatePassword {
 		updates["password"] = newUser.Password
+	}
+	if newUser.ModelDailyTokenLimits != nil {
+		if err := ValidateModelTokenLimits(*newUser.ModelDailyTokenLimits, true); err != nil {
+			return err
+		}
+		data, err := common.Marshal(*newUser.ModelDailyTokenLimits)
+		if err != nil {
+			return err
+		}
+		updates["model_daily_token_limits"] = string(data)
 	}
 
 	current := User{}
@@ -1444,27 +1550,23 @@ func UpdateUserUsedQuota(id int, quota int) {
 		addNewRecord(BatchUpdateTypeUsedQuota, id, quota)
 		return
 	}
-	if err := DB.Model(&User{}).Where("id = ?", id).Update("used_quota", gorm.Expr("used_quota + ?", quota)).Error; err != nil {
-		common.SysLog("failed to update user used quota: " + err.Error())
-	}
+	updateUserUsedQuotaAndRequestCount(id, quota, 0)
 }
 
+// updateUserUsedQuotaAndRequestCount applies one consumption delta to the
+// statistics counter and to the level ledgers in the same transaction; the
+// gift/paid split needs the locked bonus balance, so it cannot be a single
+// UPDATE.
 func updateUserUsedQuotaAndRequestCount(id int, quota int, count int) {
-	err := DB.Model(&User{}).Where("id = ?", id).Updates(
-		map[string]any{
-			"used_quota":    gorm.Expr("used_quota + ?", quota),
-			"request_count": gorm.Expr("request_count + ?", count),
-		},
-	).Error
-	if err != nil {
-		common.SysLog("failed to update user used quota and request count: " + err.Error())
+	if quota == 0 && count == 0 {
 		return
 	}
-
-	//// 更新缓存
-	//if err := invalidateUserCache(id); err != nil {
-	//	common.SysError("failed to invalidate user cache: " + err.Error())
-	//}
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		return applyUserQuotaLedger(tx, id, 0, quota, count)
+	})
+	if err != nil {
+		common.SysLog("failed to update user used quota and request count: " + err.Error())
+	}
 }
 
 func updateUserQuotaUsedQuotaAndRequestCount(id int, quota int, usedQuota int, requestCount int) {
@@ -1472,13 +1574,9 @@ func updateUserQuotaUsedQuotaAndRequestCount(id int, quota int, usedQuota int, r
 		return
 	}
 
-	err := DB.Model(&User{}).Where("id = ?", id).Updates(
-		map[string]any{
-			"quota":         gorm.Expr("quota + ?", quota),
-			"used_quota":    gorm.Expr("used_quota + ?", usedQuota),
-			"request_count": gorm.Expr("request_count + ?", requestCount),
-		},
-	).Error
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		return applyUserQuotaLedger(tx, id, quota, usedQuota, requestCount)
+	})
 	if err != nil {
 		common.SysLog("failed to batch update user quota, used quota and request count: " + err.Error())
 	}

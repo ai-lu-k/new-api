@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -254,6 +255,83 @@ func TestDistributeHidesTaskPluginDetailsButLogsDiagnostics(t *testing.T) {
 				assert.Contains(t, logs.String(), "reason=no_eligible_channel")
 			})
 		}
+	}
+}
+
+func TestDistributePlaygroundRelaysTakeModelAndGroupFromBody(t *testing.T) {
+	require.NoError(t, i18n.Init())
+	originalUsableGroups := setting.UserUsableGroups2JSONString()
+	require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"default":"Default","vip":"VIP"}`))
+	originalCacheEnabled := common.MemoryCacheEnabled
+	// An empty channel cache stops the request right after the group check, so
+	// the assertions below observe the distribution decision and not a channel.
+	common.MemoryCacheEnabled = true
+	t.Cleanup(func() {
+		common.MemoryCacheEnabled = originalCacheEnabled
+		require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(originalUsableGroups))
+	})
+
+	for _, tc := range []struct {
+		name         string
+		path         string
+		body         string
+		wantStatus   int
+		wantGroup    string
+		wantTokenGrp string
+		wantBody     string
+	}{
+		{
+			name:         "chat completions accepts a usable group",
+			path:         "/pg/chat/completions",
+			body:         `{"model":"zz-playground-model","group":"vip"}`,
+			wantStatus:   http.StatusServiceUnavailable,
+			wantGroup:    "vip",
+			wantTokenGrp: "vip",
+			wantBody:     "No available channel for model zz-playground-model under group vip",
+		},
+		{
+			name:         "image generations accepts a usable group",
+			path:         "/pg/images/generations",
+			body:         `{"model":"zz-playground-image-model","group":"vip","prompt":"a cat"}`,
+			wantStatus:   http.StatusServiceUnavailable,
+			wantGroup:    "vip",
+			wantTokenGrp: "vip",
+			wantBody:     "No available channel for model zz-playground-image-model under group vip",
+		},
+		{
+			name:         "image generations rejects a group outside the usable groups",
+			path:         "/pg/images/generations",
+			body:         `{"model":"zz-playground-image-model","group":"restricted","prompt":"a cat"}`,
+			wantStatus:   http.StatusForbidden,
+			wantGroup:    "default",
+			wantTokenGrp: "restricted",
+			wantBody:     "No permission to access this group",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var captured *gin.Context
+			router := gin.New()
+			router.POST(tc.path, RequestId(), func(c *gin.Context) {
+				common.SetContextKey(c, constant.ContextKeyUsingGroup, "default")
+				captured = c
+				c.Next()
+			}, Distribute(), func(c *gin.Context) {
+				t.Error("no channel is available, so the relay handler must not run")
+				c.Status(http.StatusNoContent)
+			})
+
+			request := httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body))
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Accept-Language", "en")
+			recorder := httptest.NewRecorder()
+			router.ServeHTTP(recorder, request)
+
+			require.NotNil(t, captured)
+			require.Equal(t, tc.wantStatus, recorder.Code)
+			assert.Contains(t, recorder.Body.String(), tc.wantBody)
+			assert.Equal(t, tc.wantGroup, common.GetContextKeyString(captured, constant.ContextKeyUsingGroup))
+			assert.Equal(t, tc.wantTokenGrp, common.GetContextKeyString(captured, constant.ContextKeyTokenGroup))
+		})
 	}
 }
 

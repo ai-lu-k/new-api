@@ -57,11 +57,11 @@ export function DataTableViewOptions<TData>({
           <Button
             variant='outline'
             className='shrink-0'
-            aria-label={t('View')}
+            aria-label={t('Toggle columns')}
           />
         }
       >
-        {t('View')}
+        {t('Toggle columns')}
       </DropdownMenuTrigger>
       <DropdownMenuContent align='end' className='w-[150px]'>
         <DropdownMenuGroup>

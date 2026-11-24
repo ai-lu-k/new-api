@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
 import { SignUp } from '@/features/auth/sign-up'
+import { openAuthDialog } from '@/stores/auth-dialog-store'
 import { useAuthStore } from '@/stores/auth-store'
 
 export const Route = createFileRoute('/(auth)/sign-up')({
@@ -30,5 +31,9 @@ export const Route = createFileRoute('/(auth)/sign-up')({
     if (auth.user) {
       throw redirect({ to: '/dashboard' })
     }
+
+    // Registration is the same dialog as sign-in, opened on its second tab.
+    openAuthDialog('sign-up')
+    throw redirect({ to: '/', replace: true })
   },
 })

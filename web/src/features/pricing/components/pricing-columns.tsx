@@ -17,188 +17,328 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { ColumnDef } from '@tanstack/react-table'
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import {
-  BadgeCell,
-  BadgeListCell,
-  DataTableColumnHeader,
-} from '@/components/data-table'
-import { GroupBadge } from '@/components/group-badge'
-import { StatusBadge } from '@/components/status-badge'
 import { getLobeIcon } from '@/lib/lobe-icon'
 
-import { parseTags } from '../lib/filters'
+import type { ModelSortKey } from '../lib/model-sort'
 import type { PricingModel } from '../types'
-import { CachedPriceCell } from './cached-price-cell'
-import { ModelBillingModeBadge } from './model-billing-mode-badge'
-import { ModelPriceCell, type ModelPriceCellOptions } from './model-price-cell'
+import { BenchmarkScoreHeader } from './benchmark-controls'
+import { BenchmarkScoreCell } from './benchmark-score-cell'
+import { ModelFreeBadge } from './model-free-badge'
+import type { ModelPriceCellOptions } from './model-price-cell'
+import { ModelPricePart } from './model-price-part'
+import { ModelSharedName } from './model-shared-name'
+import {
+  PerfCell,
+  SuccessRateCell,
+  WeeklyCallsCell,
+  WeeklyTokensCell,
+} from './model-stats-cells'
+import { ModelTags } from './model-tags'
+import { PriceTierBadge } from './price-tier-badge'
+import { PricingSortHeader } from './pricing-sort-header'
+import { PromoCountdown } from './promo-countdown'
 
 // ----------------------------------------------------------------------------
 // Pricing Table Columns
 // ----------------------------------------------------------------------------
 
-export type PricingColumnsOptions = ModelPriceCellOptions
+export type PricingColumnsOptions = ModelPriceCellOptions & {
+  /**
+   * The kind of work the list is filtered to. Image models return pictures and
+   * decision models publish no benchmark, so their rows read differently.
+   */
+  modelType?: string
+  /** Tags every model in the list carries; they name the list, not a model. */
+  commonTags?: string[]
+}
 
+const NUMERIC = 'text-center'
+
+/**
+ * The model list as a table in the manner of OpenRouter: one row per model,
+ * with usage, price and speed side by side. Numeric headings sort the list.
+ *
+ * The definitions are created once per set of options. A heading or cell that
+ * shows something that changes (the sort, the live figures) reads it from a
+ * context, not from here.
+ */
 export function usePricingColumns(
   options: PricingColumnsOptions = {}
 ): ColumnDef<PricingModel>[] {
   const { t } = useTranslation()
+  const {
+    tokenUnit,
+    priceRate,
+    usdExchangeRate,
+    showRechargePrice,
+    selectedGroup,
+    modelType,
+    commonTags,
+  } = options
+  // Image models return pictures, not tokens: the same row reads as calls,
+  // one price per request, and how long a picture takes.
+  const isImage = modelType === 'image'
+  // A decision model is priced per token by its plugin expression, so its row
+  // reads usage and both prices. It publishes no benchmark, no throughput and
+  // no relay telemetry (a plugin settles its task in the same second), so
+  // those columns are left out rather than standing empty.
+  const isDecision = modelType === 'decision'
+  // Speech models are priced per character of what they say, so a separate
+  // output price would be the same figure twice; the column is left out.
+  const isSpeech = modelType === 'audio'
 
-  return [
-    // Model column
-    {
-      accessorKey: 'model_name',
-      meta: { label: t('Model') },
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title={t('Model')} />
-      ),
-      cell: ({ row }) => {
-        const model = row.original
-        const modelIconKey = model.icon || model.vendor_icon
-        const modelIcon = modelIconKey ? getLobeIcon(modelIconKey, 14) : null
+  return useMemo(() => {
+    const priceOptions: ModelPriceCellOptions = {
+      tokenUnit,
+      priceRate,
+      usdExchangeRate,
+      showRechargePrice,
+      selectedGroup,
+    }
+    const tokenUnitLabel = tokenUnit === 'K' ? '1K' : '1M'
+    const heading = (
+      sortKey: ModelSortKey,
+      label: React.ReactNode,
+      numeric = true
+    ) => (
+      <PricingSortHeader sortKey={sortKey} numeric={numeric}>
+        {label}
+      </PricingSortHeader>
+    )
+    const priceLabel = (label: string) => (
+      <>
+        {label}
+        <span className='text-muted-foreground/70 ml-1 text-xs font-normal'>
+          /{tokenUnitLabel}
+        </span>
+      </>
+    )
 
-        return (
-          <div className='flex max-w-full min-w-0 items-center gap-2'>
-            {modelIcon}
-            <span className='truncate font-mono text-sm font-medium'>
-              {model.model_name}
-            </span>
-          </div>
-        )
+    const columns: ColumnDef<PricingModel>[] = [
+      {
+        accessorKey: 'model_name',
+        // No meta.label: the shared table would swap in its own sort menu.
+        header: () => t('Model'),
+        cell: ({ row }) => {
+          const model = row.original
+          const modelIconKey = model.icon || model.vendor_icon
+          const modelIcon = modelIconKey ? getLobeIcon(modelIconKey, 18) : null
+          return (
+            <div className='min-w-0 space-y-1'>
+              <div className='flex max-w-full min-w-0 items-center gap-2'>
+                {modelIcon}
+                <ModelSharedName
+                  modelName={model.model_name}
+                  className='truncate text-sm font-bold'
+                />
+              </div>
+              {/* The vendor takes a fixed column so the discount and the
+                  countdown start at the same place on every row. */}
+              <div className='text-muted-foreground grid min-w-0 grid-cols-[5rem_minmax(0,1fr)] items-center gap-x-3 gap-y-1 text-xs'>
+                <span className='truncate'>{model.vendor_name}</span>
+                <div className='flex min-w-0 items-center gap-3'>
+                  <ModelFreeBadge model={model} className='shrink-0' />
+                  <PriceTierBadge
+                    multiplier={model.price_multiplier}
+                    className='shrink-0'
+                  />
+                  <PromoCountdown
+                    endsAt={model.promo_ends_at}
+                    className='shrink-0'
+                  />
+                  <ModelTags tags={model.tags} omit={commonTags} />
+                </div>
+              </div>
+            </div>
+          )
+        },
+        enableSorting: false,
       },
-      minSize: 200,
-    },
+    ]
 
-    // Type column
-    {
-      accessorKey: 'quota_type',
-      header: t('Type'),
-      cell: ({ row }) => (
-        <ModelBillingModeBadge model={row.original} className='-ml-1.5' />
-      ),
-      size: 110,
-      enableSorting: false,
-    },
+    // No published benchmark covers a decision model, so its score column
+    // would only ever read as a dash.
+    if (!isDecision) {
+      columns.push({
+        id: 'benchmark',
+        header: () => <BenchmarkScoreHeader />,
+        cell: ({ row }) => (
+          <BenchmarkScoreCell modelName={row.original.model_name} />
+        ),
+        enableSorting: false,
+      })
+    }
 
-    // Price column
-    {
-      accessorKey: 'price',
-      meta: { label: t('Price') },
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title={t('Price')} />
-      ),
-      cell: ({ row }) => (
-        <ModelPriceCell model={row.original} options={options} />
-      ),
-      size: 180,
-      enableSorting: false,
-    },
-
-    // Cached price column (Vercel AI Gateway style)
-    {
-      id: 'cached_price',
-      header: t('Cached'),
-      cell: ({ row }) => (
-        <CachedPriceCell model={row.original} options={options} />
-      ),
-      size: 110,
-      enableSorting: false,
-    },
-
-    // Vendor column
-    {
-      accessorKey: 'vendor_name',
-      header: t('Vendor'),
-      cell: ({ row }) => {
-        const model = row.original
-        if (!model.vendor_name) {
-          return <span className='text-muted-foreground/50 text-xs'>—</span>
+    if (isDecision) {
+      columns.push(
+        {
+          id: 'weekly_tokens',
+          header: () => heading('tokens', t('Weekly tokens')),
+          cell: ({ row }) => (
+            <WeeklyTokensCell modelName={row.original.model_name} />
+          ),
+          enableSorting: false,
+        },
+        {
+          id: 'weekly_calls',
+          header: () => heading('calls', t('Weekly calls')),
+          cell: ({ row }) => (
+            <WeeklyCallsCell modelName={row.original.model_name} />
+          ),
+          enableSorting: false,
+        },
+        {
+          id: 'input_price',
+          header: () => heading('input', priceLabel(t('Input'))),
+          cell: ({ row }) => (
+            <div className={NUMERIC}>
+              <ModelPricePart
+                model={row.original}
+                part='input'
+                options={priceOptions}
+              />
+            </div>
+          ),
+          enableSorting: false,
+        },
+        {
+          id: 'output_price',
+          header: () => heading('output', priceLabel(t('Output'))),
+          cell: ({ row }) => (
+            <div className={NUMERIC}>
+              <ModelPricePart
+                model={row.original}
+                part='output'
+                options={priceOptions}
+              />
+            </div>
+          ),
+          enableSorting: false,
         }
-        const vendorIcon = model.vendor_icon
-          ? getLobeIcon(model.vendor_icon, 12)
-          : null
-        return (
-          <BadgeCell className='gap-1.5'>
-            {vendorIcon}
-            <StatusBadge
-              label={model.vendor_name}
-              autoColor={model.vendor_name}
-              size='sm'
-              copyable={false}
+      )
+      return isSpeech
+        ? columns.filter((column) => column.id !== 'output_price')
+        : columns
+    }
+
+    if (isImage) {
+      columns.push(
+        {
+          id: 'weekly_calls',
+          header: () => heading('calls', t('Weekly calls')),
+          cell: ({ row }) => (
+            <WeeklyCallsCell modelName={row.original.model_name} />
+          ),
+          enableSorting: false,
+        },
+        {
+          id: 'request_price',
+          header: () => heading('input', t('Price')),
+          // The request price is the model's whole price, so this column
+          // carries the sort key the text list splits across two columns.
+          cell: ({ row }) => (
+            <div className={NUMERIC}>
+              <ModelPricePart
+                model={row.original}
+                part='input'
+                options={priceOptions}
+              />
+            </div>
+          ),
+          enableSorting: false,
+        },
+        {
+          id: 'latency',
+          header: () => heading('latency', t('Generation time')),
+          cell: ({ row }) => (
+            <PerfCell modelName={row.original.model_name} field='latency' />
+          ),
+          enableSorting: false,
+        },
+        {
+          id: 'success_rate',
+          header: () => heading('success_rate', t('Success rate')),
+          cell: ({ row }) => (
+            <SuccessRateCell modelName={row.original.model_name} />
+          ),
+          enableSorting: false,
+        }
+      )
+      return isSpeech
+        ? columns.filter((column) => column.id !== 'output_price')
+        : columns
+    }
+
+    columns.push(
+      {
+        id: 'weekly_tokens',
+        header: () => heading('tokens', t('Weekly tokens')),
+        cell: ({ row }) => (
+          <WeeklyTokensCell modelName={row.original.model_name} />
+        ),
+        enableSorting: false,
+      },
+      {
+        id: 'input_price',
+        header: () => heading('input', priceLabel(t('Input'))),
+        cell: ({ row }) => (
+          <div className={NUMERIC}>
+            <ModelPricePart
+              model={row.original}
+              part='input'
+              options={priceOptions}
             />
-          </BadgeCell>
-        )
+          </div>
+        ),
+        enableSorting: false,
       },
-      size: 130,
-      enableSorting: false,
-    },
-
-    // Tags column
-    {
-      accessorKey: 'tags',
-      header: t('Tags'),
-      cell: ({ row }) => {
-        const tags = parseTags(row.original.tags)
-        return (
-          <BadgeListCell
-            items={tags.map((tag) => (
-              <StatusBadge
-                key={tag}
-                label={tag}
-                autoColor={tag}
-                size='sm'
-                copyable={false}
-              />
-            ))}
-          />
-        )
+      {
+        id: 'output_price',
+        header: () => heading('output', priceLabel(t('Output'))),
+        cell: ({ row }) => (
+          <div className={NUMERIC}>
+            <ModelPricePart
+              model={row.original}
+              part='output'
+              options={priceOptions}
+            />
+          </div>
+        ),
+        enableSorting: false,
       },
-      size: 140,
-      enableSorting: false,
-    },
-
-    // Endpoints column
-    {
-      accessorKey: 'supported_endpoint_types',
-      header: t('Endpoints'),
-      cell: ({ row }) => {
-        const endpoints = row.original.supported_endpoint_types || []
-        return (
-          <BadgeListCell
-            items={endpoints.map((ep) => (
-              <StatusBadge
-                key={ep}
-                label={ep}
-                autoColor={ep}
-                size='sm'
-                copyable={false}
-              />
-            ))}
-          />
-        )
+      {
+        id: 'latency',
+        header: () => heading('latency', t('Latency')),
+        cell: ({ row }) => (
+          <PerfCell modelName={row.original.model_name} field='latency' />
+        ),
+        enableSorting: false,
       },
-      size: 130,
-      enableSorting: false,
-    },
-
-    // Enable Groups column
-    {
-      accessorKey: 'enable_groups',
-      header: t('Groups'),
-      cell: ({ row }) => {
-        const groups = row.original.enable_groups || []
-        return (
-          <BadgeListCell
-            items={groups.map((group) => (
-              <GroupBadge key={group} group={group} size='sm' />
-            ))}
-            tooltipClassName='max-w-[280px] p-2'
-          />
-        )
-      },
-      size: 130,
-      enableSorting: false,
-    },
-  ]
+      {
+        id: 'throughput',
+        header: () => heading('throughput', t('Throughput')),
+        cell: ({ row }) => (
+          <PerfCell modelName={row.original.model_name} field='tps' />
+        ),
+        enableSorting: false,
+      }
+    )
+    return isSpeech
+      ? columns.filter((column) => column.id !== 'output_price')
+      : columns
+  }, [
+    t,
+    tokenUnit,
+    priceRate,
+    usdExchangeRate,
+    showRechargePrice,
+    selectedGroup,
+    commonTags,
+    isImage,
+    isDecision,
+    isSpeech,
+  ])
 }

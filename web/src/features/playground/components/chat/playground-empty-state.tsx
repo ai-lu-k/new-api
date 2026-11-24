@@ -29,6 +29,8 @@ import { Button } from '@/components/ui/button'
 
 type PlaygroundEmptyStateProps = {
   onSelectPrompt: (prompt: string) => void
+  /** Image models answer with an image, so the text starter prompts do not apply. */
+  showStarterPrompts?: boolean
 }
 
 const starterPrompts = [
@@ -40,6 +42,7 @@ const starterPrompts = [
 
 export function PlaygroundEmptyState({
   onSelectPrompt,
+  showStarterPrompts = true,
 }: PlaygroundEmptyStateProps) {
   const { t } = useTranslation()
 
@@ -62,21 +65,22 @@ export function PlaygroundEmptyState({
         </div>
 
         <div className='grid gap-2 sm:grid-cols-2'>
-          {starterPrompts.map(({ icon: Icon, text }) => {
-            const prompt = t(text)
+          {showStarterPrompts &&
+            starterPrompts.map(({ icon: Icon, text }) => {
+              const prompt = t(text)
 
-            return (
-              <Button
-                className='h-auto min-h-11 justify-start gap-2 px-3 py-2.5 text-left whitespace-normal'
-                key={text}
-                onClick={() => onSelectPrompt(prompt)}
-                variant='outline'
-              >
-                <Icon className='text-muted-foreground size-4' />
-                <span>{prompt}</span>
-              </Button>
-            )
-          })}
+              return (
+                <Button
+                  className='h-auto min-h-11 justify-start gap-2 px-3 py-2.5 text-left whitespace-normal'
+                  key={text}
+                  onClick={() => onSelectPrompt(prompt)}
+                  variant='outline'
+                >
+                  <Icon className='text-muted-foreground size-4' />
+                  <span>{prompt}</span>
+                </Button>
+              )
+            })}
         </div>
       </div>
     </div>

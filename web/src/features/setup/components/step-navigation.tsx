@@ -24,18 +24,17 @@ import { Button } from '@/components/ui/button'
 interface StepNavigationProps {
   currentStep: number
   totalSteps: number
+  /** The form these buttons submit; Enter in a field takes the same path. */
+  formId: string
   onBack: () => void
-  onNext: () => void
-  onSubmit: () => void
   isSubmitting?: boolean
 }
 
 export function StepNavigation({
   currentStep,
   totalSteps,
+  formId,
   onBack,
-  onNext,
-  onSubmit,
   isSubmitting = false,
 }: StepNavigationProps) {
   const { t } = useTranslation()
@@ -54,13 +53,13 @@ export function StepNavigation({
 
       <div className='flex flex-1 justify-end gap-2'>
         {!isLastStep && (
-          <Button type='button' onClick={onNext}>
+          <Button type='submit' form={formId}>
             {t('Next')}
           </Button>
         )}
 
         {isLastStep && (
-          <Button type='button' onClick={onSubmit} disabled={isSubmitting}>
+          <Button type='submit' form={formId} disabled={isSubmitting}>
             {isSubmitting ? (
               <>
                 <Loader2 className='mr-2 size-4 animate-spin' />

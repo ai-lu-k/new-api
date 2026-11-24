@@ -118,22 +118,48 @@ function hardenIsolatedHtml(html: string): string {
   return template.innerHTML
 }
 
+function sanitizeIsolatedHtml(content: string): string {
+  // DOMPurify >= 3.4 strips <style> even when it is explicitly allow-listed
+  // (hardening for risky allow-listed tags). The isolated variant exists for
+  // admin-authored pages whose stylesheet is part of the content, so carry
+  // those <style> elements around the sanitizer and re-attach them verbatim.
+  // Everything else (scripts, event handlers, ...) stays sanitized.
+  const extraction = document.createElement('template')
+  extraction.innerHTML = content
+  const styles = extraction.content.querySelectorAll('style')
+  const preserved = [...styles].map((style) => style.outerHTML)
+  styles.forEach((style) => style.remove())
+
+  const hardened = hardenIsolatedHtml(
+    DOMPurify.sanitize(extraction.innerHTML, isolatedSanitizeOptions)
+  )
+
+  return preserved.length > 0 ? preserved.join('\n') + hardened : hardened
+}
+
 function sanitizeHtmlContent(
   content: string,
   variant: HtmlContentVariant
 ): string {
   if (variant === 'isolated') {
-    const html = DOMPurify.sanitize(content, isolatedSanitizeOptions)
-
-    return hardenIsolatedHtml(html)
+    return sanitizeIsolatedHtml(content)
   }
 
   return DOMPurify.sanitize(content)
 }
 
-function syncDarkClass(wrapper: HTMLElement): void {
-  const isDark = document.documentElement.classList.contains('dark')
-  wrapper.classList.toggle('dark', isDark)
+function syncDocumentPreferences(wrapper: HTMLElement): void {
+  const root = document.documentElement
+  wrapper.classList.toggle('dark', root.classList.contains('dark'))
+  // Mirror <html lang> onto the wrapper: shadow-root CSS cannot match the
+  // document tree, and :host-context is not implemented in Chromium, so the
+  // custom home page keys its language switching off this attribute instead.
+  const lang = root.getAttribute('lang')
+  if (lang) {
+    wrapper.dataset.appLang = lang
+  } else {
+    delete wrapper.dataset.appLang
+  }
 }
 
 function IsolatedHtmlContent(props: {
@@ -157,7 +183,7 @@ function IsolatedHtmlContent(props: {
     ].map((node) => node.cloneNode(true))
 
     const wrapper = document.createElement('div')
-    syncDarkClass(wrapper)
+    syncDocumentPreferences(wrapper)
     wrapper.innerHTML = props.html
 
     const contentTemplate = document.createElement('template')
@@ -169,10 +195,12 @@ function IsolatedHtmlContent(props: {
       wrapper
     )
 
-    const observer = new MutationObserver(() => syncDarkClass(wrapper))
+    const observer = new MutationObserver(() =>
+      syncDocumentPreferences(wrapper)
+    )
     observer.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ['class'],
+      attributeFilter: ['class', 'lang'],
     })
 
     return () => observer.disconnect()

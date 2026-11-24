@@ -106,7 +106,7 @@ describe('task artifact projection', () => {
               mime_type: 'image/webp',
               content_url: artifactContentUrl(
                 'poster~main',
-                'http://127.0.0.1:3001/nginx/tasks'
+                'http://127.0.0.1:18081/nginx/tasks'
               ),
             },
             {
@@ -138,7 +138,7 @@ describe('task artifact projection', () => {
             mime_type: 'image/webp',
             content_url: artifactContentUrl(
               'poster~main',
-              'http://127.0.0.1:3001/nginx/tasks'
+              'http://127.0.0.1:18081/nginx/tasks'
             ),
           },
           {

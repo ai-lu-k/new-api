@@ -322,6 +322,7 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 }
 
 type RecordConsumeLogParams struct {
+	DailyTokenCount  *int64    `json:"-"`
 	ChannelId        int       `json:"channel_id"`
 	PromptTokens     int       `json:"prompt_tokens"`
 	CompletionTokens int       `json:"completion_tokens"`
@@ -337,6 +338,17 @@ type RecordConsumeLogParams struct {
 }
 
 func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams) {
+	if c != nil && c.Request != nil {
+		tokens := min(int64(max(params.PromptTokens, 0)), MaxModelDailyTokens)
+		tokens += min(int64(max(params.CompletionTokens, 0)), MaxModelDailyTokens-tokens)
+		if params.DailyTokenCount != nil {
+			tokens = *params.DailyTokenCount
+		}
+		if err := RecordModelDailyTokens(c.Request.Context(), tokens); err != nil {
+			logger.LogError(c, "failed to persist model daily token usage: "+err.Error())
+		}
+	}
+
 	if !common.LogConsumeEnabled {
 		return
 	}

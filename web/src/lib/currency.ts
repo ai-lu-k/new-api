@@ -77,6 +77,9 @@ For commercial licensing, please contact support@quantumnous.com
  * 3. **Payment amounts**: Always use formatLocalCurrencyAmount() for priceRatio-calculated values
  * 4. **Billing displays**: Use formatBillingCurrencyFromUSD() to avoid token display
  * 5. **Effective exchange rate**: When quotaDisplayType is 'USD', use rate of 1 regardless of config
+ * 6. **Decimals**: money uses `digitsLarge`/`digitsSmall` as the maximum, and
+ *    always shows at least two decimals so that a column of amounts aligns
+ *    (`$188.79` / `$235.10`, never `$235.1`). Token counts are not padded.
  */
 import {
   useSystemConfigStore,
@@ -103,6 +106,23 @@ export interface CurrencyFormatOptions {
   showSymbol?: boolean
   /** Locale used for number formatting (defaults to the runtime locale) */
   locale?: Intl.LocalesArgument | undefined
+}
+
+// Procurement audit amounts retain their exact decimal precision and original
+// currency. They must not use the retail display exchange rate or abbreviate.
+export function formatOriginalCurrencyAmount(
+  amount: string | null | undefined,
+  currency: string | null | undefined
+): string {
+  if (
+    amount == null ||
+    !/^\d+(?:\.\d+)?$/.test(amount) ||
+    !currency ||
+    !/^[A-Z]{3}$/.test(currency)
+  ) {
+    return '-'
+  }
+  return `${amount} ${currency}`
 }
 
 type ResolvedCurrencyFormatOptions = Omit<
@@ -252,6 +272,17 @@ function getFractionDigits(
   return Math.abs(value) >= 1 ? digitsLarge : digitsSmall
 }
 
+/**
+ * Minimum decimals for money: two, so amounts of any size line up in a column,
+ * but never more than the configured maximum (the log formatter shows 4–6
+ * decimals and must not pad them with zeros).
+ */
+const MINIMUM_MONEY_FRACTION_DIGITS = 2
+
+function getMinimumFractionDigits(digits: number): number {
+  return Math.min(digits, MINIMUM_MONEY_FRACTION_DIGITS)
+}
+
 /** Return the configured fraction digits for a plain currency value. */
 export function getCurrencyFractionDigits(
   value: number,
@@ -325,10 +356,14 @@ function formatCurrencyValue(
   const adjustedValue = adjustForMinimum(value, digits, options.minimumNonZero)
 
   if (meta.kind === 'currency') {
+    const minimumFractionDigits = options.compact
+      ? 0
+      : getMinimumFractionDigits(digits)
+
     if (!options.showSymbol) {
       return new Intl.NumberFormat(options.locale, {
         notation: options.compact ? 'compact' : 'standard',
-        minimumFractionDigits: 0,
+        minimumFractionDigits,
         maximumFractionDigits: options.compact ? 1 : digits,
       }).format(adjustedValue)
     }
@@ -338,7 +373,7 @@ function formatCurrencyValue(
       currency: meta.currencyCode,
       currencyDisplay: 'narrowSymbol',
       notation: options.compact ? 'compact' : 'standard',
-      minimumFractionDigits: 0,
+      minimumFractionDigits,
       maximumFractionDigits: options.compact ? 1 : digits,
     }).format(adjustedValue)
     return formatted
@@ -346,7 +381,9 @@ function formatCurrencyValue(
 
   const decimal = new Intl.NumberFormat(options.locale, {
     notation: options.compact ? 'compact' : 'standard',
-    minimumFractionDigits: 0,
+    minimumFractionDigits: options.compact
+      ? 0
+      : getMinimumFractionDigits(digits),
     maximumFractionDigits: options.compact ? 1 : digits,
   }).format(adjustedValue)
 

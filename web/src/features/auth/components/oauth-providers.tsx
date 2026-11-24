@@ -27,18 +27,21 @@ import {
   IconWeChat,
 } from '@/assets/brand-icons'
 import { Button } from '@/components/ui/button'
+import type { LegalAcceptance } from '@/features/legal/types'
 import { cn } from '@/lib/utils'
 
 import { useOAuthLogin } from '../hooks/use-oauth-login'
 import type { SystemStatus } from '../types'
 
 type OAuthProvidersProps = {
+  legalAcceptance?: LegalAcceptance
   status: SystemStatus | null
   disabled?: boolean
   className?: string
   onWeChatLogin?: () => void
   isWeChatLoading?: boolean
   redirectTo?: string
+  onRegistrationVerification?: () => void
 }
 
 type ProviderButton = {
@@ -51,11 +54,13 @@ type ProviderButton = {
 
 export function OAuthProviders({
   status,
+  legalAcceptance,
   disabled = false,
   className,
   onWeChatLogin,
   isWeChatLoading = false,
   redirectTo,
+  onRegistrationVerification,
 }: OAuthProvidersProps) {
   const { t } = useTranslation()
   const {
@@ -68,7 +73,7 @@ export function OAuthProviders({
     handleLinuxDOLogin,
     handleTelegramLogin,
     handleCustomOAuthLogin,
-  } = useOAuthLogin(status, redirectTo)
+  } = useOAuthLogin(status, redirectTo, legalAcceptance)
 
   const providerButtons: ProviderButton[] = []
 
@@ -158,6 +163,15 @@ export function OAuthProviders({
       </div>
 
       <div className='flex flex-col gap-2'>
+        {onRegistrationVerification && (
+          <Button
+            type='button'
+            variant='outline'
+            onClick={onRegistrationVerification}
+          >
+            {t('Additional registration verification')}
+          </Button>
+        )}
         {providerButtons.map(
           ({ key, label, onClick, icon, disabled: extraDisabled }) => (
             <Button

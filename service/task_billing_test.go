@@ -16,6 +16,10 @@ import (
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relaykit/dto"
+	relaytypes "github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/setting/model_setting"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
@@ -23,11 +27,24 @@ import (
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/mysql"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
 func TestMain(m *testing.M) {
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	var driver gorm.Dialector = sqlite.Open(":memory:")
+	dbType := common.DatabaseTypeSQLite
+	switch os.Getenv("TEST_BILLING_DIALECT") {
+	case "", "sqlite":
+	case "mysql":
+		driver, dbType = mysql.Open(os.Getenv("TEST_MYSQL_DSN")), common.DatabaseTypeMySQL
+	case "postgres":
+		driver, dbType = postgres.Open(os.Getenv("TEST_POSTGRES_DSN")), common.DatabaseTypePostgreSQL
+	default:
+		panic("unsupported TEST_BILLING_DIALECT")
+	}
+	db, err := gorm.Open(driver, &gorm.Config{})
 	if err != nil {
 		panic("failed to open test db: " + err.Error())
 	}
@@ -40,7 +57,7 @@ func TestMain(m *testing.M) {
 	model.DB = db
 	model.LOG_DB = db
 
-	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
+	common.SetDatabaseTypes(dbType, dbType)
 	common.RedisEnabled = false
 	common.BatchUpdateEnabled = false
 	common.LogConsumeEnabled = true
@@ -1800,4 +1817,319 @@ func TestSettle_TokenRecalcFallsBackToCompletionTokens(t *testing.T) {
 			assert.Equal(t, testCase.wantQuota, task.Quota)
 		})
 	}
+}
+
+func TestTokenPlanBillingNeverFallsBackToWallet(t *testing.T) {
+	t.Setenv("CRYPTO_SECRET", "token-plan-test-encryption-secret-32-bytes")
+	truncate(t)
+	require.NoError(t, model.DB.AutoMigrate(&model.TokenPlanResetCoupon{}, &model.TokenPlanCouponBatch{}, &model.TokenPlanResetOperation{}, &model.TokenPlanAccount{}, &model.TokenPlanWeek{}, &model.TokenPlanReservation{}))
+	t.Cleanup(func() {
+		model.DB.Where("1 = 1").Delete(&model.TokenPlanReservation{})
+		model.DB.Where("1 = 1").Delete(&model.TokenPlanWeek{})
+		model.DB.Where("1 = 1").Delete(&model.TokenPlanAccount{})
+	})
+	seedUser(t, 1, 123456)
+	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", 1).UpdateColumn("used_quota", 1).Error)
+	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", 1).UpdateColumn("level_quota", 1).Error)
+	account, err := model.EnsureTokenPlanAccount(1)
+	require.NoError(t, err)
+	token, err := model.GetTokenByIds(account.TokenId, 1)
+	require.NoError(t, err)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	info := &relaycommon.RelayInfo{UserId: 1, TokenId: token.Id, TokenKey: token.Key, TokenUnlimited: true, TokenPlan: true}
+	session, apiErr := NewBillingSession(ctx, info, 100)
+	require.Nil(t, apiErr)
+	assert.Equal(t, BillingSourceTokenPlan, info.BillingSource)
+	require.NoError(t, session.Reserve(200))
+	require.NoError(t, session.Settle(70))
+	require.NoError(t, session.Settle(70))
+	status, err := model.GetTokenPlanStatus(1, time.Now())
+	require.NoError(t, err)
+	assert.EqualValues(t, 70, status.UsedQuota)
+	// Spent weekly allowance cannot trigger wallet_first/subscription_first fallback.
+	_, apiErr = NewBillingSession(ctx, &relaycommon.RelayInfo{UserId: 1, TokenId: token.Id, TokenKey: token.Key, TokenUnlimited: true, TokenPlan: true}, int(status.TotalQuota))
+	require.NotNil(t, apiErr)
+	var stored model.User
+	require.NoError(t, model.DB.First(&stored, 1).Error)
+	assert.Equal(t, 123456, stored.Quota)
+	// An async task settles against its frozen plan week, not the wallet.
+	task := &model.Task{UserId: 1, PrivateData: model.TaskPrivateData{BillingSource: BillingSourceTokenPlan, TokenPlanWeekId: info.TokenPlanWeekId}}
+	require.NoError(t, taskAdjustFunding(task, 10))
+	status, err = model.GetTokenPlanStatus(1, time.Now())
+	require.NoError(t, err)
+	assert.EqualValues(t, 80, status.UsedQuota)
+	require.NoError(t, taskAdjustFunding(task, -10))
+	// Legacy MJ tasks also retain their original plan week for a later refund.
+	seedChannel(t, 1)
+	mjInfo := &relaycommon.RelayInfo{UserId: 1, TokenId: token.Id, TokenKey: token.Key, TokenUnlimited: true, TokenPlan: true}
+	mjSession, apiErr := NewBillingSession(ctx, mjInfo, 10)
+	require.Nil(t, apiErr)
+	mjInfo.Billing = mjSession
+	mj := &model.Midjourney{UserId: 1, ChannelId: 1, MjId: "plan-mj", Action: "IMAGINE"}
+	prepared, err := PrepareMidjourneyTaskBilling(mjInfo, mj, 10, true)
+	require.NoError(t, err)
+	require.True(t, prepared)
+	require.NoError(t, mj.Insert())
+	billed, err := SettleMidjourneyTaskBilling(mjInfo, mj, prepared)
+	require.NoError(t, err)
+	require.True(t, billed)
+	assert.False(t, mjSession.NeedsRefund())
+	assert.Equal(t, mjInfo.TokenPlanWeekId, mj.TokenPlanWeekId)
+	logOther := GenerateMjOtherInfo(mjInfo, mjInfo.PriceData).Snapshot()
+	assert.Equal(t, BillingSourceTokenPlan, logOther["billing_source"])
+	assert.EqualValues(t, 0, logOther["wallet_quota_deducted"])
+	assert.True(t, RefundMidjourneyQuota(context.Background(), mj, "plan task failed"))
+	status, err = model.GetTokenPlanStatus(1, time.Now())
+	require.NoError(t, err)
+	assert.EqualValues(t, 70, status.UsedQuota)
+	require.NoError(t, model.DB.First(&stored, 1).Error)
+	assert.Equal(t, 123456, stored.Quota)
+}
+
+func TestTokenPlanContinuationSettlementAndPendingDisplay(t *testing.T) {
+	t.Setenv("CRYPTO_SECRET", "token-plan-test-encryption-secret-32-bytes")
+	truncate(t)
+	require.NoError(t, model.DB.AutoMigrate(&model.TokenPlanResetCoupon{}, &model.TokenPlanCouponBatch{}, &model.TokenPlanResetOperation{}, &model.TokenPlanAccount{}, &model.TokenPlanWeek{}, &model.TokenPlanReservation{}))
+	t.Cleanup(func() {
+		model.DB.Where("1 = 1").Delete(&model.TokenPlanReservation{})
+		model.DB.Where("1 = 1").Delete(&model.TokenPlanWeek{})
+		model.DB.Where("1 = 1").Delete(&model.TokenPlanAccount{})
+	})
+	seedUser(t, 1, 1000000)
+	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", 1).UpdateColumn("used_quota", 1).Error)
+	// The plan allowance follows paid consumption, so the level fixture has to
+	// seed the level ledger too.
+	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", 1).UpdateColumn("level_quota", 1).Error)
+	account, err := model.EnsureTokenPlanAccount(1)
+	require.NoError(t, err)
+	token, err := model.GetTokenByIds(account.TokenId, 1)
+	require.NoError(t, err)
+	status, err := model.GetTokenPlanStatus(1, time.Now())
+	require.NoError(t, err)
+	total := int(status.TotalQuota)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	newInfo := func() *relaycommon.RelayInfo {
+		return &relaycommon.RelayInfo{UserId: 1, TokenId: token.Id, TokenKey: token.Key, TokenUnlimited: true, TokenPlan: true}
+	}
+	_, apiErr := NewBillingSession(ctx, newInfo(), total+1)
+	require.NotNil(t, apiErr)
+	assert.Equal(t, http.StatusPaymentRequired, apiErr.StatusCode)
+	assert.Contains(t, apiErr.Error(), "enable balance continuation")
+	require.NoError(t, model.UpdateTokenPlanSettings(1, model.TokenPlanSettings{WalletFallback: common.GetPointer(true)}))
+	info := newInfo()
+	session, apiErr := NewBillingSession(ctx, info, total+100)
+	require.Nil(t, apiErr)
+	status, err = model.GetTokenPlanStatus(1, time.Now())
+	require.NoError(t, err)
+	assert.Zero(t, status.UsedQuota)
+	storedToken, err := model.GetTokenByIds(token.Id, 1)
+	require.NoError(t, err)
+	assert.Zero(t, storedToken.UsedQuota, "API token usage must exclude reservations")
+	profile, err := model.GetSelfUserById(1)
+	require.NoError(t, err)
+	assert.Equal(t, 1000000, profile.Quota)
+	// Equal reservation/actual amounts must still commit the plan, not skip it.
+	require.NoError(t, session.Settle(total+100))
+	require.NoError(t, session.Settle(total+100))
+	assert.EqualValues(t, 100, info.TokenPlanWalletQuota)
+	profile, err = model.GetSelfUserById(1)
+	require.NoError(t, err)
+	assert.Equal(t, 999900, profile.Quota)
+	storedToken, err = model.GetTokenByIds(token.Id, 1)
+	require.NoError(t, err)
+	assert.Equal(t, total+100, storedToken.UsedQuota)
+	// Async completion and repeated failure refunds use the persisted split.
+	task := &model.Task{UserId: 1, Quota: total + 100, PrivateData: model.TaskPrivateData{BillingSource: BillingSourceTokenPlan, TokenPlanReservationId: info.TokenPlanReservationId}}
+	require.NoError(t, taskAdjustFunding(task, 20))
+	task.Quota += 20
+	require.NoError(t, taskAdjustFunding(task, -task.Quota))
+	require.NoError(t, taskAdjustFunding(task, -task.Quota))
+	profile, err = model.GetSelfUserById(1)
+	require.NoError(t, err)
+	assert.Equal(t, 1000000, profile.Quota)
+	// Failed requests release free and paid holds synchronously and once.
+	failedInfo := newInfo()
+	failed, apiErr := NewBillingSession(ctx, failedInfo, total+200)
+	require.Nil(t, apiErr)
+	failed.Refund(ctx)
+	failed.Refund(ctx)
+	var user model.User
+	require.NoError(t, model.DB.First(&user, 1).Error)
+	assert.Zero(t, user.TokenPlanWalletHold)
+	assert.Equal(t, 1000000, user.Quota)
+	require.NoError(t, PostConsumeQuota(failedInfo, total+50, 0, false))
+	profile, err = model.GetSelfUserById(1)
+	require.NoError(t, err)
+	assert.Equal(t, 999950, profile.Quota, "additional known fees must honor the same opted-in funding split")
+	assert.EqualValues(t, 50, failedInfo.TokenPlanWalletQuota)
+
+}
+
+func TestTokenPlanUpgradeConsumption(t *testing.T) {
+	t.Setenv("CRYPTO_SECRET", "token-plan-test-encryption-secret-32-bytes")
+	require.NoError(t, model.DB.AutoMigrate(&model.TokenPlanAccount{}, &model.TokenPlanWeek{}, &model.TokenPlanReservation{}, &model.TokenPlanResetCoupon{}))
+	thresholds := operation_setting.GetUsageLevelThresholds()
+	for _, flow := range []string{"text", "audio", "realtime", "task", "midjourney", "violation_fee"} {
+		for _, paid := range []bool{false, true} {
+			name := flow + "/free"
+			if paid {
+				name = flow + "/wallet_continuation"
+			}
+			t.Run(name, func(t *testing.T) {
+				truncate(t)
+				t.Cleanup(func() {
+					require.NoError(t, model.DB.Where("1 = 1").Delete(&model.TokenPlanReservation{}).Error)
+					require.NoError(t, model.DB.Where("1 = 1").Delete(&model.TokenPlanWeek{}).Error)
+					require.NoError(t, model.DB.Where("1 = 1").Delete(&model.TokenPlanAccount{}).Error)
+				})
+				seedUser(t, 1, 1000000)
+				seedChannel(t, 1)
+				initial := thresholds[2] - 50
+				require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", 1).UpdateColumn("used_quota", initial).Error)
+				// The plan allowance follows paid consumption, so the level
+				// fixture has to seed the level ledger too.
+				require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", 1).UpdateColumn("level_quota", initial).Error)
+				account, err := model.EnsureTokenPlanAccount(1)
+				require.NoError(t, err)
+				token, err := model.GetTokenByIds(account.TokenId, 1)
+				require.NoError(t, err)
+				now := time.Now()
+				status, err := model.GetTokenPlanStatus(1, now)
+				require.NoError(t, err)
+				if paid {
+					require.NoError(t, model.UpdateTokenPlanSettings(1, model.TokenPlanSettings{WalletFallback: common.GetPointer(true)}))
+					// Leave 40 free units: a 100-unit request must count only 60.
+					require.NoError(t, model.DB.Model(&model.TokenPlanWeek{}).Where("user_id = ?", 1).UpdateColumn("used_quota", status.TotalQuota-40).Error)
+				}
+				ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+				ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+				info := &relaycommon.RelayInfo{
+					UserId: 1, TokenId: token.Id, TokenKey: token.Key, TokenUnlimited: true, TokenPlan: true,
+					TaskRelayInfo: &relaycommon.TaskRelayInfo{Action: "generate"}, StartTime: now, OriginModelName: "level-test", UsingGroup: "default", UserGroup: "default",
+					ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 1},
+					PriceData:   types.PriceData{Quota: 100, ModelRatio: 1, CompletionRatio: 1, GroupRatioInfo: types.GroupRatioInfo{GroupRatio: 1}},
+				}
+				require.Nil(t, PreConsumeBilling(ctx, 100, info))
+				used, requests := getUserUsageAccounting(t, 1)
+				assert.Equal(t, initial, used, "reservations cannot raise a level")
+				assert.Zero(t, requests)
+				usage := &dto.Usage{PromptTokens: 100, TotalTokens: 100, PromptTokensDetails: dto.InputTokenDetails{TextTokens: 100}}
+				switch flow {
+				case "text":
+					PostTextConsumeQuota(ctx, info, usage, nil)
+				case "audio":
+					PostAudioConsumeQuota(ctx, info, usage, "")
+				case "realtime":
+					PostWssConsumeQuota(ctx, info, info.OriginModelName, &dto.RealtimeUsage{InputTokens: 100, TotalTokens: 100, InputTokenDetails: dto.InputTokenDetails{TextTokens: 100}}, "")
+				case "task":
+					require.NoError(t, SettleBilling(ctx, info, 100))
+					task := makeTask(1, 1, 100, token.Id, BillingSourceTokenPlan, 0)
+					task.PrivateData.TokenPlanReservationId = info.TokenPlanReservationId
+					LogTaskConsumption(ctx, info, task)
+				case "midjourney":
+					task := &model.Midjourney{UserId: 1, ChannelId: 1, MjId: "level-test-mj", Action: "IMAGINE"}
+					prepared, err := PrepareMidjourneyTaskBilling(info, task, 100, true)
+					require.NoError(t, err)
+					require.NoError(t, task.Insert())
+					applied, err := SettleMidjourneyTaskBilling(info, task, prepared)
+					require.NoError(t, err)
+					require.True(t, applied)
+					RecordUserConsumption(info, task.Quota)
+					model.UpdateChannelUsedQuota(1, task.Quota)
+				case "violation_fee":
+					info.Billing.Refund(ctx)
+					settings := model_setting.GetGrokSettings()
+					previous := *settings
+					t.Cleanup(func() { *settings = previous })
+					settings.ViolationDeductionEnabled = true
+					settings.ViolationDeductionAmount = 100 / common.QuotaPerUnit
+					apiErr := relaytypes.NewErrorWithStatusCode(assert.AnError, relaytypes.ErrorCodeViolationFeeGrokCSAM, http.StatusBadRequest)
+					require.True(t, ChargeViolationFeeIfNeeded(ctx, info, apiErr))
+				}
+				wantUsed, wantBalance, wantLevel := initial, 1000000, 1
+				if paid {
+					wantUsed, wantBalance, wantLevel = initial+60, 999940, 2
+				}
+				used, requests = getUserUsageAccounting(t, 1)
+				assert.Equal(t, wantUsed, used)
+				assert.Equal(t, 1, requests)
+				profile, err := model.GetSelfUserById(1)
+				require.NoError(t, err)
+				assert.Equal(t, wantBalance, profile.Quota)
+				assert.EqualValues(t, 100, getChannelUsedQuota(t, 1), "upstream consumption still includes the free allowance")
+				assert.Equal(t, wantLevel, GetUserUsageLevel(1))
+			})
+		}
+	}
+}
+
+func TestTokenPlanUpgradeRefundsAndAdjustments(t *testing.T) {
+	t.Setenv("CRYPTO_SECRET", "token-plan-test-encryption-secret-32-bytes")
+	truncate(t)
+	require.NoError(t, model.DB.AutoMigrate(&model.TokenPlanAccount{}, &model.TokenPlanWeek{}, &model.TokenPlanReservation{}, &model.TokenPlanResetCoupon{}))
+	t.Cleanup(func() {
+		require.NoError(t, model.DB.Where("1 = 1").Delete(&model.TokenPlanReservation{}).Error)
+		require.NoError(t, model.DB.Where("1 = 1").Delete(&model.TokenPlanWeek{}).Error)
+		require.NoError(t, model.DB.Where("1 = 1").Delete(&model.TokenPlanAccount{}).Error)
+	})
+	seedUser(t, 1, 1000000)
+	seedChannel(t, 1)
+	initial := operation_setting.GetUsageLevelThresholds()[2]
+	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", 1).UpdateColumn("used_quota", initial).Error)
+	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", 1).UpdateColumn("level_quota", initial).Error)
+	account, err := model.EnsureTokenPlanAccount(1)
+	require.NoError(t, err)
+	token, err := model.GetTokenByIds(account.TokenId, 1)
+	require.NoError(t, err)
+	require.NoError(t, model.UpdateTokenPlanSettings(1, model.TokenPlanSettings{WalletFallback: common.GetPointer(true)}))
+	status, err := model.GetTokenPlanStatus(1, time.Now())
+	require.NoError(t, err)
+	require.NoError(t, model.DB.Model(&model.TokenPlanWeek{}).Where("user_id = ?", 1).UpdateColumn("used_quota", status.TotalQuota-40).Error)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+	info := &relaycommon.RelayInfo{UserId: 1, TokenId: token.Id, TokenKey: token.Key, TokenUnlimited: true, TokenPlan: true, TaskRelayInfo: &relaycommon.TaskRelayInfo{Action: "generate"}, ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 1}, PriceData: types.PriceData{Quota: 100}}
+	require.Nil(t, PreConsumeBilling(ctx, 100, info))
+	require.NoError(t, SettleBilling(ctx, info, 100))
+	require.NoError(t, SettleBilling(ctx, info, 100))
+	task := makeTask(1, 1, 100, token.Id, BillingSourceTokenPlan, 0)
+	task.PrivateData.TokenPlanReservationId = info.TokenPlanReservationId
+	require.NoError(t, model.DB.Create(task).Error)
+	LogTaskConsumption(ctx, info, task)
+	for _, tc := range []struct{ actual, eligible int }{{100, 60}, {120, 80}, {80, 40}, {40, 0}} {
+		RecalculateTaskQuota(ctx, task, tc.actual, "level regression")
+		used, requests := getUserUsageAccounting(t, 1)
+		assert.Equal(t, initial+tc.eligible, used)
+		assert.Equal(t, 1, requests)
+		assert.EqualValues(t, tc.actual, getChannelUsedQuota(t, 1))
+	}
+	require.True(t, RefundTaskQuota(ctx, task, "failed"))
+	require.True(t, RefundTaskQuota(ctx, task, "repeated failure"))
+	used, requests := getUserUsageAccounting(t, 1)
+	assert.Equal(t, initial, used, "free-plan refunds cannot subtract ordinary wallet consumption")
+	assert.Equal(t, 1, requests)
+	assert.Zero(t, getChannelUsedQuota(t, 1))
+	profile, err := model.GetSelfUserById(1)
+	require.NoError(t, err)
+	assert.Equal(t, 1000000, profile.Quota)
+
+	// Legacy MJ refunds use the same persisted split, including after a retry.
+	info.Billing = nil
+	require.Nil(t, PreConsumeBilling(ctx, 100, info))
+	mj := &model.Midjourney{UserId: 1, ChannelId: 1, MjId: "level-refund-mj", Action: "IMAGINE"}
+	prepared, err := PrepareMidjourneyTaskBilling(info, mj, 100, true)
+	require.NoError(t, err)
+	require.NoError(t, mj.Insert())
+	applied, err := SettleMidjourneyTaskBilling(info, mj, prepared)
+	require.NoError(t, err)
+	require.True(t, applied)
+	RecordUserConsumption(info, mj.Quota)
+	model.UpdateChannelUsedQuota(1, mj.Quota)
+	used, _ = getUserUsageAccounting(t, 1)
+	assert.Equal(t, initial+60, used)
+	require.True(t, RefundMidjourneyQuota(ctx, mj, "failed"))
+	require.True(t, RefundMidjourneyQuota(ctx, mj, "repeated failure"))
+	used, requests = getUserUsageAccounting(t, 1)
+	assert.Equal(t, initial, used)
+	assert.Equal(t, 2, requests)
 }

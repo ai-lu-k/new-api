@@ -20,8 +20,8 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
+import { SectionPanel } from '@/components/section-panel'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
 import {
   Sheet,
   SheetClose,
@@ -60,17 +60,21 @@ export function AccessTokenCard() {
   }
   return (
     <>
-      <Card data-card-hover='false' className='gap-3 p-3 sm:p-4'>
-        <div className='flex flex-wrap items-center justify-between gap-2'>
-          <h4 className='text-sm font-semibold'>{t('Access Token')}</h4>
+      <SectionPanel
+        title={t('Access Token')}
+        level='card'
+        contentClassName='space-y-3 pt-1'
+        actions={
           <Button
             size='sm'
             variant='outline'
             onClick={() => setHistoryOpen(true)}
+            className='min-h-11 sm:min-h-8'
           >
             {t('Access records')}
           </Button>
-        </div>
+        }
+      >
         {access.status.isPending && (
           <p role='status' className='text-muted-foreground text-xs'>
             {t('Loading...')}
@@ -86,6 +90,7 @@ export function AccessTokenCard() {
               variant='outline'
               disabled={access.status.isFetching}
               onClick={() => void access.status.refetch()}
+              className='min-h-11 sm:min-h-8'
             >
               {t('Retry')}
             </Button>
@@ -135,6 +140,7 @@ export function AccessTokenCard() {
                     variant='outline'
                     disabled={pending}
                     onClick={() => setConfirmation('rotate')}
+                    className='min-h-11 sm:min-h-8'
                   >
                     {t('Regenerate')}
                   </Button>
@@ -143,6 +149,7 @@ export function AccessTokenCard() {
                     variant='destructive'
                     disabled={pending}
                     onClick={() => setConfirmation('revoke')}
+                    className='min-h-11 sm:min-h-8'
                   >
                     {t('Revoke')}
                   </Button>
@@ -152,6 +159,7 @@ export function AccessTokenCard() {
                   size='sm'
                   disabled={pending}
                   onClick={() => void access.generate()}
+                  className='min-h-11 sm:min-h-8'
                 >
                   {t('Generate')}
                 </Button>
@@ -159,7 +167,7 @@ export function AccessTokenCard() {
             </div>
           </>
         )}
-      </Card>
+      </SectionPanel>
       {access.token && (
         <AccessTokenDialog token={access.token} onClose={access.clearToken} />
       )}

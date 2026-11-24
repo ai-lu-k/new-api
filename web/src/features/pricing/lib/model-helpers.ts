@@ -23,6 +23,10 @@ import type { PricingModel } from '../types'
 // Model Helper Utilities
 // ----------------------------------------------------------------------------
 
+export function isNanoBanana21(modelName: string): boolean {
+  return modelName === 'gemini-nano-banana-2.1'
+}
+
 /**
  * Get available groups for a model
  */
@@ -37,6 +41,66 @@ export function getAvailableGroups(
   return Object.keys(usableGroup)
     .filter((g) => !EXCLUDED_GROUPS.includes(g))
     .filter((g) => modelEnableGroups.includes(g))
+}
+
+/**
+ * Whether visitors can choose between groups. With a single group there is
+ * nothing to choose, and groups are not shown at all.
+ */
+export function hasSelectableGroups(
+  usableGroup: Record<string, unknown>
+): boolean {
+  return (
+    Object.keys(usableGroup).filter((g) => !EXCLUDED_GROUPS.includes(g))
+      .length > 1
+  )
+}
+
+/**
+ * Group ratios as they apply to one model: a price tier in the model name
+ * multiplies every group's ratio.
+ */
+export function scaleGroupRatios(
+  groupRatio: Record<string, number>,
+  multiplier: number | undefined
+): Record<string, number> {
+  if (multiplier === undefined || multiplier === 1) return groupRatio
+  return Object.fromEntries(
+    Object.entries(groupRatio).map(([group, ratio]) => [
+      group,
+      ratio * multiplier,
+    ])
+  )
+}
+
+/**
+ * Whether a model is sold at no charge. The catalog names such a model for it —
+ * `hy4-free`, or `nemotron-3.5-lightning:free` for a tier of a model that is
+ * otherwise sold — and its price columns read zero.
+ */
+export function isFreeModel(model: Pick<PricingModel, 'model_name'>): boolean {
+  return /[-:_]free$/i.test(model.model_name.trim())
+}
+
+/**
+ * How far below the official price a price tier sells, or null when it does
+ * not: `percent` off and the same in tenths ("2.5 折" for 0.25).
+ */
+export function priceTierDiscount(
+  multiplier: number | undefined
+): { percent: number; tenths: number } | null {
+  if (
+    multiplier === undefined ||
+    !Number.isFinite(multiplier) ||
+    multiplier < 0 ||
+    multiplier >= 1
+  ) {
+    return null
+  }
+  return {
+    percent: Number(((1 - multiplier) * 100).toFixed(2)),
+    tenths: Number((multiplier * 10).toFixed(4)),
+  }
 }
 
 /**
@@ -106,4 +170,22 @@ export function replaceModelInPath(path: string, modelName: string): string {
  */
 export function isTokenBasedModel(model: PricingModel): boolean {
   return model.quota_type === QUOTA_TYPE_VALUES.TOKEN
+}
+
+/**
+ * What is left of a limited-time offer, in the two largest units that say
+ * something: days and hours, hours and minutes, or minutes. Null once over.
+ */
+export function promoTimeLeft(
+  endsAt: number,
+  nowMs: number
+): { days: number; hours: number; minutes: number } | null {
+  const seconds = Math.floor(endsAt - nowMs / 1000)
+  if (!(seconds > 0)) return null
+  return {
+    days: Math.floor(seconds / 86400),
+    hours: Math.floor((seconds % 86400) / 3600),
+    // Round the last minute up, so that "0 minutes left" never shows.
+    minutes: Math.max(1, Math.ceil((seconds % 3600) / 60)),
+  }
 }

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -45,6 +47,9 @@ func GetStatus(c *gin.Context) {
 
 	cs := console_setting.GetConsoleSetting()
 	passkeySetting := system_setting.PasskeySettingsSnapshot()
+	// Read before the options are locked: it takes that lock itself.
+	homeTitle := currentSitePage().Page("/").Title
+	usageLevelThresholds := operation_setting.GetUsageLevelThresholds()
 	common.OptionMapRWMutex.RLock()
 	defer common.OptionMapRWMutex.RUnlock()
 
@@ -73,8 +78,10 @@ func GetStatus(c *gin.Context) {
 		"server_address":              system_setting.ServerAddress,
 		"turnstile_check":             common.TurnstileCheckEnabled,
 		"turnstile_site_key":          common.TurnstileSiteKey,
+		"geetest_captcha_id":          common.GeeTestCaptchaId,
 		"docs_link":                   operation_setting.GetGeneralSetting().DocsLink,
 		"quota_per_unit":              common.QuotaPerUnit,
+		"usage_level_thresholds":      usageLevelThresholds,
 		// 兼容旧前端：保留 display_in_currency，同时提供新的 quota_display_type
 		"display_in_currency":           operation_setting.IsCurrencyDisplay(),
 		"quota_display_type":            operation_setting.GetQuotaDisplayType(),
@@ -94,6 +101,8 @@ func GetStatus(c *gin.Context) {
 		"password_login_enabled":        common.PasswordLoginEnabled,
 		"password_register_enabled":     common.PasswordRegisterEnabled,
 		"default_use_auto_group":        setting.DefaultUseAutoGroup,
+		"dsh_setup_enabled":             operation_setting.GetDshSetupSetting().Enabled,
+		"home_title":                    homeTitle,
 
 		"password_login_encryption_enabled": common.PasswordLoginEncryptionEnabled,
 
@@ -126,6 +135,7 @@ func GetStatus(c *gin.Context) {
 		"user_agreement_enabled":      legalSetting.UserAgreement != "",
 		"privacy_policy_enabled":      legalSetting.PrivacyPolicy != "",
 		"checkin_enabled":             operation_setting.GetCheckinSetting().Enabled,
+		"campaign_active":             model.CurrentCampaign() != nil,
 	}
 
 	// 根据启用状态注入可选内容
@@ -189,12 +199,136 @@ func GetAbout(c *gin.Context) {
 	serveRevalidatedJSON(c, about)
 }
 
+// GetExpenseLedger publishes the site's expenses by month: what the
+// administrator entered for each month plus the shares of prepaid expenses.
+// "entered" and "prepaid" are the stored lists, which the editor works on.
+// GetExpenseLedger is the public copy of the ledger. Notes can name upstream
+// suppliers, so every visitor gets the lines without them, and the automatic
+// top-ups arrive as one anonymous line per month.
+func GetExpenseLedger(c *gin.Context) {
+	topUpMonths, err := model.UpstreamTopUpExpenseMonths()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+	months := withUpstreamTopUps(
+		operation_setting.GetPublishedExpenseMonths(time.Now()),
+		topUpMonths,
+	)
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data": gin.H{
+			"months":  publicExpenseMonths(months),
+			"entered": publicExpenseMonths(operation_setting.GetExpenseLedgerMonths()),
+			"prepaid": publicPrepaidExpenses(operation_setting.GetPrepaidExpenses()),
+		},
+	})
+}
+
+// GetFinanceExpenseLedger returns the ledger with its notes to the root user,
+// whose editor needs them.
+func GetFinanceExpenseLedger(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data": gin.H{
+			"months":  operation_setting.GetPublishedExpenseMonths(time.Now()),
+			"entered": operation_setting.GetExpenseLedgerMonths(),
+			"prepaid": operation_setting.GetPrepaidExpenses(),
+		},
+	})
+}
+
+// withUpstreamTopUps adds the booked payments to the published months as one
+// anonymous line, so the public total matches the site's own bookkeeping
+// without naming where the money went.
+func withUpstreamTopUps(
+	months []operation_setting.ExpenseMonth,
+	totals map[string]float64,
+) []operation_setting.ExpenseMonth {
+	byMonth := make(map[string]operation_setting.ExpenseMonth, len(months))
+	for _, month := range months {
+		byMonth[month.Month] = month
+	}
+	for month, amount := range totals {
+		entry := byMonth[month]
+		entry.Month = month
+		entry.Items = append(entry.Items, operation_setting.ExpenseItem{
+			Name:      "Upstream top-ups",
+			Amount:    amount,
+			Automatic: true,
+		})
+		byMonth[month] = entry
+	}
+	merged := make([]operation_setting.ExpenseMonth, 0, len(byMonth))
+	for _, month := range byMonth {
+		merged = append(merged, month)
+	}
+	sort.Slice(merged, func(i, j int) bool { return merged[i].Month > merged[j].Month })
+	return merged
+}
+
+// publicExpenseMonths copies the months without their notes.
+func publicExpenseMonths(
+	months []operation_setting.ExpenseMonth,
+) []operation_setting.ExpenseMonth {
+	public := make([]operation_setting.ExpenseMonth, len(months))
+	for i, month := range months {
+		items := make([]operation_setting.ExpenseItem, len(month.Items))
+		for j, item := range month.Items {
+			item.Note = ""
+			items[j] = item
+		}
+		public[i] = operation_setting.ExpenseMonth{Month: month.Month, Items: items}
+	}
+	return public
+}
+
+// publicPrepaidExpenses copies the prepaid list without its notes.
+func publicPrepaidExpenses(
+	prepaid []operation_setting.PrepaidExpense,
+) []operation_setting.PrepaidExpense {
+	public := make([]operation_setting.PrepaidExpense, len(prepaid))
+	for i, expense := range prepaid {
+		expense.Note = ""
+		public[i] = expense
+	}
+	return public
+}
+
+// legalDocumentText is the published revision of one document in the reader's
+// language. A site that never published a revision still serves the settings
+// text, which is what the pages have always returned.
+func legalDocumentText(
+	language string,
+	pick func(*model.LegalVersion, string) string,
+	fallback string,
+) string {
+	version, err := model.CurrentLegalVersion(model.DB, false)
+	if err != nil || version == nil {
+		return fallback
+	}
+	return pick(version, language)
+}
+
 func GetUserAgreement(c *gin.Context) {
-	serveRevalidatedJSON(c, system_setting.GetLegalSettings().UserAgreement)
+	serveRevalidatedJSON(c, legalDocumentText(
+		c.Query("lang"),
+		(*model.LegalVersion).UserAgreementText,
+		system_setting.GetLegalSettings().UserAgreement,
+	))
 }
 
 func GetPrivacyPolicy(c *gin.Context) {
-	serveRevalidatedJSON(c, system_setting.GetLegalSettings().PrivacyPolicy)
+	serveRevalidatedJSON(c, legalDocumentText(
+		c.Query("lang"),
+		(*model.LegalVersion).PrivacyPolicyText,
+		system_setting.GetLegalSettings().PrivacyPolicy,
+	))
 }
 
 func GetMidjourney(c *gin.Context) {

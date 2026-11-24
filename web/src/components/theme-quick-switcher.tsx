@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { useTheme } from '@/context/theme-provider'
+import { MOTION_TRANSITION } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 
 export function ThemeQuickSwitcher() {
@@ -58,13 +59,7 @@ export function ThemeQuickSwitcher() {
               <motion.span
                 layoutId='theme-switcher-active'
                 className='bg-accent ring-border absolute inset-0 rounded-md ring-1'
-                transition={{
-                  type: 'spring',
-                  stiffness: 500,
-                  damping: 30,
-                  mass: 0.2,
-                }}
-                animate={{ rotate: 360 }}
+                transition={MOTION_TRANSITION.morph}
               />
             )}
             <Monitor className='relative z-10 size-[0.95rem]' />
@@ -85,13 +80,7 @@ export function ThemeQuickSwitcher() {
               <motion.span
                 layoutId='theme-switcher-active'
                 className='bg-accent ring-border absolute inset-0 rounded-md ring-1'
-                transition={{
-                  type: 'spring',
-                  stiffness: 500,
-                  damping: 30,
-                  mass: 0.2,
-                }}
-                animate={{ rotate: 360 }}
+                transition={MOTION_TRANSITION.morph}
               />
             )}
             <Sun className='relative z-10 size-[0.95rem]' />
@@ -112,13 +101,7 @@ export function ThemeQuickSwitcher() {
               <motion.span
                 layoutId='theme-switcher-active'
                 className='bg-accent ring-border absolute inset-0 rounded-md ring-1'
-                transition={{
-                  type: 'spring',
-                  stiffness: 500,
-                  damping: 30,
-                  mass: 0.2,
-                }}
-                animate={{ rotate: 360 }}
+                transition={MOTION_TRANSITION.morph}
               />
             )}
             <MoonStar className='relative z-10 size-[0.95rem]' />

@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useQuery } from '@tanstack/react-query'
 import { Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -25,16 +26,27 @@ import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Button } from '@/components/ui/button'
 import { handleServerError } from '@/lib/handle-server-error'
 
-import { deleteInvalidRedemptions } from '../api'
+import { deleteInvalidRedemptions, getRedemptions } from '../api'
 import { ERROR_MESSAGES } from '../constants'
 import { useRedemptions } from './redemptions-provider'
 
 export function RedemptionsPrimaryButtons() {
   const { t } = useTranslation()
-  const { setOpen, triggerRefresh } = useRedemptions()
+  const { setOpen, triggerRefresh, refreshTrigger } = useRedemptions()
   const [showDeleteInvalidConfirm, setShowDeleteInvalidConfirm] =
     useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+
+  // The list below only knows its own page, so ask for the stored total: with no
+  // code at all, deleting the invalid ones is an action that cannot do anything.
+  const storedCodes = useQuery({
+    queryKey: ['redemptions', 'stored-count', refreshTrigger],
+    queryFn: async () => {
+      const result = await getRedemptions({ p: 1, page_size: 1 })
+      return result.success ? (result.data?.total ?? 0) : null
+    },
+  })
+  const nothingStored = storedCodes.data === 0
 
   const handleDeleteInvalid = async () => {
     setIsDeleting(true)
@@ -63,6 +75,7 @@ export function RedemptionsPrimaryButtons() {
         <Button
           size='sm'
           variant='outline'
+          disabled={isDeleting || nothingStored}
           onClick={() => setShowDeleteInvalidConfirm(true)}
         >
           <Trash2 className='text-destructive h-4 w-4' />

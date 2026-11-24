@@ -18,7 +18,14 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { Row } from '@tanstack/react-table'
-import { render, screen, waitFor, cleanup, act } from '@testing-library/react'
+import {
+  render,
+  screen,
+  waitFor,
+  cleanup,
+  act,
+  fireEvent,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AxiosError } from 'axios'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -31,12 +38,21 @@ import { DataTableRowActions } from '../components/data-table-row-actions'
 import { ModelMutateDrawer } from '../components/drawers/model-mutate-drawer'
 import { ModelsDialogs } from '../components/models-dialogs'
 import { ModelsProvider } from '../components/models-provider'
+import {
+  modelFormSchema,
+  transformModelToFormDefaults,
+} from '../lib/model-form'
 import type { Model } from '../types'
 
 const model = {
   id: 7,
   model_name: 'example-model',
   description: 'Original',
+  input_modalities: 'text,image',
+  context_length: 128000,
+  supported_parameters: 'tools',
+  release_date: '2026-01',
+  series: 'Example',
   status: 1,
   sync_official: 1,
   name_rule: 0,
@@ -50,6 +66,81 @@ const model = {
 afterEach(() => {
   cleanup()
   useAuthStore.getState().auth.reset()
+})
+
+describe('model client capabilities', () => {
+  it('rejects invalid client settings while accepting explicit empty reasoning and false flags', () => {
+    const defaults = transformModelToFormDefaults(model)
+    expect(
+      modelFormSchema.safeParse({
+        ...defaults,
+        reasoning_efforts: {},
+        client_compat: '{"supportsStrictMode":false}',
+      }).success
+    ).toBe(true)
+    for (const fields of [
+      { max_output_tokens: '-1' },
+      { max_output_tokens: '100000001' },
+      { reasoning_efforts: { high: '' } },
+      { reasoning_efforts: { unsupported: 'high' } },
+      { client_compat: '{"apiKey":"private"}' },
+      { client_compat: '{"supportsStrictMode":"false"}' },
+    ]) {
+      expect(
+        modelFormSchema.safeParse({ ...defaults, ...fields }).success
+      ).toBe(false)
+    }
+  })
+  it('edits import limits and reasoning on the model while preserving compatibility flags', async () => {
+    const configured: Model = {
+      ...model,
+      max_output_tokens: 8192,
+      output_modalities: 'text',
+      client_config: {
+        reasoning_efforts: { off: '', high: 'high' },
+        compat: { supportsStrictMode: false },
+      },
+    }
+    vi.spyOn(api, 'get').mockImplementation(async (url) => ({
+      data: {
+        success: true,
+        data: url === '/api/models/7' ? configured : { items: [] },
+      },
+    }))
+    const put = vi
+      .spyOn(api, 'put')
+      .mockResolvedValue({ data: { success: true, data: configured } })
+    const client = renderModelActions(configured, 10)
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'Edit' }))
+    const output = await screen.findByLabelText('Maximum output tokens')
+    await waitFor(() => expect(output).toHaveValue('8192'))
+    expect(screen.getByRole('checkbox', { name: 'Text output' })).toBeChecked()
+    expect(screen.getByLabelText('Upstream value for off')).toHaveValue('')
+    await user.clear(output)
+    await user.type(output, '16384')
+    await user.click(screen.getByRole('checkbox', { name: 'high' }))
+    await user.click(screen.getByRole('checkbox', { name: 'off' }))
+    await user.click(screen.getByRole('checkbox', { name: 'low' }))
+    await user.click(
+      screen.getByRole('switch', { name: 'Hide from quick import' })
+    )
+    await user.click(
+      screen.getByRole('button', { name: /Update Model|Save metadata/ })
+    )
+    await waitFor(() => expect(put).toHaveBeenCalled())
+    expect(put.mock.calls[0][1]).toMatchObject({
+      max_output_tokens: 16384,
+      output_modalities: 'text',
+      context_length: 128000,
+      client_config: {
+        reasoning_efforts: { low: 'low' },
+        compat: { supportsStrictMode: false },
+        hidden: true,
+      },
+    })
+    client.clear()
+  })
 })
 
 function renderModelActions(currentModel: Model = model, role = 100) {
@@ -66,6 +157,17 @@ function renderModelActions(currentModel: Model = model, role = 100) {
     </QueryClientProvider>
   )
   return client
+}
+
+/** Fills the specifications a model cannot be saved without. */
+async function fillSpecifications(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('checkbox', { name: 'Text' }))
+  await user.click(screen.getByRole('checkbox', { name: 'Image' }))
+  await user.type(screen.getByLabelText('Context length *'), '1000000')
+  fireEvent.change(screen.getByLabelText('Release date *'), {
+    target: { value: '2026-09' },
+  })
+  await user.type(screen.getByLabelText('Series *'), 'DeepSeek')
 }
 
 describe('model pricing entry', () => {
@@ -332,6 +434,7 @@ describe('metadata editing', () => {
       const user = userEvent.setup()
       await user.type(screen.getByLabelText('Model Name *'), 'duplicate-model')
       await user.type(screen.getByLabelText('Description'), 'Keep this draft')
+      await fillSpecifications(user)
       await user.click(screen.getByRole('button', { name: 'Save metadata' }))
       expect(await screen.findByRole('alert')).toHaveTextContent(
         '模型名称已存在'
@@ -438,6 +541,62 @@ describe('metadata editing', () => {
       model_name: 'example-model',
       vendor_id: 4,
       endpoints: '',
+      input_modalities: 'text,image',
+      context_length: 128000,
+      supported_parameters: 'tools',
+      release_date: '2026-01',
+      series: 'Example',
+    })
+  })
+
+  it('does not save a model until its specifications are filled in', async () => {
+    useAuthStore.getState().auth.setUser({ id: 2, username: 'admin', role: 10 })
+    vi.spyOn(api, 'get').mockResolvedValue({
+      data: { success: true, data: { items: [] } },
+    })
+    const post = vi
+      .spyOn(api, 'post')
+      .mockResolvedValue({ data: { success: true } })
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+    render(
+      <QueryClientProvider client={client}>
+        <ModelMutateDrawer open onOpenChange={() => {}} />
+      </QueryClientProvider>
+    )
+    const user = userEvent.setup()
+    await user.type(
+      screen.getByLabelText('Model Name *'),
+      'deepseek-v4.1-flash-x0.5'
+    )
+    await user.click(screen.getByRole('button', { name: 'Save metadata' }))
+    expect(
+      await screen.findByText('Select at least one input modality')
+    ).toBeVisible()
+    expect(screen.getByText('Enter the context length in tokens')).toBeVisible()
+    expect(
+      screen.getByText(
+        'Enter the release date as year and month, such as 2026-09'
+      )
+    ).toBeVisible()
+    expect(screen.getByText('Enter the model series')).toBeVisible()
+    expect(post).not.toHaveBeenCalled()
+
+    await fillSpecifications(user)
+    await user.click(screen.getByRole('checkbox', { name: 'Reasoning' }))
+    await user.click(screen.getByRole('button', { name: 'Save metadata' }))
+    await waitFor(() => expect(post).toHaveBeenCalled())
+    expect(post.mock.calls[0][1]).toMatchObject({
+      model_name: 'deepseek-v4.1-flash-x0.5',
+      input_modalities: 'text,image',
+      context_length: 1000000,
+      supported_parameters: 'reasoning',
+      release_date: '2026-09',
+      series: 'DeepSeek',
     })
   })
   it('keeps metadata drafts while saving pricing independently and preserves the price draft across tabs', async () => {

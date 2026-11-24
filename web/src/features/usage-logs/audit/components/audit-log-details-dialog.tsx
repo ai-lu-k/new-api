@@ -16,12 +16,18 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Dialog } from '@/components/dialog'
+import {
+  sharedElementName,
+  useSharedName,
+} from '@/components/motion/use-shared-name'
 import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import dayjs from '@/lib/dayjs'
+import { withViewTransition } from '@/lib/view-transition'
 
 import {
   DetailRow,
@@ -34,6 +40,13 @@ import { AuditDetailValue } from './audit-detail-value'
 
 export function AuditLogDetailsDialog(props: { entry: AuditLog }) {
   const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  // The detail entry in the row and this dialog's title are one object: while
+  // the dialog is open the row stops claiming the name, so the browser morphs
+  // the small entry into the panel instead of cross-fading it (contract §9.2).
+  const entryName = sharedElementName('audit-log', props.entry.event_id)
+  const triggerName = useSharedName(open ? undefined : entryName)
+  const titleName = useSharedName(open ? entryName : undefined)
   const detail = buildAuditDetails(props.entry, t)
   const identifiers = [
     { label: t('Route'), value: props.entry.route },
@@ -55,11 +68,19 @@ export function AuditLogDetailsDialog(props: { entry: AuditLog }) {
   )
   return (
     <Dialog
-      title={t('Log Details')}
+      open={open}
+      onOpenChange={(next) => {
+        if (next) {
+          withViewTransition(() => setOpen(true))
+          return
+        }
+        setOpen(false)
+      }}
+      title={<span {...titleName}>{t('Log Details')}</span>}
       description={t('View the complete details for this log entry')}
       descriptionClassName='sr-only'
       trigger={
-        <Button variant='ghost' size='sm' className='h-7 px-2'>
+        <Button {...triggerName} variant='ghost' size='sm' className='h-7 px-2'>
           {t('Details')}
         </Button>
       }

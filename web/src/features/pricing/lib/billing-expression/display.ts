@@ -33,8 +33,10 @@ export type TokenTierCondition = {
   value: number
 }
 export type TokenTier = {
+  requestConditional?: boolean
   conditionText?: string
   imageCount?: boolean
+  chars?: boolean
   billingUnit?: 'token' | 'request'
   fixedPrice?: number
   label: string
@@ -142,7 +144,8 @@ function tokenTier(
     if (
       input.kind === 'variable' &&
       input.name !== 'len' &&
-      input.name !== 'image_count'
+      input.name !== 'image_count' &&
+      input.name !== 'chars'
     ) {
       variable = input.name
     } else {
@@ -226,6 +229,14 @@ export function readTokenTierChain(node: ExpressionNode): TokenTier[] | null {
           })) ?? null
         )
       }
+      if (factor.kind === 'variable' && factor.name === 'chars') {
+        return (
+          readTokenTierChain(pricing)?.map((tier) => ({
+            ...tier,
+            chars: true,
+          })) ?? null
+        )
+      }
     }
   }
   const tiers: TokenTier[] = []
@@ -241,6 +252,69 @@ export function readTokenTierChain(node: ExpressionNode): TokenTier[] | null {
   const fallback = tokenTier(remaining, [])
   if (!fallback) return null
   return [...tiers, fallback]
+}
+
+/** Enumerated request parameters select complete fixed prices, never partial token rates. */
+export function readRequestFixedTierChain(
+  node: ExpressionNode
+): TokenTier[] | null {
+  const tiers: TokenTier[] = []
+  const seenValues = new Set<string>()
+  let selector = ''
+  let remaining = node
+  while (remaining.kind === 'conditional') {
+    const condition = remaining.condition
+    if (
+      condition.kind !== 'binary' ||
+      condition.operator !== 'in' ||
+      condition.right.kind !== 'literal' ||
+      !Array.isArray(condition.right.value) ||
+      condition.right.value.length === 0
+    ) {
+      return null
+    }
+    const parts = flattenBinary(condition.left, '??')
+    const probes: string[][] = []
+    for (const [index, part] of parts.entries()) {
+      if (
+        part.kind === 'call' &&
+        part.name === 'param' &&
+        part.args[0].kind === 'literal' &&
+        typeof part.args[0].value === 'string' &&
+        part.args[0].value.trim()
+      ) {
+        probes.push(['param', part.args[0].value.trim()])
+      } else if (
+        index === parts.length - 1 &&
+        probes.length > 0 &&
+        part.kind === 'literal' &&
+        typeof part.value === 'string'
+      ) {
+        probes.push(['default', part.value])
+      } else return null
+    }
+    const currentSelector = JSON.stringify(probes)
+    if (selector && currentSelector !== selector) return null
+    selector = currentSelector
+    const values = condition.right.value
+    if (values.some((value) => seenValues.has(value))) return null
+    for (const value of values) seenValues.add(value)
+    const tier = tokenTier(remaining.yes, [])
+    if (!tier || tier.billingUnit !== 'request') return null
+    tiers.push({
+      ...tier,
+      requestConditional: true,
+      conditionText: values.join(' / '),
+    })
+    remaining = remaining.no
+  }
+  if (tiers.length === 0) return null
+  const fallback = tokenTier(remaining, [])
+  if (!fallback || fallback.billingUnit !== 'request') return null
+  return [
+    ...tiers,
+    { ...fallback, requestConditional: true, conditionText: 'Other cases' },
+  ]
 }
 
 export function isTimeCondition(node: ExpressionNode): boolean {

@@ -17,19 +17,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import {
-  AlertTriangle,
-  Loader2,
-  RefreshCw,
-  ServerCog,
-  Trash2,
-} from 'lucide-react'
+import { AlertTriangle, Loader2, RefreshCw, Trash2 } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
-import { ErrorState } from '@/components/error-state'
+import {
+  SectionPanel,
+  type SectionPanelStatus,
+} from '@/components/section-panel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -40,7 +37,6 @@ import {
   PopoverTitle,
   PopoverTrigger,
 } from '@/components/ui/popover'
-import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
   TableBody,
@@ -69,11 +65,6 @@ import {
 import type { SystemInstance, SystemInstanceStatus } from '../types'
 
 const INSTANCE_POLL_INTERVAL_MS = 30_000
-const INSTANCE_SKELETON_KEYS = [
-  'system-instance-skeleton-1',
-  'system-instance-skeleton-2',
-  'system-instance-skeleton-3',
-]
 
 const STATUS_CLASS_NAME: Record<SystemInstanceStatus, string> = {
   online:
@@ -186,7 +177,7 @@ function RingProgress(props: RingProgressProps) {
         strokeDasharray={circumference}
         strokeDashoffset={offset}
         className={cn(
-          'transition-[stroke-dashoffset] duration-500',
+          'transition-[stroke-dashoffset] duration-(--motion-slow) ease-(--ease-out)',
           ringColorClass(props.percent)
         )}
       />
@@ -403,7 +394,7 @@ function SystemInstancesList(props: SystemInstancesTableProps) {
                               {formatBytes(storage.used_bytes)}
                             </span>
                             <span className='text-muted-foreground'>
-                              {t('Free')}
+                              {t('Available')}
                             </span>
                             <span className='font-mono'>
                               {formatBytes(storage.free_bytes)}
@@ -575,78 +566,24 @@ export function SystemInstancesPanel() {
   const isMutatingInstance =
     deletingNodeName !== null || deleteStaleInstanceMutation.isPending
 
-  let instancesContent: ReactNode
-  if (loading) {
-    instancesContent = (
-      <div className='space-y-2 p-4 sm:p-5'>
-        {INSTANCE_SKELETON_KEYS.map((key) => (
-          <Skeleton key={key} className='h-9 w-full rounded-md' />
-        ))}
-      </div>
-    )
-  } else if (instancesQuery.isError) {
-    instancesContent = (
-      <ErrorState
-        title={t('We could not load instances.')}
-        description={
-          instancesQuery.error instanceof Error
-            ? instancesQuery.error.message
-            : undefined
-        }
-        onRetry={() => {
-          void instancesQuery.refetch()
-        }}
-        className='min-h-[220px]'
-      />
-    )
-  } else if (instances.length === 0) {
-    instancesContent = (
-      <div className='px-4 py-10 text-center sm:px-5'>
-        <div className='bg-muted mx-auto mb-3 flex size-10 items-center justify-center rounded-lg'>
-          <ServerCog
-            className='text-muted-foreground size-5'
-            aria-hidden='true'
-          />
-        </div>
-        <p className='text-muted-foreground text-sm'>
-          {t('No instances have reported yet.')}
-        </p>
-      </div>
-    )
-  } else {
-    instancesContent = (
-      <div className='p-4 sm:p-5'>
-        <SystemInstancesList
-          instances={instances}
-          deletingNodeName={deletingNodeName}
-          isDeletingInstance={
-            isMutatingInstance || deleteStaleInstancesMutation.isPending
-          }
-          onDeleteStaleInstance={setDeleteTarget}
-        />
-      </div>
-    )
-  }
+  let panelStatus: SectionPanelStatus = 'ready'
+  if (loading) panelStatus = 'loading'
+  else if (instancesQuery.isError) panelStatus = 'error'
+  else if (instances.length === 0) panelStatus = 'empty'
+
+  const errorDescription =
+    instancesQuery.error instanceof Error
+      ? instancesQuery.error.message
+      : undefined
 
   return (
     <>
-      <section className='bg-card overflow-hidden rounded-lg border shadow-xs'>
-        <div className='flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5'>
-          <div className='min-w-0'>
-            <div className='flex items-center gap-2'>
-              <span className='bg-muted text-muted-foreground inline-flex size-7 items-center justify-center rounded-md'>
-                <ServerCog className='size-4' aria-hidden='true' />
-              </span>
-              <div className='min-w-0'>
-                <h3 className='text-sm font-semibold'>{t('Instances')}</h3>
-                <p className='text-muted-foreground mt-0.5 text-xs'>
-                  {t(
-                    'Nodes reporting from this deployment and their latest heartbeat.'
-                  )}
-                </p>
-              </div>
-            </div>
-          </div>
+      <SectionPanel
+        title={t('Instances')}
+        description={t(
+          'Nodes reporting from this deployment and their latest heartbeat.'
+        )}
+        actions={
           <div className='flex shrink-0 flex-wrap items-center gap-2 sm:justify-end'>
             <span className='text-muted-foreground text-xs' aria-live='polite'>
               {t('Auto-refreshing every {{seconds}}s', {
@@ -695,10 +632,25 @@ export function SystemInstancesPanel() {
               {refreshing ? t('Refreshing...') : t('Refresh')}
             </Button>
           </div>
+        }
+        status={panelStatus}
+        errorMessage={errorDescription}
+        onRetry={() => void instancesQuery.refetch()}
+        emptyMessage={t('No instances have reported yet.')}
+        placeholderClassName='h-40'
+        contentClassName='pb-2'
+      >
+        <div aria-busy={instancesQuery.isFetching}>
+          <SystemInstancesList
+            instances={instances}
+            deletingNodeName={deletingNodeName}
+            isDeletingInstance={
+              isMutatingInstance || deleteStaleInstancesMutation.isPending
+            }
+            onDeleteStaleInstance={setDeleteTarget}
+          />
         </div>
-
-        <div aria-busy={instancesQuery.isFetching}>{instancesContent}</div>
-      </section>
+      </SectionPanel>
 
       <ConfirmDialog
         open={deleteAllConfirmOpen}

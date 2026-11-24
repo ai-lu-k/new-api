@@ -1,0 +1,99 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router'
+import { cleanup, render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+
+import { ThemeProvider } from '@/context/theme-provider'
+import { api } from '@/lib/api'
+
+import { Home } from '../index'
+
+let storedHome: string
+
+beforeEach(() => {
+  window.localStorage.clear()
+  vi.spyOn(api, 'get').mockImplementation(async (url) => {
+    if (url === '/api/home_page_content') {
+      return { data: { success: true, data: storedHome } }
+    }
+    return { data: { success: true, data: url === '/api/notice' ? '' : {} } }
+  })
+})
+
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+  window.localStorage.clear()
+})
+
+async function renderHome() {
+  const queries = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+  })
+  queries.setQueryData(['status'], { system_name: 'DEMO' })
+  const router = createRouter({
+    routeTree: createRootRoute({ component: Home }),
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+  })
+  await router.load()
+  render(
+    <ThemeProvider>
+      <QueryClientProvider client={queries}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ThemeProvider>
+  )
+}
+
+it('follows the stored home page heading with the ways to start', async () => {
+  storedHome = '<div><h1>One gateway</h1></div>'
+  await renderHome()
+
+  const options = await screen.findByRole('navigation', { name: 'Quick Start' })
+  const heading = document.querySelector('.custom-home-content')
+
+  if (!heading) throw new Error('the stored home page was not rendered')
+  expect(
+    heading.compareDocumentPosition(options) & Node.DOCUMENT_POSITION_FOLLOWING
+  ).toBeTruthy()
+})
+
+it('keeps the project attribution and the link to the original project at the foot of a stored home page', async () => {
+  storedHome = '<div><h1>One gateway</h1></div>'
+  await renderHome()
+
+  const options = await screen.findByRole('navigation', { name: 'Quick Start' })
+  const original = screen.getByRole('link', { name: 'New API' })
+  expect(original).toHaveAttribute(
+    'href',
+    'https://github.com/QuantumNous/new-api'
+  )
+  // The notice follows the link, in the words the project's own footer uses.
+  expect(original.parentElement?.textContent).toMatch(/^© \d{4} New API\. \S/)
+  expect(
+    options.compareDocumentPosition(original) & Node.DOCUMENT_POSITION_FOLLOWING
+  ).toBeTruthy()
+})

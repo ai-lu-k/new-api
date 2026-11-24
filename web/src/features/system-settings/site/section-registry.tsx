@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { SystemInfoSection } from '../general/system-info-section'
+import { UsageLevelSettingsSection } from '../general/usage-level-settings-section'
 import {
   parseHeaderNavModules,
   parseSidebarModulesAdmin,
@@ -28,8 +29,18 @@ import { NoticeSection } from '../maintenance/notice-section'
 import { SidebarModulesSection } from '../maintenance/sidebar-modules-section'
 import type { SiteSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
+import { SitePageSettingsCard } from './site-page-settings-card'
 
 const SITE_SECTIONS = [
+  {
+    id: 'usage-levels',
+    titleKey: 'Usage levels',
+    build: (settings: SiteSettings) => (
+      <UsageLevelSettingsSection
+        defaultValue={settings['usage_level.thresholds']}
+      />
+    ),
+  },
   {
     id: 'system-info',
     titleKey: 'System Information',
@@ -50,6 +61,19 @@ const SITE_SECTIONS = [
             user_agreement: settings['legal.user_agreement'],
             privacy_policy: settings['legal.privacy_policy'],
           },
+        }}
+      />
+    ),
+  },
+  {
+    id: 'search-engines',
+    titleKey: 'Search engines',
+    build: (settings: SiteSettings) => (
+      <SitePageSettingsCard
+        defaultValues={{
+          'site_page.default_language': settings['site_page.default_language'],
+          'site_page.home_title': settings['site_page.home_title'],
+          'site_page.home_description': settings['site_page.home_description'],
         }}
       />
     ),

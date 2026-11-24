@@ -73,6 +73,7 @@ export function LoginSessionItem({ session, onRevoke }: LoginSessionItemProps) {
         type='button'
         variant={session.current ? 'outline' : 'ghost'}
         size='sm'
+        className='min-h-11 sm:min-h-8'
         onClick={() => onRevoke(session)}
       >
         {session.current ? t('Sign out') : t('Revoke')}

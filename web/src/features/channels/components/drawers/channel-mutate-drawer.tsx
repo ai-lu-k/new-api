@@ -37,6 +37,7 @@ import {
   RefreshCw,
   Code,
   Route,
+  Gauge,
   Settings,
   SlidersHorizontal,
   Wand2,
@@ -67,6 +68,10 @@ import { JsonCodeEditor } from '@/components/json-code-editor'
 import { JsonEditor } from '@/components/json-editor'
 import { LearnMore } from '@/components/learn-more'
 import { LoadingState } from '@/components/loading-state'
+import {
+  sharedElementName,
+  useSharedName,
+} from '@/components/motion/use-shared-name'
 import { MultiSelect } from '@/components/multi-select'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -101,7 +106,6 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
-import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { SecureVerificationDialog } from '@/features/auth/secure-verification'
@@ -131,7 +135,6 @@ import {
   getAllModels,
   getChannel,
   getChannelDefaultBaseURLs,
-  getGroups,
   getPrefillGroups,
   getTaskPluginOptions,
   refreshCodexCredential,
@@ -299,6 +302,9 @@ const SENSITIVE_FORM_FIELDS = [
   'proxy',
   'http_protocol',
   'http2_connection_shards',
+  'concurrency_limit',
+  'concurrency_total_url',
+  'concurrency_total_per_account',
   'pass_through_body_enabled',
   'responses_websocket_enabled',
   'system_prompt',
@@ -343,7 +349,7 @@ function channelConfigurationBlockClassName(
   className?: string
 ) {
   return cn(
-    'border-border/60 rounded-lg border p-4 transition-colors',
+    'border-border/60 rounded-lg border p-4 transition-colors duration-(--motion-fast) ease-(--ease-out)',
     status === 'configured' && 'border-primary/35 ring-primary/20 ring-1',
     status === 'error' && 'border-destructive/50 ring-destructive/20 ring-1',
     className
@@ -465,6 +471,11 @@ export function ChannelMutateDrawer({
     setDrawerSide(requestedSide)
   }
   const channelId = currentRow?.id ?? null
+  // The channel name arrives from the list row and lives here while the drawer
+  // is open, so only one element claims it at a time (contract §9.2).
+  const headerName = useSharedName(
+    open && channelId ? sharedElementName('channel', channelId) : undefined
+  )
   const sensitiveLocked = isEditing && !canEditSensitive
   const [providerTarget, setProviderTarget] =
     useState<ChannelProviderTarget | null>(null)
@@ -537,13 +548,6 @@ export function ChannelMutateDrawer({
     meta: { errorToast: false },
   })
 
-  // Fetch available groups
-  const { data: groupsData, isLoading: isLoadingGroups } = useQuery({
-    queryKey: ['groups'],
-    queryFn: async () => requireServerSuccess(await getGroups()),
-    enabled: open && !showProviderPicker,
-  })
-
   // Fetch all available models
   const { data: allModelsData } = useQuery({
     queryKey: ['channel_models'],
@@ -578,7 +582,6 @@ export function ChannelMutateDrawer({
   const multiKeyMode = formValues.multi_key_mode
   const multiKeyType = formValues.multi_key_type
   const keyMode = formValues.key_mode
-  const currentGroups = formValues.group
   const currentType = formValues.type
   const baseUrlPlaceholder = [CHANNEL_TYPE_VLLM, CHANNEL_TYPE_SGLANG].includes(
     currentType
@@ -737,16 +740,6 @@ export function ChannelMutateDrawer({
     () => prefillGroupsData?.data || [],
     [prefillGroupsData]
   )
-
-  // Transform groups to multi-select options
-  const groupOptions = useMemo(() => {
-    if (!groupsData?.data) return []
-    const allGroups = new Set([...groupsData.data, ...(currentGroups || [])])
-    return [...allGroups].map((group) => ({
-      value: group,
-      label: group,
-    }))
-  }, [groupsData, currentGroups])
 
   // Parse current models as array
   const currentModelsArray = useMemo(
@@ -2159,6 +2152,126 @@ export function ChannelMutateDrawer({
     />
   )
 
+  const concurrencyCapacityFields = (
+    <div
+      className={channelConfigurationBlockClassName(
+        configuration.blocks.concurrencyCapacity,
+        'space-y-3'
+      )}
+    >
+      <CardHeading
+        status={configuration.blocks.concurrencyCapacity}
+        title={t('Per-User Concurrency Limit')}
+        icon={<Gauge className='size-4' />}
+        iconTone='info'
+      />
+      <FormField
+        control={form.control}
+        name='concurrency_limit'
+        render={({ field }) => {
+          const limit = field.value ?? 0
+          return (
+            <FormItem>
+              <div className='flex flex-wrap items-center gap-2'>
+                <FormControl>
+                  <Input
+                    type='number'
+                    aria-label={t('Per-User Concurrency Limit')}
+                    placeholder='0'
+                    disabled={sensitiveLocked}
+                    className='w-28 tabular-nums'
+                    value={limit}
+                    onChange={(event) =>
+                      field.onChange(Number(event.target.value))
+                    }
+                  />
+                </FormControl>
+                <div className='flex items-center gap-1.5'>
+                  {[0, 3, 5, 10].map((preset) => (
+                    <Button
+                      key={preset}
+                      type='button'
+                      size='sm'
+                      variant={limit === preset ? 'default' : 'outline'}
+                      disabled={sensitiveLocked}
+                      onClick={() =>
+                        form.setValue('concurrency_limit', preset, {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        })
+                      }
+                    >
+                      {preset === 0 ? t('Unlimited') : preset}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+              <FormDescription>
+                {t(
+                  "Maximum simultaneous generations each user may run on this channel; 0 or empty means unlimited. Every account, including all of its tokens and keys, gets this many slots and never consumes another account's slots."
+                )}
+              </FormDescription>
+              <FormMessage />
+            </FormItem>
+          )
+        }}
+      />
+      <FormField
+        control={form.control}
+        name='concurrency_total_url'
+        render={({ field }) => (
+          <FormItem>
+            <FormControl>
+              <Input
+                aria-label={t('Pool Status URL')}
+                placeholder='http://pool.example.test:8788/health'
+                disabled={sensitiveLocked}
+                {...field}
+              />
+            </FormControl>
+            <FormDescription>
+              {t(
+                'Optional. Fetch JSON accounts_ready from this URL and cap the whole channel at accounts_ready × generations per pool account; empty means no channel-wide cap.'
+              )}
+            </FormDescription>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+      <FormField
+        control={form.control}
+        name='concurrency_total_per_account'
+        render={({ field }) => {
+          const perAccount = field.value ?? 0
+          return (
+            <FormItem>
+              <FormControl>
+                <Input
+                  type='number'
+                  aria-label={t('Generations per Pool Account')}
+                  placeholder='2'
+                  min={0}
+                  disabled={sensitiveLocked}
+                  className='w-28 tabular-nums'
+                  value={perAccount}
+                  onChange={(event) =>
+                    field.onChange(Number(event.target.value))
+                  }
+                />
+              </FormControl>
+              <FormDescription>
+                {t(
+                  'How many live generations one available pooled upstream account serves; empty or 0 means the default of 2.'
+                )}
+              </FormDescription>
+              <FormMessage />
+            </FormItem>
+          )
+        }}
+      />
+    </div>
+  )
+
   const routingFields = (
     <div
       role='group'
@@ -2553,7 +2666,7 @@ export function ChannelMutateDrawer({
 
   const basicSection = (
     <div className='scroll-mt-4'>
-      <ChannelBasicSection>
+      <ChannelBasicSection delay={0}>
         <div className='grid gap-4'>
           <FormField
             control={form.control}
@@ -3088,7 +3201,7 @@ export function ChannelMutateDrawer({
 
   const modelsSection = (
     <div className='scroll-mt-4'>
-      <ChannelModelsSection>
+      <ChannelModelsSection delay={0.04}>
         <div className='space-y-5'>
           <div className='border-border/60 bg-muted/10 rounded-lg border p-4'>
             {currentType === CHANNEL_TYPE_NEW_API &&
@@ -3481,36 +3594,6 @@ export function ChannelMutateDrawer({
               )}
             </div>
           </div>
-
-          <div className='border-border/60 rounded-lg border p-4'>
-            <FormField
-              control={form.control}
-              name='group'
-              render={({ field }) => (
-                <FormItem className='space-y-3'>
-                  <div className='space-y-1'>
-                    <FormLabel required>{t('Groups')}</FormLabel>
-                    <FormDescription>
-                      {t(FIELD_DESCRIPTIONS.GROUP)}
-                    </FormDescription>
-                  </div>
-                  <FormControl>
-                    {isLoadingGroups ? (
-                      <Skeleton className='h-10 w-full' />
-                    ) : (
-                      <MultiSelect
-                        options={groupOptions}
-                        selected={field.value}
-                        onChange={field.onChange}
-                        placeholder={t(FIELD_PLACEHOLDERS.GROUP)}
-                      />
-                    )}
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </div>
         </div>
       </ChannelModelsSection>
     </div>
@@ -3518,7 +3601,7 @@ export function ChannelMutateDrawer({
 
   const connectionSection = (
     <div className='scroll-mt-4'>
-      <ChannelApiAccessSection>
+      <ChannelApiAccessSection delay={0.08}>
         {CHANNEL_TYPE_WARNINGS[currentType] && (
           <Alert>
             <AlertDescription>
@@ -4669,6 +4752,7 @@ export function ChannelMutateDrawer({
         }
         other={
           <>
+            {concurrencyCapacityFields}
             <div
               role='group'
               aria-label={t('Channel Extra Settings')}
@@ -4731,6 +4815,15 @@ export function ChannelMutateDrawer({
                       {isEditing ? t('Edit Channel') : t('Create Channel')}
                     </span>
                   </SheetTitle>
+                  {currentRow?.name && (
+                    <span
+                      {...headerName}
+                      data-shared-morph
+                      className='text-muted-foreground min-w-0 truncate text-sm'
+                    >
+                      {currentRow.name}
+                    </span>
+                  )}
                   {(!showProviderPicker || providerTarget) && (
                     <Button
                       ref={providerControlRef}

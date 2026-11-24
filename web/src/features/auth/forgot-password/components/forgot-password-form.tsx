@@ -24,6 +24,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import type { z } from 'zod'
 
+import { IconCrossfade } from '@/components/motion/icon-crossfade'
 import { Turnstile } from '@/components/turnstile'
 import { Button } from '@/components/ui/button'
 import {
@@ -109,7 +110,7 @@ export function ForgotPasswordForm({
           name='email'
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Email</FormLabel>
+              <FormLabel>{t('Email')}</FormLabel>
               <FormControl>
                 <Input placeholder='name@example.com' {...field} />
               </FormControl>
@@ -126,7 +127,13 @@ export function ForgotPasswordForm({
           {isActive
             ? t('Resend ({{seconds}}s)', { seconds: secondsLeft })
             : t('Send reset email')}
-          {isLoading ? <Loader2 className='animate-spin' /> : <ArrowRight />}
+          <IconCrossfade
+            state={isLoading ? 'loading' : 'idle'}
+            glyphs={[
+              { key: 'idle', glyph: <ArrowRight /> },
+              { key: 'loading', glyph: <Loader2 className='animate-spin' /> },
+            ]}
+          />
         </Button>
 
         {isTurnstileEnabled && (

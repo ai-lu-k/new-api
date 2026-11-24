@@ -45,6 +45,9 @@ func cleanupAuthArtifacts() {
 	if err := model.DeleteOldRevokedUserSessions(now.Unix()); err != nil {
 		common.SysError("failed to delete old revoked user sessions: " + err.Error())
 	}
+	if err := model.ClearExpiredRegistrationSignals(now); err != nil {
+		common.SysError("failed to clear registration signals: " + err.Error())
+	}
 	if err := model.DeleteExpiredAuthFlows(now); err != nil {
 		common.SysError("failed to delete expired authentication flows: " + err.Error())
 	}

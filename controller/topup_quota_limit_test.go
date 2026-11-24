@@ -201,3 +201,52 @@ func TestStripeCreditedQuotaIncludesGroupRatio(t *testing.T) {
 	require.NoError(t, common.UpdateTopupGroupRatioByJSONString(`{"free":0}`))
 	assert.True(t, decimal.NewFromInt(500000).Equal(getStripeCreditedQuota(1, "free")))
 }
+
+func TestRequestAmountIncludesVoucherPreviewWithoutChangingPriceContract(t *testing.T) {
+	oldDB, oldRedis := model.DB, common.RedisEnabled
+	initModelListColumnNames(t)
+	oldUnit, oldPrice, oldMin := common.QuotaPerUnit, operation_setting.Price, operation_setting.MinTopUp
+	oldDisplay := operation_setting.GetGeneralSetting().QuotaDisplayType
+	oldDiscount := operation_setting.GetPaymentSetting().AmountDiscount
+	oldRatios := common.TopupGroupRatio2JSONString()
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	model.DB, common.RedisEnabled = db, false
+	common.QuotaPerUnit, operation_setting.Price, operation_setting.MinTopUp = 500000, 1, 1
+	operation_setting.GetGeneralSetting().QuotaDisplayType = operation_setting.QuotaDisplayTypeUSD
+	operation_setting.GetPaymentSetting().AmountDiscount = map[int]float64{}
+	require.NoError(t, common.UpdateTopupGroupRatioByJSONString(`{"default":1}`))
+	t.Cleanup(func() {
+		model.DB, common.RedisEnabled = oldDB, oldRedis
+		common.QuotaPerUnit, operation_setting.Price, operation_setting.MinTopUp = oldUnit, oldPrice, oldMin
+		operation_setting.GetGeneralSetting().QuotaDisplayType = oldDisplay
+		operation_setting.GetPaymentSetting().AmountDiscount = oldDiscount
+		require.NoError(t, common.UpdateTopupGroupRatioByJSONString(oldRatios))
+		require.NoError(t, sqlDB.Close())
+	})
+	require.NoError(t, db.AutoMigrate(&model.User{}))
+	require.NoError(t, db.Create(&model.User{Id: 717, Username: "campaign_quote", Group: "default", Status: common.UserStatusEnabled}).Error)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Set("id", 717)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/user/amount", strings.NewReader(`{"amount":100}`))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+	RequestAmount(ctx)
+	var response struct {
+		Message    string `json:"message"`
+		Data       string `json:"data"`
+		BonusQuota int    `json:"campaign_bonus_quota"`
+		Currency   string `json:"payment_currency"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	assert.Equal(t, "success", response.Message)
+	assert.Equal(t, "100.00", response.Data)
+	assert.Equal(t, "CNY", response.Currency)
+	wantBonus := 0
+	if model.CurrentTopUpCampaign(common.GetTimestamp()).Active {
+		wantBonus = 7_500_000
+	}
+	assert.Equal(t, wantBonus, response.BonusQuota)
+}

@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { Table } from '@tanstack/react-table'
 import { X } from 'lucide-react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -29,6 +30,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { MOTION_SHIFT, MOTION_TRANSITION } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 
 type DataTableBulkActionsProps<TData> = {
@@ -60,6 +62,7 @@ export function DataTableBulkActions<TData>({
   const toolbarRef = useRef<HTMLDivElement>(null)
   const buttonsRef = useRef<HTMLButtonElement[]>([])
   const [announcement, setAnnouncement] = useState('')
+  const shouldReduce = useReducedMotion()
 
   useLayoutEffect(() => {
     buttonsRef.current = toolbarRef.current
@@ -149,13 +152,10 @@ export function DataTableBulkActions<TData>({
     }
   }
 
-  if (selectedCount === 0) {
-    return null
-  }
-
   return (
     <>
-      {/* Live region for screen reader announcements */}
+      {/* Live region for screen reader announcements — always mounted so the
+          announcement is not lost with the bar itself. */}
       <div
         aria-live='polite'
         aria-atomic='true'
@@ -165,84 +165,104 @@ export function DataTableBulkActions<TData>({
         {announcement}
       </div>
 
-      <div
-        ref={toolbarRef}
-        role='toolbar'
-        aria-label={t('Bulk actions for {{count}} selected records', {
-          count: selectedCount,
-        })}
-        aria-describedby='bulk-actions-description'
-        tabIndex={-1}
-        onKeyDown={handleKeyDown}
-        className={cn(
-          placement === 'floating'
-            ? 'fixed bottom-6 left-1/2 z-50 w-max max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-xl transition-all delay-100 duration-300 ease-out hover:scale-105'
-            : 'shrink-0 rounded-xl',
-          'focus-visible:ring-ring/50 focus-visible:ring-2 focus-visible:outline-none'
-        )}
-      >
-        <div
-          className={cn(
-            'p-2 shadow-xl',
-            'rounded-xl border',
-            'bg-background/95 supports-[backdrop-filter]:bg-background/60 backdrop-blur-lg',
-            'flex flex-wrap items-center gap-2'
-          )}
-        >
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant='outline'
-                  size='icon'
-                  onClick={handleClearSelection}
-                  className='size-6'
-                  aria-label={t('Clear selection')}
-                  title={t('Clear selection (Escape)')}
-                />
-              }
-            >
-              <X />
-              <span className='sr-only'>{t('Clear selection')}</span>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>{t('Clear selection (Escape)')}</p>
-            </TooltipContent>
-          </Tooltip>
-
-          <Separator
-            className='h-5'
-            orientation='vertical'
-            aria-hidden='true'
-          />
-
-          <div
-            className='flex items-center gap-x-1 text-sm'
-            id='bulk-actions-description'
+      <AnimatePresence>
+        {selectedCount > 0 && (
+          <motion.div
+            ref={toolbarRef}
+            // The bar is a page-level arrival, not a control: 8 px rise in 220 ms
+            // (contract §2 L2), and it lands above the page footer instead of on
+            // top of it.
+            initial={
+              shouldReduce ? false : { opacity: 0, y: MOTION_SHIFT.control }
+            }
+            animate={{ opacity: 1, y: 0 }}
+            exit={
+              shouldReduce ? undefined : { opacity: 0, y: MOTION_SHIFT.control }
+            }
+            transition={MOTION_TRANSITION.base}
+            role='toolbar'
+            aria-label={t('Bulk actions for {{count}} selected records', {
+              count: selectedCount,
+            })}
+            aria-describedby='bulk-actions-description'
+            tabIndex={-1}
+            onKeyDown={handleKeyDown}
+            className={cn(
+              placement === 'floating'
+                ? // Clear the page footer instead of sitting on top of it: list
+                  // pages portal their pagination there, and the bar used to cover
+                  // the page count and page buttons. `--app-page-footer-height`
+                  // is measured by `SectionPageLayout` and is 0 when a page has no
+                  // footer.
+                  'fixed bottom-[calc(var(--app-page-footer-height,0px)+1rem)] left-1/2 z-50 w-max max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-xl transition-[bottom]'
+                : 'shrink-0 rounded-xl',
+              'focus-visible:ring-ring/50 focus-visible:ring-2 focus-visible:outline-none'
+            )}
           >
-            <Badge
-              variant='default'
-              className='min-w-8 rounded-lg'
-              aria-label={t('{{count}} selected', { count: selectedCount })}
+            <div
+              className={cn(
+                'p-2 shadow-xl',
+                'rounded-xl border',
+                'bg-background/95 supports-[backdrop-filter]:bg-background/60 backdrop-blur-lg',
+                'flex flex-wrap items-center gap-2'
+              )}
             >
-              {selectedCount}
-            </Badge>{' '}
-            <span className='hidden sm:inline'>
-              {entityName}
-              {selectedCount > 1 && /^[a-z]+$/i.test(entityName) ? 's' : ''}
-            </span>{' '}
-            {t('selected')}
-          </div>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant='outline'
+                      size='icon'
+                      onClick={handleClearSelection}
+                      className='size-6'
+                      aria-label={t('Clear selection')}
+                      title={t('Clear selection (Escape)')}
+                    />
+                  }
+                >
+                  <X />
+                  <span className='sr-only'>{t('Clear selection')}</span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{t('Clear selection (Escape)')}</p>
+                </TooltipContent>
+              </Tooltip>
 
-          <Separator
-            className='h-5'
-            orientation='vertical'
-            aria-hidden='true'
-          />
+              <Separator
+                className='h-5'
+                orientation='vertical'
+                aria-hidden='true'
+              />
 
-          {children}
-        </div>
-      </div>
+              <div
+                className='flex items-center gap-x-1 text-sm'
+                id='bulk-actions-description'
+              >
+                <Badge
+                  variant='default'
+                  className='min-w-8 rounded-lg'
+                  aria-label={t('{{count}} selected', { count: selectedCount })}
+                >
+                  {selectedCount}
+                </Badge>{' '}
+                <span className='hidden sm:inline'>
+                  {entityName}
+                  {selectedCount > 1 && /^[a-z]+$/i.test(entityName) ? 's' : ''}
+                </span>{' '}
+                {t('selected')}
+              </div>
+
+              <Separator
+                className='h-5'
+                orientation='vertical'
+                aria-hidden='true'
+              />
+
+              {children}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   )
 }

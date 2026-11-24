@@ -23,6 +23,7 @@ import { describe, expect, test } from 'vitest'
 import { parseTiersFromExpr } from '../lib/billing-expr'
 import { getBillingModeLabelKey } from '../lib/billing-mode'
 import {
+  formatDynamicUnitPrice,
   getCardExamplePrice,
   getDynamicPriceUnitLabelKey,
   getDynamicPricingSummary,
@@ -53,6 +54,59 @@ const summaryOptions = {
   usdExchangeRate: 6,
   groupRatioMultiplier: 2,
 }
+
+describe('per-character speech pricing', () => {
+  test('renders fixed() * chars as a per-10k-character price', () => {
+    const summary = getDynamicPricingSummary(
+      pricingModel({
+        billing_mode: 'tiered_expr',
+        billing_expr: 'tier("char", fixed(0.001)) * chars',
+      }),
+      { tokenUnit: 'M', showRechargePrice: false }
+    )
+
+    expect(summary?.isSpecialExpression).toBe(false)
+    const entry = summary?.entries[0]
+    expect(entry?.label).toBe('Price per 10k characters')
+    expect(entry?.value).toBeCloseTo(10)
+    expect(entry?.unit).toBe('10k_chars')
+    if (!entry) throw new Error('expected a character price entry')
+    expect(getDynamicPriceUnitLabelKey(entry)).toBe('10k characters')
+  })
+
+  test('keeps cheaper character expressions distinct', () => {
+    const summary = getDynamicPricingSummary(
+      pricingModel({
+        billing_mode: 'tiered_expr',
+        billing_expr: 'tier("char", fixed(0.0002)) * chars',
+      }),
+      { tokenUnit: 'M', showRechargePrice: false }
+    )
+
+    expect(summary?.entries[0].value).toBeCloseTo(2)
+  })
+})
+
+describe('display precision', () => {
+  test('writes money with two decimals and keeps a sub-cent unit price non-zero', () => {
+    const options = { tokenUnit: 'M' as const, showRechargePrice: false }
+    // Money: always two decimals, whether the figure is rounded or exact.
+    expect(formatDynamicUnitPrice(0.201, options)).toBe('$0.20')
+    expect(formatDynamicUnitPrice(0.075, options)).toBe('$0.08')
+    expect(formatDynamicUnitPrice(1.5, options)).toBe('$1.50')
+    expect(formatDynamicUnitPrice(6.25, options)).toBe('$6.25')
+    // Below one cent two decimals would read as zero, so the unit price keeps
+    // the digits its own error tolerance needs.
+    expect(formatDynamicUnitPrice(0.0021, options)).toBe('$0.002')
+    expect(formatDynamicUnitPrice(0.00042, options)).toBe('$0.0004')
+    expect(formatDynamicUnitPrice(22.5, { ...options, tokenUnit: 'K' })).toBe(
+      '$0.023'
+    )
+    expect(
+      formatDynamicUnitPrice(0.000015, { ...options, tokenUnit: 'K' })
+    ).not.toBe('$0.00')
+  })
+})
 
 describe('expression price summaries', () => {
   test('keeps request prices unchanged by token units and separates mixed billing units', () => {
@@ -218,7 +272,7 @@ describe('expression price summaries', () => {
       { tokenUnit: 'M' }
     )
     expect(summary?.primaryEntries[0]?.value).toBe(0)
-    expect(summary?.primaryEntries[0]?.formattedRange).toBe('$0 – $0.8')
+    expect(summary?.primaryEntries[0]?.formattedRange).toBe('$0.00 – $0.80')
   })
 })
 
@@ -544,7 +598,7 @@ describe('task dynamic pricing', () => {
 
     assert.ok(example)
     assert.equal(example.label, '720p · 5s')
-    assert.match(example.formatted, /1[.,]0584/)
+    assert.equal(example.formatted, '$1.06')
   })
 
   test('returns null when the expression is not canonical or examples are missing', () => {
@@ -703,7 +757,7 @@ describe('shared plugin price summaries', () => {
       field: 'seconds',
       minValue: 0.4,
       maxValue: 1.2,
-      formattedRange: '$0.4 – $1.2',
+      formattedRange: '$0.40 – $1.20',
       unit: 'second',
     })
   })
@@ -793,7 +847,7 @@ describe('shared plugin price summaries', () => {
     ).toEqual(['credits', 'images'])
     expect(getCardExamplePrice(model, summaryOptions)).toEqual({
       label: 'Beta sample',
-      formatted: '$3',
+      formatted: '$3.00',
     })
   })
 })

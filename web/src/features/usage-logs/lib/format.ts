@@ -235,6 +235,16 @@ export function getResponseTimeColor(
 /**
  * Format model name with mapping indicator
  */
+/**
+ * Names such as `deepseek-v4.1-flash-x0.15` and `team-cli-lab-batch-eval`
+ * share a long prefix and differ at the end, so a tail cut hides the only part
+ * that tells two entries apart. Drop characters from the middle instead.
+ */
+export function truncateMiddle(name: string, maxChars: number, tail = 5) {
+  if (name.length <= maxChars) return name
+  return `${name.slice(0, maxChars - tail - 1)}…${name.slice(-tail)}`
+}
+
 export function formatModelName(log: UsageLog): {
   name: string
   isMapped: boolean
@@ -600,6 +610,16 @@ export function renderAuditContent(
   )
   if (quotaOperation) {
     return `${quotaOperation.summary} · ${quotaOperation.description}`
+  }
+  if (op.action === 'generic') {
+    // The generic template names the HTTP call, which never travels in
+    // `op.params`; read it from the request record instead of leaving the
+    // placeholders on screen. Without one there is nothing to show, so the
+    // caller falls back to the operation-audit wording.
+    const method = other?.audit_info?.method
+    const route = other?.audit_info?.route || other?.audit_info?.path
+    if (!method || !route) return null
+    return `${method} ${route}`
   }
   const params = { ...op.params }
   return t(template, params)

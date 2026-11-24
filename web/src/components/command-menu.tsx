@@ -17,8 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useLocation, useNavigate } from '@tanstack/react-router'
-import { ArrowRight, ChevronRight, Laptop, Moon, Sun } from 'lucide-react'
-import React from 'react'
+import { ChevronRight, Laptop, Moon, Sun } from 'lucide-react'
+import React, { type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -58,8 +58,20 @@ export function CommandMenu() {
     [setOpen]
   )
 
+  // Rows arrive 10ms apart, capped at eight: the list lands with the panel
+  // instead of trailing behind it (see `[data-motion-panel='feedback']`).
+  let rowIndex = 0
+  const rowStyle = () =>
+    ({ '--motion-row-index': Math.min(rowIndex++, 7) }) as CSSProperties
+
   return (
-    <CommandDialog modal open={open} onOpenChange={setOpen}>
+    <CommandDialog
+      modal
+      open={open}
+      onOpenChange={setOpen}
+      title={t('Command')}
+      description={t('Search')}
+    >
       <Command>
         <CommandInput placeholder={t('Type a command or search...')} />
         <CommandList>
@@ -67,50 +79,80 @@ export function CommandMenu() {
             <CommandEmpty>{t('No results found.')}</CommandEmpty>
             {navGroups.map((group) => (
               <CommandGroup key={group.id || group.title} heading={group.title}>
-                {group.items.map((navItem, i) => {
-                  if (navItem.url)
+                {group.items.map((navItem) => {
+                  // Same icons as the sidebar: they make the row scannable and
+                  // replace the placeholder arrow that read as a stray glyph.
+                  const ItemIcon = navItem.icon
+
+                  if (navItem.url) {
                     return (
                       <CommandItem
-                        key={`${navItem.url}-${i}`}
+                        key={navItem.url}
                         value={navItem.title}
+                        data-motion-row=''
+                        style={rowStyle()}
                         onSelect={() => {
                           runCommand(() => navigate({ to: navItem.url }))
                         }}
                       >
-                        <div className='flex size-4 items-center justify-center'>
-                          <ArrowRight className='text-muted-foreground/80 size-2' />
-                        </div>
+                        {ItemIcon ? (
+                          <ItemIcon
+                            aria-hidden='true'
+                            className='text-muted-foreground size-4 shrink-0'
+                          />
+                        ) : null}
                         {navItem.title}
                       </CommandItem>
                     )
+                  }
 
-                  return navItem.items?.map((subItem, i) => (
+                  return navItem.items?.map((subItem) => (
                     <CommandItem
-                      key={`${navItem.title}-${subItem.url}-${i}`}
+                      key={`${navItem.title}-${subItem.url}`}
                       value={`${navItem.title}-${subItem.url}`}
+                      data-motion-row=''
+                      style={rowStyle()}
                       onSelect={() => {
                         runCommand(() => navigate({ to: subItem.url }))
                       }}
                     >
-                      <div className='flex size-4 items-center justify-center'>
-                        <ArrowRight className='text-muted-foreground/80 size-2' />
-                      </div>
-                      {navItem.title} <ChevronRight /> {subItem.title}
+                      {ItemIcon ? (
+                        <ItemIcon
+                          aria-hidden='true'
+                          className='text-muted-foreground size-4 shrink-0'
+                        />
+                      ) : null}
+                      {navItem.title}
+                      <ChevronRight
+                        aria-hidden='true'
+                        className='text-muted-foreground size-3 shrink-0'
+                      />
+                      {subItem.title}
                     </CommandItem>
                   ))
                 })}
               </CommandGroup>
             ))}
             <CommandSeparator />
-            <CommandGroup heading='Theme'>
-              <CommandItem onSelect={() => runCommand(() => setTheme('light'))}>
+            <CommandGroup heading={t('Theme')}>
+              <CommandItem
+                data-motion-row=''
+                style={rowStyle()}
+                onSelect={() => runCommand(() => setTheme('light'))}
+              >
                 <Sun /> <span>{t('Light')}</span>
               </CommandItem>
-              <CommandItem onSelect={() => runCommand(() => setTheme('dark'))}>
+              <CommandItem
+                data-motion-row=''
+                style={rowStyle()}
+                onSelect={() => runCommand(() => setTheme('dark'))}
+              >
                 <Moon className='scale-90' />
                 <span>{t('Dark')}</span>
               </CommandItem>
               <CommandItem
+                data-motion-row=''
+                style={rowStyle()}
                 onSelect={() => runCommand(() => setTheme('system'))}
               >
                 <Laptop />
@@ -119,6 +161,22 @@ export function CommandMenu() {
             </CommandGroup>
           </ScrollArea>
         </CommandList>
+        {/* Keyboard hints: the list is fully operable without the mouse, and
+            the panel says so instead of leaving it to be discovered. */}
+        <div className='text-muted-foreground flex items-center gap-3 border-t px-3 py-2 text-[11px]'>
+          <span className='flex items-center gap-1'>
+            <kbd className='bg-muted rounded-sm px-1 py-0.5 font-sans'>↑↓</kbd>
+            {t('Select')}
+          </span>
+          <span className='flex items-center gap-1'>
+            <kbd className='bg-muted rounded-sm px-1 py-0.5 font-sans'>↵</kbd>
+            {t('Open')}
+          </span>
+          <span className='flex items-center gap-1'>
+            <kbd className='bg-muted rounded-sm px-1 py-0.5 font-sans'>Esc</kbd>
+            {t('Close')}
+          </span>
+        </div>
       </Command>
     </CommandDialog>
   )

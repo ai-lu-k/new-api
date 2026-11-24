@@ -32,6 +32,33 @@ import { useSidebarData } from './use-sidebar-data'
 const ROOT_VIEW_KEY = '__root'
 
 /**
+ * Root navigation groups the current user may actually reach.
+ *
+ * Applies admin-only group visibility (role-based) and the
+ * `useSidebarConfig` admin × user `sidebar_modules` overlay, so callers
+ * outside the sidebar (the profile menu's popular entries) inherit the
+ * same permissions without re-implementing those rules.
+ */
+export function useAccessibleRootNavGroups(): NavGroup[] {
+  const userRole = useAuthStore((s) => s.auth.user?.role)
+  const rootSidebarData = useSidebarData()
+  const configFilteredRoot = useSidebarConfig(rootSidebarData.navGroups)
+
+  return useMemo<NavGroup[]>(() => {
+    const role = userRole ?? ROLE.GUEST
+    const isAdmin = role >= ROLE.ADMIN
+    return configFilteredRoot
+      .filter((group) => (group.id === 'admin' ? isAdmin : true))
+      .map((group) => {
+        const items = group.items.filter(
+          (item) => item.requiredRole === undefined || role >= item.requiredRole
+        )
+        return items.length === group.items.length ? group : { ...group, items }
+      })
+  }, [configFilteredRoot, userRole])
+}
+
+/**
  * Resolve the active sidebar view for the current location.
  *
  * - Returns the matching nested {@link SidebarView} (with its nav
@@ -47,22 +74,7 @@ const ROOT_VIEW_KEY = '__root'
 export function useSidebarView(): ResolvedSidebarView {
   const { t } = useTranslation()
   const pathname = useLocation({ select: (l) => l.pathname })
-  const userRole = useAuthStore((s) => s.auth.user?.role)
-  const rootSidebarData = useSidebarData()
-  const configFilteredRoot = useSidebarConfig(rootSidebarData.navGroups)
-
-  const rootNavGroups = useMemo<NavGroup[]>(() => {
-    const role = userRole ?? ROLE.GUEST
-    const isAdmin = role >= ROLE.ADMIN
-    return configFilteredRoot
-      .filter((group) => (group.id === 'admin' ? isAdmin : true))
-      .map((group) => {
-        const items = group.items.filter(
-          (item) => item.requiredRole === undefined || role >= item.requiredRole
-        )
-        return items.length === group.items.length ? group : { ...group, items }
-      })
-  }, [configFilteredRoot, userRole])
+  const rootNavGroups = useAccessibleRootNavGroups()
 
   const view = resolveSidebarView(pathname)
 

@@ -139,48 +139,46 @@ func normalizeClickHouseDSN(dsn string) string {
 
 func chooseDB(envName string, isLog bool) (*gorm.DB, common.DatabaseType, error) {
 	dsn := os.Getenv(envName)
-	if dsn != "" {
-		if isClickHouseDSN(dsn) {
-			if !isLog {
-				return nil, "", fmt.Errorf("%s does not support ClickHouse; use SQLite, MySQL, or PostgreSQL for the primary database and LOG_SQL_DSN for ClickHouse logs", envName)
-			}
-			common.SysLog("using ClickHouse as log database")
-			db, err := gorm.Open(clickhouse.Open(normalizeClickHouseDSN(dsn)), newGormConfig(false))
-			return db, common.DatabaseTypeClickHouse, err
+	if dsn == "" || strings.HasPrefix(dsn, "local") {
+		common.SysLog("using SQLite as database")
+		sqliteDSN, err := common.SQLiteDSN(common.SQLitePath)
+		if err != nil {
+			return nil, common.DatabaseTypeSQLite, err
 		}
-		if strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://") {
-			// Use PostgreSQL
-			common.SysLog("using PostgreSQL as database")
-			// 同时关闭 pgx 隐式与 GORM 显式预处理语句:命名 prepared statement 与
-			// 事务池代理(PgBouncer/Neon/Supabase)不兼容,会触发 FATAL 08P01/42P05。
-			db, err := gorm.Open(postgresMigrationDialector{postgres.Dialector{Config: &postgres.Config{
-				DSN:                  dsn,
-				PreferSimpleProtocol: true,
-			}}}, newGormConfig(false))
-			return db, common.DatabaseTypePostgreSQL, err
-		}
-		if strings.HasPrefix(dsn, "local") {
-			common.SysLog("SQL_DSN not set, using SQLite as database")
-			db, err := gorm.Open(sqlite.Open(common.SQLitePath), newGormConfig(true))
-			return db, common.DatabaseTypeSQLite, err
-		}
-		// Use MySQL
-		common.SysLog("using MySQL as database")
-		// check parseTime
-		if !strings.Contains(dsn, "parseTime") {
-			if strings.Contains(dsn, "?") {
-				dsn += "&parseTime=true"
-			} else {
-				dsn += "?parseTime=true"
-			}
-		}
-		db, err := gorm.Open(mysqlMigrationDialector{mysql.Dialector{Config: &mysql.Config{DSN: dsn}}}, newGormConfig(true))
-		return db, common.DatabaseTypeMySQL, err
+		db, err := gorm.Open(sqlite.Open(sqliteDSN), newGormConfig(true))
+		return db, common.DatabaseTypeSQLite, err
 	}
-	// Use SQLite
-	common.SysLog("SQL_DSN not set, using SQLite as database")
-	db, err := gorm.Open(sqlite.Open(common.SQLitePath), newGormConfig(true))
-	return db, common.DatabaseTypeSQLite, err
+	if isClickHouseDSN(dsn) {
+		if !isLog {
+			return nil, "", fmt.Errorf("%s does not support ClickHouse; use SQLite, MySQL, or PostgreSQL for the primary database and LOG_SQL_DSN for ClickHouse logs", envName)
+		}
+		common.SysLog("using ClickHouse as log database")
+		db, err := gorm.Open(clickhouse.Open(normalizeClickHouseDSN(dsn)), newGormConfig(false))
+		return db, common.DatabaseTypeClickHouse, err
+	}
+	if strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://") {
+		// Use PostgreSQL
+		common.SysLog("using PostgreSQL as database")
+		// 同时关闭 pgx 隐式与 GORM 显式预处理语句:命名 prepared statement 与
+		// 事务池代理(PgBouncer/Neon/Supabase)不兼容,会触发 FATAL 08P01/42P05。
+		db, err := gorm.Open(postgresMigrationDialector{postgres.Dialector{Config: &postgres.Config{
+			DSN:                  dsn,
+			PreferSimpleProtocol: true,
+		}}}, newGormConfig(false))
+		return db, common.DatabaseTypePostgreSQL, err
+	}
+	// Use MySQL
+	common.SysLog("using MySQL as database")
+	// check parseTime
+	if !strings.Contains(dsn, "parseTime") {
+		if strings.Contains(dsn, "?") {
+			dsn += "&parseTime=true"
+		} else {
+			dsn += "?parseTime=true"
+		}
+	}
+	db, err := gorm.Open(mysqlMigrationDialector{mysql.Dialector{Config: &mysql.Config{DSN: dsn}}}, newGormConfig(true))
+	return db, common.DatabaseTypeMySQL, err
 }
 
 func InitDB() (err error) {
@@ -337,18 +335,39 @@ func migrateDB() error {
 	err := DB.AutoMigrate(
 		&Channel{},
 		&Token{},
+		&TokenPlanAccount{},
+		&TokenPlanWeek{},
+		&TokenPlanReservation{},
+		&TokenPlanResetCoupon{},
+		&TokenPlanCouponBatch{},
+		&TokenPlanResetOperation{},
+		&Voucher{},
+		&VoucherBatch{},
+		&GiftConsumptionDaily{},
+		&ReferralReward{},
+		&RegistrationReward{},
+		&RegistrationRewardLock{},
 		&User{},
+		&ChannelGenerationSlot{},
+		&UpstreamLatencyObservation{},
+		&UpstreamLatencyFunction{},
+		&RelayObservation{},
+		&ModelDailyTokenUsage{}, &ModelDailyTokenReceipt{},
 		&UserSession{},
 		&AuthFlow{},
 		&ExternalIdentityClaim{},
 		&PasskeyCredential{},
 		&Option{},
+		&LegalVersion{},
+		&LegalConsent{},
 		&LoginEncryptionKey{},
 		&Redemption{},
 		&Ability{},
 		&Log{},
 		&Midjourney{},
 		&TopUp{},
+		&UpstreamAccount{},
+		&UpstreamTopUp{},
 		&QuotaData{},
 		&Task{},
 		&TaskPlugin{},
@@ -359,6 +378,14 @@ func migrateDB() error {
 		&TwoFA{},
 		&TwoFABackupCode{},
 		&Checkin{},
+		&CampaignParticipant{},
+		&CampaignSolve{},
+		&CampaignAward{},
+		&CampaignState{},
+		&Ticket{},
+		&TicketMessage{},
+		&TicketAttachment{},
+		&TicketEvent{},
 		&SubscriptionOrder{},
 		&UserSubscription{},
 		&SubscriptionPreConsumeRecord{},
@@ -370,8 +397,13 @@ func migrateDB() error {
 		&SystemTaskLock{},
 		&CasbinRule{},
 		&AuthzRole{},
+		&PageViewDaily{},
+		&QQBinding{},
 	)
 	if err != nil {
+		return err
+	}
+	if err := MigrateTokenPlanCouponAcknowledgements(DB); err != nil {
 		return err
 	}
 	if err := InitializeUserAuthVersions(); err != nil {

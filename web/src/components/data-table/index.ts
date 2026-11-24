@@ -62,9 +62,22 @@ export {
   type DataTableViewMode,
 } from './hooks/use-data-table-view-mode'
 export { useDebouncedColumnFilter } from './hooks/use-debounced-column-filter'
+export { getListEntranceSignature, getRowDiffKey } from './core/list-signature'
 
 export const DISABLED_ROW_DESKTOP =
   '[--data-table-card-bg:var(--table-disabled)] hover:[--data-table-card-bg:var(--table-disabled-hover)] data-[state=selected]:![--data-table-card-bg:var(--table-disabled)] data-[state=selected]:hover:![--data-table-card-bg:var(--table-disabled-hover)] [background-color:var(--table-disabled)] hover:[background-color:var(--table-disabled-hover)] [&>td:first-child]:[border-left-color:var(--table-disabled-border)] [&>td:first-child]:border-l-4 [&>td:first-child]:pl-1'
 
 export const DISABLED_ROW_MOBILE =
   '[--data-table-card-bg:var(--table-disabled)] data-[state=selected]:![--data-table-card-bg:var(--table-disabled)] [background-color:var(--table-disabled)]'
+
+/**
+ * The section surface: a 1 px black rule on top and no side or bottom border,
+ * so a list reads as part of the page grid instead of a floating card. Use it
+ * as `DataTablePage`'s `tableClassName`; the same rule frames the full-bleed
+ * overview cards.
+ */
+export const SECTION_FRAME_CLASSNAME =
+  'rounded-none border-x-0 border-b-0 border-t-foreground'
+
+/** Table head cells at the section scale: 48 px tall, hairline sized text. */
+export const SECTION_TABLE_HEAD_CLASSNAME = '[&_th]:h-12 [&_th]:font-normal'

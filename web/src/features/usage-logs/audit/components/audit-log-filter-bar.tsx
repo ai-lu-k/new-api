@@ -16,11 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Combobox } from '@/components/ui/combobox'
 import type { Table } from '@tanstack/react-table'
 import { useTranslation } from 'react-i18next'
 
-
+import { Combobox } from '@/components/ui/combobox'
 
 import { CompactDateTimeRangePicker } from '../../components/compact-date-time-range-picker'
 import {
@@ -37,16 +36,16 @@ function AuditFilterSelect(props: {
   onChange: (value: string) => void
 }) {
   return (
-    <LogsFilterField>
+    <LogsFilterField label={props.label}>
       <Combobox
-options={props.options}
-value={props.value}
-onValueChange={(value) => {
+        options={props.options}
+        value={props.value}
+        onValueChange={(value) => {
           if (value !== null) props.onChange(value)
         }}
-aria-label={props.label}
-className='w-full'
-/>
+        aria-label={props.label}
+        className='w-full'
+      />
     </LogsFilterField>
   )
 }
@@ -66,7 +65,7 @@ export function AuditLogFilterBar(props: {
 }) {
   const { t } = useTranslation()
   const dateFilter = (
-    <LogsFilterField wide>
+    <LogsFilterField label={t('Date Range')}>
       <CompactDateTimeRangePicker
         start={
           props.filters.start_timestamp === undefined
@@ -140,49 +139,48 @@ export function AuditLogFilterBar(props: {
       )}
     </>
   )
-  const advancedFilters =
-    !props.accessOnly || props.scope === 'all' ? (
-      <>
-        {!props.accessOnly && (
-          <>
-            <LogsFilterField>
-              <LogsFilterInput
-                aria-label={t('Token identifier')}
-                placeholder={t('Token identifier')}
-                value={props.filters.token_ref ?? ''}
-                onChange={(event) =>
-                  props.onChange({ token_ref: event.target.value || undefined })
-                }
-              />
-            </LogsFilterField>
-            <LogsFilterField>
-              <LogsFilterInput
-                aria-label={t('Request ID')}
-                placeholder={t('Request ID')}
-                value={props.filters.request_id ?? ''}
-                onChange={(event) =>
-                  props.onChange({
-                    request_id: event.target.value || undefined,
-                  })
-                }
-              />
-            </LogsFilterField>
-          </>
-        )}
-        {props.scope === 'all' && (
-          <LogsFilterField>
+  const advancedFilters = (
+    <>
+      {!props.accessOnly && (
+        <>
+          <LogsFilterField label={t('Token identifier')}>
             <LogsFilterInput
-              aria-label={t('Username')}
-              placeholder={t('Username')}
-              value={props.filters.username ?? ''}
+              aria-label={t('Token identifier')}
+              placeholder={t('Token identifier')}
+              value={props.filters.token_ref ?? ''}
               onChange={(event) =>
-                props.onChange({ username: event.target.value || undefined })
+                props.onChange({ token_ref: event.target.value || undefined })
               }
             />
           </LogsFilterField>
-        )}
-      </>
-    ) : undefined
+          <LogsFilterField label={t('Request ID')}>
+            <LogsFilterInput
+              aria-label={t('Request ID')}
+              placeholder={t('Request ID')}
+              value={props.filters.request_id ?? ''}
+              onChange={(event) =>
+                props.onChange({
+                  request_id: event.target.value || undefined,
+                })
+              }
+            />
+          </LogsFilterField>
+        </>
+      )}
+      {props.scope === 'all' && (
+        <LogsFilterField label={t('Username')}>
+          <LogsFilterInput
+            aria-label={t('Username')}
+            placeholder={t('Username')}
+            value={props.filters.username ?? ''}
+            onChange={(event) =>
+              props.onChange({ username: event.target.value || undefined })
+            }
+          />
+        </LogsFilterField>
+      )}
+    </>
+  )
   const advancedCount = [
     props.filters.token_ref,
     props.filters.request_id,
@@ -202,13 +200,14 @@ export function AuditLogFilterBar(props: {
   return (
     <LogsFilterToolbar
       table={props.table}
+      recordsTitle={t('Operation audit')}
       primaryFilters={
         <>
           {dateFilter}
           {mainFilters}
         </>
       }
-      advancedFilters={advancedFilters}
+      desktopSecondaryFilters={advancedFilters}
       mobilePinnedFilters={dateFilter}
       mobileFilters={
         <>
@@ -217,9 +216,7 @@ export function AuditLogFilterBar(props: {
         </>
       }
       mobileFilterCount={filterCount}
-      advancedFilterCount={advancedCount}
       hasActiveFilters={hasFilters}
-      hasAdvancedActiveFilters={advancedCount > 0}
       searchLoading={props.isFetching}
       onSearch={props.onSearch}
       onReset={props.onReset}

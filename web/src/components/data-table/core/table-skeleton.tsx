@@ -58,6 +58,10 @@ export function TableSkeleton<TData>({
       {Array.from({ length: finalRowCount }, (_, rowIndex) => (
         <TableRow
           key={`${keyPrefix}-${rowIndex}`}
+          // Keyed like a data row so the hand-off to the content reads the
+          // placeholder rows as rows that left: they fade out where they are
+          // while the real rows rise in (motion contract §10.1).
+          data-diff-key={`${keyPrefix}-${rowIndex}`}
           className={cn(rowHeight, 'border-b')}
         >
           {visibleColumns.map((column, colIndex) => {

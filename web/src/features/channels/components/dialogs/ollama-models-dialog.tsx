@@ -40,6 +40,7 @@ import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
 import { getFreshAuthHeaders } from '@/lib/api'
+import { requestEnvironmentReload } from '@/lib/environment'
 import { handleServerError } from '@/lib/handle-server-error'
 
 import {
@@ -258,6 +259,10 @@ export function OllamaModelsDialog({
         signal: controller.signal,
       })
 
+      if (response.status === 409) {
+        const failure = await response.json().catch(() => null)
+        if (failure?.code === 'ENVIRONMENT_CHANGED') requestEnvironmentReload()
+      }
       if (!response.ok || !response.body) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`)
       }

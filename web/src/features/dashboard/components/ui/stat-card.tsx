@@ -17,10 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { LucideIcon } from 'lucide-react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useId, type ReactNode } from 'react'
 
 import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { MOTION_TRANSITION, MOTION_VARIANTS } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 
 type StatCardTone = 'accent-1' | 'accent-2' | 'accent-3'
@@ -52,6 +54,9 @@ interface StatCardProps {
   action?: ReactNode
   iconTone?: IconBadgeTone
   compactMobile?: boolean
+  compact?: boolean
+  inline?: boolean
+  valueClassName?: string
 }
 
 const TONE_CLASSES: Record<StatCardTone, string> = {
@@ -233,6 +238,7 @@ function StatCardDetails(props: { details: StatCardDetail[] }) {
 
 export function StatCard(props: StatCardProps) {
   const Icon = props.icon
+  const shouldReduce = useReducedMotion()
   const tone = props.tone ?? 'accent-3'
   const iconTone = props.iconTone ?? ICON_TONE_BY_STAT_TONE[tone]
   const sparklineVariant = props.sparklineVariant ?? 'bars'
@@ -246,12 +252,14 @@ export function StatCard(props: StatCardProps) {
         )}
       >
         <Skeleton className='h-5 w-16 sm:h-7 sm:w-24' />
-        <Skeleton
-          className={cn(
-            'h-3 w-24 sm:h-3.5 sm:w-32',
-            props.compactMobile && 'hidden sm:block'
-          )}
-        />
+        {!props.compact && (
+          <Skeleton
+            className={cn(
+              'h-3 w-24 sm:h-3.5 sm:w-32',
+              props.compactMobile && 'hidden sm:block'
+            )}
+          />
+        )}
       </div>
     )
   } else if (props.error) {
@@ -260,33 +268,70 @@ export function StatCard(props: StatCardProps) {
         <div className='text-muted-foreground mt-0.5 font-mono text-base font-bold tracking-tight break-all tabular-nums sm:text-2xl'>
           --
         </div>
-        <p
-          className={cn(
-            'text-muted-foreground/60 line-clamp-1 text-[11px] sm:text-xs',
-            props.compactMobile && 'hidden sm:block'
-          )}
-        >
-          {props.description}
-        </p>
+        {!props.compact && (
+          <p
+            className={cn(
+              'text-muted-foreground/60 line-clamp-1 text-[11px] sm:text-xs',
+              props.compactMobile && 'hidden sm:block'
+            )}
+          >
+            {props.description}
+          </p>
+        )}
       </div>
     )
   } else {
     valueContent = (
       <div className='flex flex-col gap-1'>
-        <div className='text-foreground font-mono text-base font-semibold tracking-tight break-all tabular-nums sm:text-2xl'>
-          {props.value}
-        </div>
-        <p
+        <div
           className={cn(
-            'text-muted-foreground/60 line-clamp-1 text-[11px] leading-relaxed sm:text-xs',
-            props.compactMobile && 'hidden sm:block'
+            'text-foreground font-mono font-semibold tracking-tight break-all tabular-nums',
+            props.inline ? 'text-sm sm:text-base' : 'text-base sm:text-2xl',
+            props.valueClassName
           )}
         >
-          {props.description}
-        </p>
+          {props.value}
+        </div>
+        {!props.compact && (
+          <p
+            className={cn(
+              'text-muted-foreground/60 line-clamp-1 text-[11px] leading-relaxed sm:text-xs',
+              props.compactMobile && 'hidden sm:block'
+            )}
+          >
+            {props.description}
+          </p>
+        )}
       </div>
     )
   }
+
+  // The figure arrives where the skeleton was, so the block keeps its box: the
+  // skeleton leaves on the fast token while the value rises 4px on the base
+  // one. With `popLayout` the leaving box is taken out of the flow, which is
+  // what stops the card from growing for a frame.
+  let phase = 'value'
+  if (props.loading) phase = 'skeleton'
+  else if (props.error) phase = 'error'
+  const valueSlot = shouldReduce ? (
+    <div className='min-w-0'>{valueContent}</div>
+  ) : (
+    <AnimatePresence mode='popLayout' initial={false}>
+      <motion.div
+        key={phase}
+        className='min-w-0'
+        initial={MOTION_VARIANTS.fadeIn.initial}
+        animate={MOTION_VARIANTS.fadeIn.animate}
+        exit={{
+          opacity: MOTION_VARIANTS.fadeIn.exit.opacity,
+          transition: MOTION_TRANSITION.exit,
+        }}
+        transition={MOTION_TRANSITION.base}
+      >
+        {valueContent}
+      </motion.div>
+    </AnimatePresence>
+  )
 
   let visualization: ReactNode
   if (props.details?.length) {
@@ -300,7 +345,9 @@ export function StatCard(props: StatCardProps) {
   return (
     <div
       className={cn(
-        'group flex flex-col justify-between sm:min-h-32 sm:gap-3',
+        'group flex flex-col justify-between sm:gap-3',
+        props.inline && 'gap-2 sm:flex-row sm:items-center sm:gap-2',
+        !props.compact && 'sm:min-h-32',
         props.compactMobile ? 'gap-1' : 'gap-1.5'
       )}
     >
@@ -323,9 +370,9 @@ export function StatCard(props: StatCardProps) {
         {props.action && <div className='shrink-0'>{props.action}</div>}
       </div>
 
-      {valueContent}
+      {valueSlot}
 
-      <div className='hidden sm:block'>{visualization}</div>
+      {!props.compact && <div className='hidden sm:block'>{visualization}</div>}
     </div>
   )
 }

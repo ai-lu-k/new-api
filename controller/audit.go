@@ -65,6 +65,13 @@ var auditContentTemplates = map[string]string{
 	"channel.upstream_apply":     "Applied upstream model changes to channel (ID: ${id})",
 	"channel.upstream_apply_all": "Applied upstream model changes to ${count} channels",
 
+	"bot.log.read":       "Support bot read the usage logs of ${target_username} (ID: ${target_user_id}): ${rows} of ${total} rows",
+	"bot.account.read":   "Support bot read the account of ${target_username} (ID: ${target_user_id})",
+	"bot.usage.read":     "Support bot read the usage summary of ${target_username} (ID: ${target_user_id}): ${requests} requests",
+	"bot.binding.read":   "Support bot read a QQ member's account binding (bound: ${bound})",
+	"bot.binding.create": "Support bot bound a QQ member to ${target_username} (ID: ${target_user_id})",
+	"bot.binding.delete": "Support bot removed the QQ binding of ${target_username} (ID: ${target_user_id})",
+
 	"redemption.create":       "Created ${count} redemption codes named ${name} (${quota} each)",
 	"redemption.delete_batch": "Batch deleted ${count} redemption codes",
 

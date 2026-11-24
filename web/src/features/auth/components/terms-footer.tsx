@@ -28,67 +28,34 @@ interface TermsFooterProps {
   status?: SystemStatus | null
 }
 
-export function TermsFooter({
-  variant = 'sign-in',
-  className,
-  status,
-}: TermsFooterProps) {
+export function TermsFooter(props: TermsFooterProps) {
   const { t } = useTranslation()
-  const text =
-    variant === 'sign-in'
-      ? 'By clicking sign in, you agree to our'
-      : 'By creating an account, you agree to our'
-
-  const hasUserAgreement = Boolean(status?.user_agreement_enabled)
-  const hasPrivacyPolicy = Boolean(status?.privacy_policy_enabled)
-
-  if (!hasUserAgreement && !hasPrivacyPolicy) {
-    return null
+  const links: { label: string; href: string }[] = []
+  if (props.status?.user_agreement_enabled) {
+    links.push({ label: t('User Agreement'), href: '/user-agreement' })
   }
-
-  const agreementLink = {
-    label: 'User Agreement',
-    href: '/user-agreement',
+  if (props.status?.privacy_policy_enabled) {
+    links.push({ label: t('Privacy Policy'), href: '/privacy-policy' })
   }
-  const privacyLink = {
-    label: 'Privacy Policy',
-    href: '/privacy-policy',
-  }
-
-  const activeLinks =
-    hasUserAgreement || hasPrivacyPolicy
-      ? ([
-          hasUserAgreement ? agreementLink : null,
-          hasPrivacyPolicy ? privacyLink : null,
-        ].filter(Boolean) as Array<{ label: string; href: string }>)
-      : [agreementLink, privacyLink]
-
-  const [firstLink, secondLink] = activeLinks
-
+  if (links.length === 0) return null
   return (
-    <p className={cn('text-muted-foreground text-center text-xs', className)}>
-      {text}{' '}
-      {firstLink && (
-        <a
-          href={firstLink.href}
-          className='hover:text-primary underline underline-offset-4'
-        >
-          {firstLink.label}
-        </a>
+    <p
+      className={cn(
+        'text-muted-foreground text-center text-xs',
+        props.className
       )}
-      {secondLink && (
-        <>
-          {' '}
-          {t('and')}{' '}
+    >
+      {links.map((link, index) => (
+        <span key={link.href}>
+          {index > 0 && ' · '}
           <a
-            href={secondLink.href}
+            href={link.href}
             className='hover:text-primary underline underline-offset-4'
           >
-            {secondLink.label}
+            {link.label}
           </a>
-        </>
-      )}
-      .
+        </span>
+      ))}
     </p>
   )
 }

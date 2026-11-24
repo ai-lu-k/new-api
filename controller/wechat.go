@@ -63,7 +63,19 @@ func WeChatAuth(c *gin.Context) {
 		})
 		return
 	}
-	code := c.Query("code")
+	var request struct {
+		Code         string                 `json:"code"`
+		LegalConsent *model.LegalAcceptance `json:"legal_consent"`
+	}
+	if c.Request.Method == http.MethodPost {
+		if err := common.DecodeJson(c.Request.Body, &request); err != nil {
+			c.Status(http.StatusBadRequest)
+			return
+		}
+	} else {
+		request.Code = c.Query("code")
+	}
+	code := request.Code
 	wechatId, err := getWeChatIdByCode(code)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
@@ -93,18 +105,34 @@ func WeChatAuth(c *gin.Context) {
 		}
 	} else {
 		if common.RegisterEnabled {
+			user.RegistrationRisk = registrationRisk(c)
 			user.Username = "wechat_" + strconv.Itoa(model.GetMaxUserId()+1)
 			user.DisplayName = "WeChat User"
 			user.Role = common.RoleCommonUser
 			user.Status = common.UserStatusEnabled
 
-			if err := user.Insert(0); err != nil {
+			if err := model.DB.Transaction(func(tx *gorm.DB) error {
+				if err := user.InsertWithTx(tx, 0); err != nil {
+					return err
+				}
+				return model.RecordLegalConsentWithTx(tx, user.Id, request.LegalConsent)
+			}); err != nil {
+				if errors.Is(err, model.ErrRegistrationVerificationRequired) {
+					writeSecurityOperationError(c, err)
+					return
+				}
+				if errors.Is(err, model.ErrLegalConsentRequired) || errors.Is(err, model.ErrLegalVersionChanged) {
+					writeLegalError(c, err)
+					return
+				}
 				c.JSON(http.StatusOK, gin.H{
 					"success": false,
 					"message": err.Error(),
 				})
 				return
 			}
+			clearRegistrationProof(c)
+			user.FinishInsert(0)
 		} else {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,

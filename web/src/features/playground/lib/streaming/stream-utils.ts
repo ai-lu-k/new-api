@@ -30,6 +30,8 @@ export type StreamMessageUpdate = {
 }
 
 type StreamErrorPayload = {
+  code?: string
+  message?: string
   error?: {
     code?: string
     message?: string
@@ -52,7 +54,10 @@ export function parseStreamErrorDetails(data?: string): StreamErrorDetails {
     const parsed = JSON.parse(data) as StreamErrorPayload
 
     if (!parsed?.error) {
-      return { errorMessage: fallbackMessage }
+      return {
+        errorCode: parsed.code,
+        errorMessage: parsed.message || fallbackMessage,
+      }
     }
 
     return {

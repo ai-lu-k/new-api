@@ -41,4 +41,4 @@ export {
   getFlowStages,
 } from './flow'
 export { safeDivide, calculateDashboardStats } from './stats'
-export { getPreviewText } from './text'
+export { getPreviewText, joinLabelValue } from './text'

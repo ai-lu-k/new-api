@@ -18,7 +18,11 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 
-import type { HomePageContentResponse } from './types'
+import type {
+  GiftStats,
+  GiftStatsResponse,
+  HomePageContentResponse,
+} from './types'
 
 // ============================================================================
 // Home Page APIs
@@ -36,4 +40,20 @@ export async function getHomePageContent(): Promise<HomePageContentResponse> {
     headers: { 'Cache-Control': null },
   })
   return res.data
+}
+
+/**
+ * Read the gift ledger: how much the site granted today, this week and over 30
+ * days, and through which sources.
+ *
+ * The endpoint is newer than this page, so a site that does not serve it yet
+ * answers 404. That is not an error the reader can act on: the block is simply
+ * left out, which is why the global error handler is skipped here.
+ */
+export async function getGiftStats(): Promise<GiftStats | null> {
+  const res = await api.get<GiftStatsResponse>('/api/gift-stats', {
+    skipErrorHandler: true,
+  })
+  if (!res.data?.success || !res.data.data) return null
+  return res.data.data
 }

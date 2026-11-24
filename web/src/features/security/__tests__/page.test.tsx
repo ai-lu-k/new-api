@@ -159,56 +159,43 @@ async function renderPage(path = '/security') {
 }
 
 describe('security page migration', () => {
-  it('places account management on the left and verification and privacy on the right', async () => {
+  it('stacks the security groups behind a group list that links to each of them', async () => {
     await renderPage()
-    const login = await screen.findByRole('region', {
-      name: 'Login & Authentication',
-    })
+    await screen.findByRole('button', { name: 'Change Password' })
     expect(
       screen
-        .getAllByRole('region')
-        .map((region) => within(region).getAllByRole('heading')[0].textContent)
+        .getAllByRole('heading', { level: 2 })
+        .map((heading) => heading.textContent)
     ).toEqual([
       'Login & Authentication',
+      'Security verification',
       'Sessions & Access',
-      'Account Actions',
       'Privacy',
+      'Account Actions',
     ])
+
+    const nav = screen.getByRole('navigation', { name: 'Security & Access' })
     expect(
-      within(login).getByRole('button', { name: 'Change Password' })
-    ).toBeVisible()
-    expect(within(login).getByText('Account Bindings')).toBeVisible()
-    const verification = screen.getByRole('complementary', {
-      name: 'Security verification',
-    })
-    expect(await within(verification).findByText('Passkey Login')).toBeVisible()
-    expect(
-      await within(verification).findByText('Two-Factor Authentication')
-    ).toBeVisible()
-    expect(
-      within(verification).getByRole('switch', { name: 'Record IP Address' })
-    ).toBeVisible()
-    expect(verification).toHaveClass('xl:sticky', 'xl:top-0')
-    expect(verification.parentElement).toHaveClass(
-      'grid',
-      'xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.46fr)]'
-    )
-    const access = screen.getByRole('region', { name: 'Sessions & Access' })
-    expect(
-      within(access).getByRole('heading', { name: 'Access Token' })
-    ).toBeVisible()
-    expect(
-      await within(access).findByText('No active login sessions')
-    ).toBeVisible()
+      within(nav)
+        .getAllByRole('link')
+        .map((link) => link.getAttribute('href'))
+    ).toEqual([
+      '#security-authentication',
+      '#security-verification',
+      '#security-access',
+      '#security-privacy',
+      '#security-account',
+    ])
+
+    expect(screen.getByText('Account Bindings')).toBeVisible()
+    expect(await screen.findByText('Passkey Login')).toBeVisible()
+    expect(await screen.findByText('Two-Factor Authentication')).toBeVisible()
+    expect(screen.getByRole('heading', { name: 'Access Token' })).toBeVisible()
+    expect(await screen.findByText('No active login sessions')).toBeVisible()
     expect(
       screen.getByRole('switch', { name: 'Record IP Address' })
     ).toBeVisible()
-    expect(
-      within(screen.getByRole('region', { name: 'Account Actions' })).getByRole(
-        'button',
-        { name: 'Delete Account' }
-      )
-    ).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Delete Account' })).toBeVisible()
   })
 
   it('built-in and custom bindings share one compact responsive grid', async () => {

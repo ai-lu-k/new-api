@@ -91,6 +91,9 @@ export interface ChannelSettings {
   system_prompt_override?: boolean
   http_protocol?: 'auto' | 'http1' | string
   http2_connection_shards?: number
+  concurrency_limit?: number
+  concurrency_total_url?: string
+  concurrency_total_per_account?: number
 }
 
 export interface ChannelOtherSettings {

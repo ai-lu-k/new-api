@@ -60,6 +60,45 @@ func GetAllEnableAbilities() []Ability {
 	return abilities
 }
 
+// ChannelOrder is a channel's configured place in a model's routing: the
+// highest priority tier is tried first, and weight decides which channel of a
+// tier the router picks. A channel serving several groups keeps its strongest
+// row, because the funnel report is per model rather than per group.
+type ChannelOrder struct {
+	Priority int64
+	Weight   int64
+}
+
+// GetChannelOrderByModels reads the configured ordering for every model the
+// caller is about to report on, in one query.
+func GetChannelOrderByModels(models []string) (map[string]map[int]ChannelOrder, error) {
+	if len(models) == 0 {
+		return nil, nil
+	}
+	var rows []struct {
+		Model     string
+		ChannelId int
+		Priority  int64
+		Weight    int64
+	}
+	err := DB.Model(&Ability{}).
+		Select("model, channel_id, MAX(priority) AS priority, MAX(weight) AS weight").
+		Where("model IN ? AND enabled = ?", models, true).
+		Group("model, channel_id").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	order := make(map[string]map[int]ChannelOrder, len(rows))
+	for _, row := range rows {
+		if order[row.Model] == nil {
+			order[row.Model] = make(map[int]ChannelOrder)
+		}
+		order[row.Model][row.ChannelId] = ChannelOrder{Priority: row.Priority, Weight: row.Weight}
+	}
+	return order, nil
+}
+
 func getPriority(group string, model string, retry int) (int, error) {
 
 	var priorities []int
@@ -194,8 +233,12 @@ func filterAbilitiesByConstraints(abilities []Ability, modelName string, filters
 		channelsByID[channel.Id] = channel
 	}
 
+	excluded := excludedChannelIds(filters)
 	filtered := make([]Ability, 0, len(abilities))
 	for _, ability := range abilities {
+		if _, skip := excluded[ability.ChannelId]; skip {
+			continue
+		}
 		channel := channelsByID[ability.ChannelId]
 		if ok, _ := ChannelSatisfiesFilters(channel, modelName, filters); ok {
 			filtered = append(filtered, ability)

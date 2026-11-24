@@ -28,6 +28,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import useDialogState from '@/hooks/use-dialog'
 import { useIsSidebarModuleVisible } from '@/hooks/use-sidebar-config'
 import { useUserDisplay } from '@/hooks/use-user-display'
+import { openAuthDialog } from '@/stores/auth-dialog-store'
 import type { AuthUser } from '@/stores/auth-store'
 
 import { MOBILE_DRAWER_ANIMATION, MOBILE_DRAWER_CONFIG } from '../constants'
@@ -121,7 +122,7 @@ function MobileUserProfile({ user, onNavigate }: MobileUserProfileProps) {
           className='text-primary/60 hover:text-primary/80 border-border flex items-center gap-2.5 border-b p-2.5 transition-colors'
         >
           <User className='size-4' />
-          {t('Profile')}
+          {t('Settings')}
         </Link>
 
         {isSecurityVisible && (
@@ -141,7 +142,7 @@ function MobileUserProfile({ user, onNavigate }: MobileUserProfileProps) {
           className='text-primary/60 hover:text-primary/80 border-border flex items-center gap-2.5 border-b p-2.5 transition-colors'
         >
           <Wallet className='size-4' />
-          {t('Wallet')}
+          {t('Top-up')}
         </Link>
 
         {/* Sign out - consistent style */}
@@ -174,7 +175,10 @@ function MobileSignInButton({ onNavigate }: MobileSignInButtonProps) {
       variant='secondary'
       size='sm'
       className='h-10 w-full'
-      render={<Link to='/sign-in' onClick={onNavigate} />}
+      onClick={() => {
+        onNavigate?.()
+        openAuthDialog('sign-in')
+      }}
     >
       {t('Sign in')}
     </Button>

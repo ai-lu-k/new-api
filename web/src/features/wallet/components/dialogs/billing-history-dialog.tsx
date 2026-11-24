@@ -20,7 +20,9 @@ import { Search, Copy, Check, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { CopyButton } from '@/components/copy-button'
 import { Dialog } from '@/components/dialog'
+import { IconCrossfade } from '@/components/motion/icon-crossfade'
 import { StatusBadge } from '@/components/status-badge'
 import {
   AlertDialog,
@@ -45,7 +47,7 @@ import {
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
-import { formatCurrencyFromUSD } from '@/lib/currency'
+import { formatCurrencyFromUSD, formatQuotaWithCurrency } from '@/lib/currency'
 import { formatNumber } from '@/lib/format'
 
 import { useBillingHistory } from '../../hooks/use-billing-history'
@@ -81,7 +83,10 @@ export function BillingHistoryDialog({
   } = useBillingHistory()
 
   const [confirmTradeNo, setConfirmTradeNo] = useState<string | null>(null)
-  const { copyToClipboard, copiedText } = useCopyToClipboard({ notify: false })
+  const { copyToClipboard, copiedText } = useCopyToClipboard({
+    notify: false,
+    resetAfterMs: 1200,
+  })
 
   const totalPages = Math.ceil(total / pageSize)
 
@@ -206,11 +211,23 @@ export function BillingHistoryDialog({
                               className='h-5 w-5 p-0'
                               onClick={() => copyToClipboard(record.trade_no)}
                             >
-                              {copiedText === record.trade_no ? (
-                                <Check className='h-3 w-3' />
-                              ) : (
-                                <Copy className='h-3 w-3' />
-                              )}
+                              <IconCrossfade
+                                state={
+                                  copiedText === record.trade_no
+                                    ? 'copied'
+                                    : 'copy'
+                                }
+                                glyphs={[
+                                  {
+                                    key: 'copy',
+                                    glyph: <Copy className='h-3 w-3' />,
+                                  },
+                                  {
+                                    key: 'copied',
+                                    glyph: <Check className='h-3 w-3' />,
+                                  },
+                                ]}
+                              />
                             </Button>
                             {isAdmin && record.user_id != null && (
                               <StatusBadge
@@ -266,6 +283,38 @@ export function BillingHistoryDialog({
                       </div>
 
                       {/* Admin Actions */}
+                      {record.bonus_redemption && (
+                        <div className='mt-4 space-y-2 border-t pt-3'>
+                          <p className='text-sm font-medium'>
+                            {t('Double 11 voucher')} ·{' '}
+                            {formatQuotaWithCurrency(
+                              record.bonus_redemption.quota
+                            )}
+                          </p>
+                          {record.bonus_redemption.status === 1 &&
+                          (!record.bonus_redemption.expired_time ||
+                            record.bonus_redemption.expired_time * 1000 >=
+                              Date.now()) ? (
+                            <div className='flex min-w-0 items-center gap-2'>
+                              <code className='min-w-0 text-xs break-all'>
+                                {record.bonus_redemption.key}
+                              </code>
+                              <CopyButton
+                                value={record.bonus_redemption.key}
+                                size='sm'
+                                variant='outline'
+                                aria-label={t('Copy voucher code')}
+                              >
+                                {t('Copy')}
+                              </CopyButton>
+                            </div>
+                          ) : (
+                            <p className='text-muted-foreground text-xs'>
+                              {t('Voucher used or unavailable')}
+                            </p>
+                          )}
+                        </div>
+                      )}
                       {isAdmin && record.status === 'pending' && (
                         <div className='mt-4 flex justify-end'>
                           <Button

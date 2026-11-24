@@ -1,0 +1,67 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+/* Auth shell: a brand panel beside the form on wide screens and a compact
+ * header above it on phones. The panel itself is painted by the shader; the
+ * static gradient below only shows when WebGL is unavailable, so it mirrors
+ * the shader's base tone instead of introducing a second art direction. */
+.auth-page-glow {
+  background: radial-gradient(
+    ellipse 70% 100% at 50% 0%,
+    color-mix(in oklab, var(--primary) 16%, transparent),
+    transparent 70%
+  );
+}
+
+.auth-brand {
+  background-color: oklch(0.2 0.05 285);
+  background-image: linear-gradient(
+    152deg,
+    color-mix(in oklab, var(--primary) 32%, oklch(0.14 0.03 285)) 0%,
+    color-mix(in oklab, var(--primary) 11%, oklch(0.11 0.02 300)) 100%
+  );
+}
+
+/* The brand mark sits at the top of the panel, where the gradient is at its
+ * brightest, so it gets its own scrim. The copy block below relies on the
+ * deeper bottom gradient plus its own scrim. */
+.auth-brand::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 6rem;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    oklch(0.26 0.06 285 / 45%),
+    transparent
+  );
+}
+
+.auth-brand::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    to top,
+    oklch(0.2 0.05 300 / 72%) 0%,
+    oklch(0.2 0.05 300 / 24%) 44%,
+    transparent 74%
+  );
+}

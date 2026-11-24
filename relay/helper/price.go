@@ -9,10 +9,12 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/reasoning"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
+	"github.com/QuantumNous/new-api/setting/naming_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	hostreasoning "github.com/QuantumNous/new-api/setting/reasoning"
@@ -64,6 +66,9 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) hostty
 		// normal group ratio
 		groupRatioInfo.GroupRatio = ratio_setting.GetGroupRatio(relayInfo.UsingGroup)
 	}
+
+	// A price tier in the model name scales the price the same way a group does.
+	groupRatioInfo.GroupRatio *= naming_setting.PriceMultiplier(relayInfo.OriginModelName)
 
 	return groupRatioInfo
 }
@@ -216,19 +221,20 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (hosttypes.PriceData, error) {
 	groupRatioInfo := HandleGroupRatio(c, info)
 
-	modelPrice, success := ratio_setting.GetModelPrice(info.OriginModelName, true)
+	billingModelName := naming_setting.BillingName(info.OriginModelName)
+	modelPrice, success := ratio_setting.GetModelPrice(billingModelName, true)
 	usePrice := success
 	var modelRatio float64
 
 	if !success {
-		defaultPrice, ok := ratio_setting.GetDefaultModelPriceMap()[info.OriginModelName]
+		defaultPrice, ok := ratio_setting.GetDefaultModelPriceMap()[billingModelName]
 		if ok {
 			modelPrice = defaultPrice
 			usePrice = true
 		} else {
 			var ratioSuccess bool
 			var matchName string
-			modelRatio, ratioSuccess, matchName = ratio_setting.GetModelRatio(info.OriginModelName)
+			modelRatio, ratioSuccess, matchName = ratio_setting.GetModelRatio(billingModelName)
 			acceptUnsetRatio := false
 			if info.UserSetting.AcceptUnsetRatioModel {
 				acceptUnsetRatio = true
@@ -281,7 +287,11 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (hostt
 	return priceData, nil
 }
 
+// HasModelBillingConfig reports whether a model can be billed. A name that
+// carries a price tier is billed as the model it is a tier of, so it counts
+// when that model has a price.
 func HasModelBillingConfig(modelName string) bool {
+	modelName = naming_setting.BillingName(modelName)
 	if _, ok := ratio_setting.GetModelPrice(modelName, false); ok {
 		return true
 	}
@@ -310,6 +320,7 @@ func HasPriceOrRatioEntry(name string) bool {
 }
 
 func resolveBillingModelName(origin string) string {
+	origin = naming_setting.BillingName(origin)
 	var candidates []string
 	if !reasoning.ParseModelModifiers(origin).HasModifiers() {
 		candidates = append(candidates, origin)
@@ -339,6 +350,20 @@ func resolveBillingModelName(origin string) string {
 	return matched
 }
 
+// speechRequestChars returns the character count of a text-to-speech request
+// input. It reports false for every other relay mode so non-speech requests
+// never carry a chars billing quantity.
+func speechRequestChars(info *relaycommon.RelayInfo) (int, bool) {
+	if info == nil || info.RelayMode != relayconstant.RelayModeAudioSpeech {
+		return 0, false
+	}
+	request, ok := info.Request.(*dto.AudioRequest)
+	if !ok {
+		return 0, false
+	}
+	return len([]rune(request.Input)), true
+}
+
 func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, billingModelName string, promptTokens int, groupRatioInfo hosttypes.GroupRatioInfo) (hosttypes.PriceData, error) {
 	exprStr, ok := billing_setting.GetBillingExpr(billingModelName)
 	if !ok {
@@ -362,6 +387,12 @@ func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, billing
 		requestInput, err = ResolveImageBillingRequestInput(c, info, requestInput)
 		if err != nil {
 			return hosttypes.PriceData{}, err
+		}
+	}
+	if billingexpr.UsedVarsByHash(exprStr, exprHash)["chars"] {
+		if chars, ok := speechRequestChars(info); ok {
+			info.SetBillingChars(chars)
+			requestInput.Chars = &chars
 		}
 	}
 
@@ -396,6 +427,7 @@ func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, billing
 
 	snapshot := &billingexpr.BillingSnapshot{
 		EstimatedImageCount:       trace.ImageCount,
+		EstimatedChars:            trace.Chars,
 		BillingMode:               billing_setting.BillingModeTieredExpr,
 		ModelName:                 billingModelName,
 		ExprString:                exprStr,

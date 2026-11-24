@@ -22,13 +22,10 @@ import type { EventParamsDefinition, IVChart } from '@visactor/vchart'
 import {
   Activity,
   ChevronRight,
-  CircleAlert,
   EyeOff,
-  GitBranch,
   Hash,
   Info,
   Loader2,
-  Route,
   WalletCards,
 } from 'lucide-react'
 import {
@@ -41,16 +38,9 @@ import {
 } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { ErrorState } from '@/components/error-state'
 import { MultiSelect } from '@/components/multi-select'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from '@/components/ui/empty'
-import { IconBadge } from '@/components/ui/icon-badge'
+import { SectionPanel } from '@/components/section-panel'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Toggle } from '@/components/ui/toggle'
@@ -335,6 +325,7 @@ export function FlowCharts(props: FlowChartsProps) {
     error: flowError,
     isError,
     isLoading,
+    refetch: refetchFlow,
   } = useQuery({
     queryKey: ['dashboard', 'flow', flowQueryParams, flowRole],
     queryFn: async () =>
@@ -510,25 +501,21 @@ export function FlowCharts(props: FlowChartsProps) {
     chartContent = <Skeleton className='h-full w-full' />
   } else if (displayState === 'error') {
     chartContent = (
-      <div className='flex h-full items-center justify-center p-4'>
-        <Alert variant='destructive' className='max-w-md'>
-          <CircleAlert />
-          <AlertTitle>{t('Failed to load')}</AlertTitle>
-          <AlertDescription>{flowErrorMessage}</AlertDescription>
-        </Alert>
-      </div>
+      <ErrorState
+        title={t('Failed to load')}
+        description={flowErrorMessage}
+        onRetry={() => {
+          void refetchFlow()
+        }}
+      />
     )
   } else if (displayState === 'empty') {
     chartContent = (
-      <Empty className='h-full border-0 py-12'>
-        <EmptyHeader>
-          <EmptyMedia variant='icon'>
-            <Route />
-          </EmptyMedia>
-          <EmptyTitle>{t('No flow data available')}</EmptyTitle>
-          <EmptyDescription>{t('No data available')}</EmptyDescription>
-        </EmptyHeader>
-      </Empty>
+      <div className='flex h-full items-center justify-center'>
+        <p className='text-muted-foreground text-[13px] leading-snug'>
+          {t('No flow data available')}
+        </p>
+      </div>
     )
   }
 
@@ -565,14 +552,18 @@ export function FlowCharts(props: FlowChartsProps) {
               onValueChange={(value) => setMetric(value as FlowMetric)}
               className='shrink-0'
             >
-              <TabsList aria-label={t('Flow width metric')}>
+              <TabsList
+                variant='line'
+                aria-label={t('Flow width metric')}
+                className='h-7 p-0'
+              >
                 {FLOW_METRIC_OPTIONS.map((option) => {
                   const Icon = option.icon
                   return (
                     <TabsTrigger
                       key={option.value}
                       value={option.value}
-                      className='gap-1.5 px-2.5 text-xs'
+                      className='flex-none gap-1.5 px-2.5 text-xs'
                     >
                       <Icon data-icon='inline-start' aria-hidden='true' />
                       {t(option.labelKey)}
@@ -592,12 +583,16 @@ export function FlowCharts(props: FlowChartsProps) {
               onValueChange={(value) => setTopNodeLimit(Number(value))}
               className='shrink-0'
             >
-              <TabsList aria-label={t('Display limit')}>
+              <TabsList
+                variant='line'
+                aria-label={t('Display limit')}
+                className='h-7 p-0'
+              >
                 {FLOW_TOP_LIMIT_OPTIONS.map((limit) => (
                   <TabsTrigger
                     key={limit}
                     value={String(limit)}
-                    className='px-2.5 text-xs'
+                    className='flex-none px-2.5 text-xs'
                   >
                     {t('Top {{count}}', { count: limit })}
                   </TabsTrigger>
@@ -617,12 +612,16 @@ export function FlowCharts(props: FlowChartsProps) {
               }
               className='shrink-0'
             >
-              <TabsList aria-label={t('Overflow items')}>
+              <TabsList
+                variant='line'
+                aria-label={t('Overflow items')}
+                className='h-7 p-0'
+              >
                 {FLOW_OVERFLOW_MODE_OPTIONS.map((option) => (
                   <TabsTrigger
                     key={option.value}
                     value={option.value}
-                    className='px-2.5 text-xs'
+                    className='flex-none px-2.5 text-xs'
                   >
                     {t(option.labelKey)}
                   </TabsTrigger>
@@ -666,68 +665,60 @@ export function FlowCharts(props: FlowChartsProps) {
         </div>
       </div>
 
-      <div className='overflow-hidden rounded-lg border'>
-        <div className='flex w-full flex-col gap-2 border-b px-3 py-2 sm:px-5 sm:py-3 lg:flex-row lg:items-center lg:justify-between'>
-          <div className='flex min-w-0 items-center gap-2'>
-            <IconBadge tone='info' size='sm'>
-              <GitBranch />
-            </IconBadge>
-            <div className='text-sm font-semibold'>{chartTitle}</div>
+      <SectionPanel title={chartTitle} contentClassName='space-y-2'>
+        <TooltipProvider>
+          <div className='flex min-w-0 items-center gap-1 overflow-x-auto pb-1 lg:justify-end lg:pb-0'>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type='button'
+                    className='text-muted-foreground/60 hover:text-foreground flex size-6 shrink-0 items-center justify-center rounded-md'
+                    aria-label={t('Show or hide flow columns')}
+                  />
+                }
+              >
+                <Info className='size-3.5' />
+              </TooltipTrigger>
+              <TooltipContent className='max-w-[16rem]'>
+                {t('Click a stage to show or hide that column')}
+              </TooltipContent>
+            </Tooltip>
+            {stages.map((stage, index) => {
+              const meta = FLOW_STAGE_META[stage]
+              const visible = !hiddenStages.includes(stage)
+              return (
+                <Fragment key={stage}>
+                  {index > 0 && (
+                    <ChevronRight className='text-muted-foreground/40 size-3.5 shrink-0' />
+                  )}
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Toggle
+                          variant='outline'
+                          size='sm'
+                          pressed={visible}
+                          onPressedChange={() => toggleStage(stage)}
+                          aria-label={t(meta.labelKey)}
+                          className={cn('shrink-0', !visible && 'opacity-50')}
+                        />
+                      }
+                    >
+                      {!visible && <EyeOff className='size-3' />}
+                      {t(meta.labelKey)}
+                    </TooltipTrigger>
+                    <TooltipContent>{t(meta.descKey)}</TooltipContent>
+                  </Tooltip>
+                </Fragment>
+              )
+            })}
           </div>
-          <TooltipProvider>
-            <div className='flex min-w-0 items-center gap-1 overflow-x-auto pb-1 lg:justify-end lg:pb-0'>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button
-                      type='button'
-                      className='text-muted-foreground/60 hover:text-foreground flex size-6 shrink-0 items-center justify-center rounded-md'
-                      aria-label={t('Show or hide flow columns')}
-                    />
-                  }
-                >
-                  <Info className='size-3.5' />
-                </TooltipTrigger>
-                <TooltipContent className='max-w-[16rem]'>
-                  {t('Click a stage to show or hide that column')}
-                </TooltipContent>
-              </Tooltip>
-              {stages.map((stage, index) => {
-                const meta = FLOW_STAGE_META[stage]
-                const visible = !hiddenStages.includes(stage)
-                return (
-                  <Fragment key={stage}>
-                    {index > 0 && (
-                      <ChevronRight className='text-muted-foreground/40 size-3.5 shrink-0' />
-                    )}
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <Toggle
-                            variant='outline'
-                            size='sm'
-                            pressed={visible}
-                            onPressedChange={() => toggleStage(stage)}
-                            aria-label={t(meta.labelKey)}
-                            className={cn('shrink-0', !visible && 'opacity-50')}
-                          />
-                        }
-                      >
-                        {!visible && <EyeOff className='size-3' />}
-                        {t(meta.labelKey)}
-                      </TooltipTrigger>
-                      <TooltipContent>{t(meta.descKey)}</TooltipContent>
-                    </Tooltip>
-                  </Fragment>
-                )
-              })}
-            </div>
-          </TooltipProvider>
-        </div>
-        <div className='h-[560px] p-1.5 sm:h-[680px] sm:p-2 2xl:h-[760px]'>
+        </TooltipProvider>
+        <div className='h-[560px] sm:h-[680px] 2xl:h-[760px]'>
           {chartContent}
         </div>
-      </div>
+      </SectionPanel>
     </div>
   )
 }

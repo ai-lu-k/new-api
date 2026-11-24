@@ -360,6 +360,8 @@ export const ERROR_MESSAGES = {
     'HTTP/2 connection shards must be between 1 and 8',
   INVALID_HTTP1_WITH_SHARDS:
     'HTTP/2 connection shards must be 1 when HTTP/1.1 is selected',
+  INVALID_CONCURRENCY_LIMIT: 'Enter an integer from 0 to 10000',
+  INVALID_CONCURRENCY_TOTAL_PER_ACCOUNT: 'Enter an integer from 0 to 32',
   CREATE_FAILED: 'Failed to create channel',
   UPDATE_FAILED: 'Failed to update channel',
   DELETE_FAILED: 'Failed to delete channel',
@@ -431,21 +433,21 @@ export const BALANCE_THRESHOLDS = {
 } as const
 
 // ============================================================================
-// Response Time Thresholds (in ms)
+// Response Time (in ms)
 // ============================================================================
 
-export const RESPONSE_TIME_THRESHOLDS = {
-  EXCELLENT: 500,
-  GOOD: 1000,
-  FAIR: 2000,
-  POOR: 5000,
-} as const
+/**
+ * The one latency figure that is a fault, not a nuance: a first response of
+ * ten seconds or more means a chat or code request has effectively timed out
+ * for the person waiting. Anything faster stays in the neutral text colour, so
+ * the list keeps a single, unambiguous alarm instead of painting every slow
+ * upstream red (7 s or 30 s used to look identical).
+ */
+export const RESPONSE_TIME_ABNORMAL_MS = 10_000
 
 export const RESPONSE_TIME_CONFIG = {
-  EXCELLENT: { variant: 'success' as const, label: 'Excellent' },
-  GOOD: { variant: 'success' as const, label: 'Good' },
-  FAIR: { variant: 'warning' as const, label: 'Fair' },
-  POOR: { variant: 'danger' as const, label: 'Poor' },
+  NORMAL: { variant: 'neutral' as const, label: 'Normal' },
+  ABNORMAL: { variant: 'danger' as const, label: 'Poor' },
   UNKNOWN: { variant: 'neutral' as const, label: 'Not tested' },
 } as const
 

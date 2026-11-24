@@ -27,6 +27,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import { formatQuota } from '@/lib/format'
 import { handleServerError } from '@/lib/handle-server-error'
 import { ROLE } from '@/lib/roles'
 
@@ -49,13 +50,20 @@ const NOTIFICATION_ICONS: Record<NotifyType, typeof Mail> = {
 interface NotificationTabProps {
   profile: UserProfile | null
   onUpdate: () => void
+  /** Lets the page warn before this form is left with edits in it. */
+  onDirtyChange?: (dirty: boolean) => void
 }
 
-export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
+export function NotificationTab({
+  profile,
+  onUpdate,
+  onDirtyChange,
+}: NotificationTabProps) {
   const { t } = useTranslation()
   const isAdmin = (profile?.role ?? 0) >= ROLE.ADMIN
   const [loading, setLoading] = useState(false)
   const [settings, setSettings] = useState(() => normalizeUserSettings())
+  const [baseline, setBaseline] = useState(() => normalizeUserSettings())
 
   // Update form field helper
   const updateField = useCallback(
@@ -70,17 +78,32 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
 
   useEffect(() => {
     if (profile?.setting) {
-      setSettings(normalizeUserSettings(profile.setting))
+      const saved = normalizeUserSettings(profile.setting)
+      setSettings(saved)
+      setBaseline(saved)
     }
   }, [profile])
+
+  // IP recording is saved from the security page, so it never makes this form
+  // dirty on its own.
+  const { record_ip_log: _savedIpLog, ...savedNotificationSettings } = baseline
+  const { record_ip_log: _editedIpLog, ...editedNotificationSettings } =
+    settings
+  const dirty =
+    JSON.stringify(editedNotificationSettings) !==
+    JSON.stringify(savedNotificationSettings)
+
+  useEffect(() => {
+    onDirtyChange?.(dirty)
+  }, [dirty, onDirtyChange])
 
   const handleSave = async () => {
     try {
       setLoading(true)
-      const { record_ip_log: _recordIpLog, ...notificationSettings } = settings
-      const response = await updateUserSettings(notificationSettings)
+      const response = await updateUserSettings(editedNotificationSettings)
 
       if (response.success) {
+        setBaseline(settings)
         toast.success(t('Settings updated successfully'))
         onUpdate()
       } else {
@@ -132,7 +155,14 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
 
       {/* Warning Threshold */}
       <div className='space-y-1.5'>
-        <Label htmlFor='threshold'>{t('Quota Warning Threshold')}</Label>
+        <div className='flex flex-wrap items-baseline justify-between gap-2'>
+          <Label htmlFor='threshold'>{t('Quota Warning Threshold')}</Label>
+          {/* The field holds internal quota units; the current value is shown
+              in the site's balance currency so the number has a unit. */}
+          <span className='text-muted-foreground text-xs tabular-nums'>
+            {formatQuota(settings.quota_warning_threshold)}
+          </span>
+        </div>
         <Input
           id='threshold'
           type='number'
@@ -338,8 +368,18 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
       </div>
 
       {/* Save Button */}
-      <div className='flex justify-end'>
-        <Button onClick={handleSave} disabled={loading}>
+      <div className='flex flex-wrap items-center justify-end gap-3'>
+        {dirty ? (
+          <span className='text-muted-foreground text-xs' role='status'>
+            {t('Unsaved changes')}
+          </span>
+        ) : null}
+        <Button
+          onClick={handleSave}
+          disabled={loading}
+          variant={dirty ? 'default' : 'outline'}
+          className='min-h-11 sm:min-h-8'
+        >
           {loading && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}
           {loading ? t('Saving...') : t('Save Settings')}
         </Button>

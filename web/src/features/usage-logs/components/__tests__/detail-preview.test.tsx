@@ -153,7 +153,7 @@ test.each([
       matched_tier: 'free',
       expr_b64: btoa('tier("free", fixed(0))'),
     },
-    expected: 'free · Per-call $0/request',
+    expected: 'free · Per-call $0.00/request',
   },
   {
     name: 'fixed expression trace outside the display grammar',
@@ -176,7 +176,7 @@ test.each([
   {
     name: 'standard',
     other: { model_ratio: 1, completion_ratio: 2 },
-    expected: 'Standard · $2 / $4/M',
+    expected: 'Standard · $2.00 / $4.00/M',
   },
   {
     name: 'zero price fallback',
@@ -239,23 +239,23 @@ test.each([
     expression:
       'u("mode") == "pro" ? tier("pro", u("seconds") * 0.8) : tier("std", u("seconds") * 0.4)',
     tier: 'pro',
-    expected: 'pro · seconds $0.8/second',
+    expected: 'pro · seconds $0.80/second',
   },
   {
     expression: 'tier("tokens", u("tokens") * 9.8 / 1000000)',
     tier: 'tokens',
-    expected: 'tokens · tokens $9.8/1M token',
+    expected: 'tokens · tokens $9.80/1M token',
   },
   {
     expression: 'tier("free", u("clips") * 0)',
     tier: 'free',
-    expected: 'free · clips $0/unit',
+    expected: 'free · clips $0.00/unit',
   },
   {
     expression: 'tier("mixed", 0.1 + u("clips") * 0.25 + u("units") * 0.14)',
     tier: 'mixed',
     expected:
-      'mixed · clips $0.25/unit · units $0.14/credit · Additional charge $0.1/request',
+      'mixed · clips $0.25/unit · units $0.14/credit · Additional charge $0.10/request',
   },
 ])(
   'task expression $tier shows its recorded unit price',

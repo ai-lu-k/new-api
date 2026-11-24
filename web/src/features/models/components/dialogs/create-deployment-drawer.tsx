@@ -25,13 +25,14 @@ import { toast } from 'sonner'
 import { z } from 'zod'
 
 import {
-  SideDrawerSection,
   sideDrawerContentClassName,
   sideDrawerFooterClassName,
   sideDrawerFormClassName,
   sideDrawerHeaderClassName,
+  sideDrawerSectionClassName,
 } from '@/components/drawer-layout'
 import { JsonCodeEditor } from '@/components/json-code-editor'
+import { Reveal } from '@/components/motion/reveal'
 import { MultiSelect } from '@/components/multi-select'
 import { Button } from '@/components/ui/button'
 import { Combobox } from '@/components/ui/combobox'
@@ -408,7 +409,7 @@ export function CreateDeploymentDrawer({
             className={sideDrawerFormClassName()}
           >
             {/* Basic Configuration */}
-            <SideDrawerSection>
+            <Reveal as='section' className={sideDrawerSectionClassName()}>
               <h3 className='text-sm font-medium'>
                 {t('Basic Configuration')}
               </h3>
@@ -456,10 +457,14 @@ export function CreateDeploymentDrawer({
                   </FormItem>
                 )}
               />
-            </SideDrawerSection>
+            </Reveal>
 
             {/* Resource Configuration */}
-            <SideDrawerSection>
+            <Reveal
+              as='section'
+              delay={0.04}
+              className={sideDrawerSectionClassName()}
+            >
               <h3 className='text-sm font-medium'>
                 {t('Resource Configuration')}
               </h3>
@@ -612,10 +617,14 @@ export function CreateDeploymentDrawer({
                   )}
                 />
               </div>
-            </SideDrawerSection>
+            </Reveal>
 
             {/* Price Estimation */}
-            <SideDrawerSection>
+            <Reveal
+              as='section'
+              delay={0.08}
+              className={sideDrawerSectionClassName()}
+            >
               <h3 className='text-sm font-medium'>{t('Price estimation')}</h3>
               <p className='text-muted-foreground text-xs'>
                 {t('Price estimation description')}
@@ -650,10 +659,14 @@ export function CreateDeploymentDrawer({
                   </FormItem>
                 )}
               />
-            </SideDrawerSection>
+            </Reveal>
 
             {/* Advanced Configuration */}
-            <SideDrawerSection>
+            <Reveal
+              as='section'
+              delay={0.12}
+              className={sideDrawerSectionClassName()}
+            >
               <h3 className='text-sm font-medium'>
                 {t('Advanced Configuration')}
               </h3>
@@ -774,7 +787,7 @@ export function CreateDeploymentDrawer({
                   />
                 </div>
               </div>
-            </SideDrawerSection>
+            </Reveal>
           </form>
         </Form>
 

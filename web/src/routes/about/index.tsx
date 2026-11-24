@@ -16,10 +16,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 
-import { About } from '@/features/about'
-
+// The About content is a section of the rankings page; old links keep working.
 export const Route = createFileRoute('/about/')({
-  component: About,
+  beforeLoad: () => {
+    throw redirect({ to: '/rankings', search: { section: 'about' } })
+  },
 })

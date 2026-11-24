@@ -20,7 +20,7 @@ import { Database, type LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { FadeIn } from '@/components/page-transition'
+import { Reveal } from '@/components/motion/reveal'
 import {
   Empty,
   EmptyContent,
@@ -38,14 +38,29 @@ interface EmptyStateProps {
   action?: ReactNode
   className?: string
   bordered?: boolean
+  /** One quiet line instead of the illustrated block, for blocks inside a page. */
+  compact?: boolean
 }
 
 export function EmptyState(props: EmptyStateProps) {
   const { t } = useTranslation()
   const Icon = props.icon ?? Database
 
+  if (props.compact) {
+    return (
+      <p
+        className={cn(
+          'text-muted-foreground text-[13px] leading-snug',
+          props.className
+        )}
+      >
+        {props.title ?? t('No Data')}
+      </p>
+    )
+  }
+
   return (
-    <FadeIn>
+    <Reveal>
       <Empty
         className={cn(
           'min-h-[300px]',
@@ -64,6 +79,6 @@ export function EmptyState(props: EmptyStateProps) {
         </EmptyHeader>
         {props.action != null && <EmptyContent>{props.action}</EmptyContent>}
       </Empty>
-    </FadeIn>
+    </Reveal>
   )
 }

@@ -411,7 +411,7 @@ function TaskMatrixGroup(props: TaskMatrixGroupProps) {
         render={
           <button
             type='button'
-            className='hover:bg-muted/40 flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left transition-colors'
+            className='hover:bg-muted/40 flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left transition-colors duration-(--motion-fast) ease-(--ease-out)'
             aria-expanded={props.open}
           />
         }
@@ -444,7 +444,7 @@ function TaskMatrixGroup(props: TaskMatrixGroupProps) {
         </span>
         <ChevronDown
           className={cn(
-            'text-muted-foreground size-4 shrink-0 transition-transform',
+            'text-muted-foreground size-4 shrink-0 transition-transform duration-(--motion-fast) ease-(--ease-out)',
             props.open && 'rotate-180'
           )}
           aria-hidden='true'

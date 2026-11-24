@@ -20,18 +20,16 @@ import type { ColumnDef } from '@tanstack/react-table'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { ActivityTimeCell } from '@/components/activity-time-cell'
-import { BadgeCell } from '@/components/data-table'
-import { GroupBadge } from '@/components/group-badge'
 import { LongText } from '@/components/long-text'
 import { StatusBadge } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
-import { Checkbox } from '@/components/ui/checkbox'
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { UsageLevelBadge } from '@/features/usage-level/components/usage-level-badge'
+import { USAGE_LEVEL_VISIBLE } from '@/features/usage-level/visibility'
 import { getCurrencyDisplay } from '@/lib/currency'
 import { formatQuota } from '@/lib/format'
 import { useSystemConfigStore } from '@/stores/system-config-store'
@@ -44,40 +42,17 @@ import {
 } from '../constants'
 import type { User } from '../types'
 import { DataTableRowActions } from './data-table-row-actions'
+import { UserIdentityCell } from './user-identity-cell'
 import { UserQuotaCell } from './user-quota-cell'
+import { UserQuotaHeader } from './user-quota-header'
 
 export function useUsersColumns(): ColumnDef<User>[] {
   const { t } = useTranslation()
   const currencyConfig = useSystemConfigStore((state) => state.config.currency)
   const { meta: currency } = getCurrencyDisplay()
   const quotaUnit = currency.kind === 'tokens' ? t('Tokens') : currency.symbol
-  return useMemo<ColumnDef<User>[]>(
+  const columns = useMemo<ColumnDef<User>[]>(
     () => [
-      {
-        id: 'select',
-        header: ({ table }) => (
-          <Checkbox
-            checked={table.getIsAllPageRowsSelected()}
-            indeterminate={table.getIsSomePageRowsSelected()}
-            onCheckedChange={(value) =>
-              table.toggleAllPageRowsSelected(!!value)
-            }
-            aria-label={t('Select all')}
-            className='translate-y-[2px]'
-          />
-        ),
-        cell: ({ row }) => (
-          <Checkbox
-            checked={row.getIsSelected()}
-            onCheckedChange={(value) => row.toggleSelected(!!value)}
-            aria-label={t('Select row')}
-            className='translate-y-[2px]'
-          />
-        ),
-        enableSorting: false,
-        enableHiding: false,
-        size: 40,
-      },
       {
         accessorKey: 'id',
         header: t('ID'),
@@ -95,49 +70,9 @@ export function useUsersColumns(): ColumnDef<User>[] {
       {
         accessorKey: 'username',
         header: t('Username'),
-        cell: ({ row }) => {
-          const username = row.getValue('username') as string
-          const displayName = row.original.display_name
-          const remark = row.original.remark
-
-          return (
-            <div className='flex min-w-[160px] flex-col gap-1'>
-              <div className='flex items-center gap-2'>
-                <LongText className='max-w-[140px] text-sm font-normal'>
-                  {username}
-                </LongText>
-                {remark && (
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <StatusBadge
-                          variant='success'
-                          copyable={false}
-                          className='font-normal'
-                        />
-                      }
-                    >
-                      <LongText className='max-w-[80px]'>{remark}</LongText>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className='text-xs'>{remark}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                )}
-              </div>
-              {displayName && displayName !== username && (
-                <div
-                  data-table-text='secondary'
-                  className='text-muted-foreground max-w-[180px] text-xs font-normal'
-                >
-                  <LongText>{displayName}</LongText>
-                </div>
-              )}
-            </div>
-          )
-        },
+        cell: ({ row }) => <UserIdentityCell user={row.original} />,
         enableHiding: false,
-        size: 220,
+        size: 320,
         meta: { mobileTitle: true },
       },
       {
@@ -185,35 +120,38 @@ export function useUsersColumns(): ColumnDef<User>[] {
       {
         id: 'quota',
         accessorKey: 'quota',
-        header: `${t('Available Balance')} (${quotaUnit})`,
+        // The heading picks which of the four figures sorts the list, so it
+        // replaces the shared header menu instead of using a string title.
+        header: ({ table }) => (
+          <UserQuotaHeader table={table} unit={quotaUnit} />
+        ),
         cell: ({ row }) => {
           const user = row.original
-          return <UserQuotaCell remaining={user.quota} used={user.used_quota} />
-        },
-        size: 180,
-        minSize: 160,
-        meta: { mobileOrder: 40 },
-      },
-      {
-        accessorKey: 'group',
-        header: t('User Group'),
-        cell: ({ row }) => {
-          const group = row.getValue('group') as string
           return (
-            <BadgeCell>
-              <GroupBadge group={group} className='font-normal' />
-            </BadgeCell>
+            <UserQuotaCell
+              remaining={user.quota}
+              used={user.used_quota}
+              usageSource={user.usage_source}
+            />
           )
         },
-        filterFn: (row, id, value) => {
-          const group = String(
-            row.getValue(id) || t('User Group')
-          ).toLowerCase()
-          const searchValue = String(value).toLowerCase()
-          return group.includes(searchValue)
+        size: 210,
+        minSize: 190,
+        // Cards have no heading row, so they name the field themselves.
+        meta: {
+          mobileOrder: 40,
+          mobileLabel: `${t('Available Balance')} (${quotaUnit})`,
         },
-        size: 140,
-        meta: { mobileOrder: 30 },
+      },
+      {
+        id: 'usage_level',
+        accessorFn: (user) => user.usage_level?.level ?? 0,
+        header: t('Usage level'),
+        cell: ({ row }) => (
+          <UsageLevelBadge level={row.original.usage_level?.level} showTitle />
+        ),
+        size: 160,
+        meta: { mobileOrder: 35 },
       },
       {
         accessorKey: 'role',
@@ -237,6 +175,9 @@ export function useUsersColumns(): ColumnDef<User>[] {
       },
       {
         id: 'invite_info',
+        // An accessor keeps the column in the column-visibility menu; it is
+        // hidden by default and has no sorting or filtering of its own.
+        accessorFn: (user) => user.aff_count ?? 0,
         header: t('Invite Info'),
         cell: ({ row }) => {
           const user = row.original
@@ -275,21 +216,6 @@ export function useUsersColumns(): ColumnDef<User>[] {
         meta: { mobileHidden: true },
       },
       {
-        accessorKey: 'created_at',
-        header: t('Time'),
-        cell: ({ row }) => (
-          <ActivityTimeCell
-            createdAt={row.original.created_at ?? 0}
-            lastAt={row.original.last_login_at ?? 0}
-            lastLabel={t('Last Login')}
-            format='absolute'
-          />
-        ),
-        size: 260,
-        minSize: 240,
-        meta: { mobileHidden: true },
-      },
-      {
         id: 'actions',
         header: () => t('Actions'),
         cell: ({ row }) => <DataTableRowActions row={row} />,
@@ -300,4 +226,9 @@ export function useUsersColumns(): ColumnDef<User>[] {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [t, quotaUnit, currencyConfig]
   )
+  // Usage levels are temporarily offline; the column stays defined so that
+  // restoring features/usage-level/visibility brings it back unchanged.
+  return USAGE_LEVEL_VISIBLE
+    ? columns
+    : columns.filter((column) => column.id !== 'usage_level')
 }

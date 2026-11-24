@@ -91,6 +91,55 @@ func TestTryTieredSettleUsesFrozenRequestInput(t *testing.T) {
 	}
 }
 
+func TestTryTieredSettleBillsSpeechCharacters(t *testing.T) {
+	const exprStr = `tier("char", fixed(0.000015)) * chars`
+	chars := 12
+	newInfo := func() *relaycommon.RelayInfo {
+		return &relaycommon.RelayInfo{
+			TieredBillingSnapshot: &billingexpr.BillingSnapshot{
+				BillingMode:              "tiered_expr",
+				ExprString:               exprStr,
+				ExprHash:                 billingexpr.ExprHashString(exprStr),
+				GroupRatio:               1.0,
+				QuotaPerUnit:             testQuotaPerUnit,
+				EstimatedChars:           &chars,
+				EstimatedQuotaAfterGroup: 90,
+			},
+		}
+	}
+
+	// $0.000015 per character over 12 characters is $0.00018, i.e. 90 quota.
+	for _, tc := range []struct {
+		name  string
+		chars *int
+	}{
+		{"actual character count", &chars},
+		{"frozen pre-consume estimate", nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			relayInfo := newInfo()
+			relayInfo.BillingChars = tc.chars
+			ok, quota, result := TryTieredSettle(relayInfo, billingexpr.TokenParams{})
+			require.True(t, ok)
+			assert.Equal(t, 90, quota)
+			require.NotNil(t, result)
+			require.NotNil(t, result.Chars)
+			assert.Equal(t, chars, *result.Chars)
+			assert.Equal(t, billingexpr.BillingUnitRequest, result.BillingUnit)
+		})
+	}
+
+	// Token-based expressions on the same relay info stay unaffected.
+	const tokenExpr = `tier("token", p * 2)`
+	relayInfo := newInfo()
+	relayInfo.TieredBillingSnapshot.ExprString = tokenExpr
+	relayInfo.TieredBillingSnapshot.ExprHash = billingexpr.ExprHashString(tokenExpr)
+	relayInfo.BillingChars = &chars
+	ok, quota, _ := TryTieredSettle(relayInfo, billingexpr.TokenParams{P: 1000})
+	require.True(t, ok)
+	assert.Equal(t, 1000, quota)
+}
+
 func TestTryTieredSettleFallsBackToFrozenPreConsumeOnExprError(t *testing.T) {
 	relayInfo := &relaycommon.RelayInfo{
 		FinalPreConsumedQuota: 321,

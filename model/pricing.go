@@ -11,6 +11,8 @@ import (
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
+	"github.com/QuantumNous/new-api/setting/naming_setting"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 )
@@ -26,15 +28,18 @@ type PricingPluginVariant struct {
 }
 
 type Pricing struct {
-	BillingPluginVariants  []PricingPluginVariant               `json:"billing_plugin_variants,omitempty"`
-	ModelName              string                               `json:"model_name"`
-	Description            string                               `json:"description,omitempty"`
-	Icon                   string                               `json:"icon,omitempty"`
-	Tags                   string                               `json:"tags,omitempty"`
-	VendorID               int                                  `json:"vendor_id,omitempty"`
-	QuotaType              int                                  `json:"quota_type"`
-	ModelRatio             float64                              `json:"model_ratio"`
-	ModelPrice             float64                              `json:"model_price"`
+	BillingPluginVariants []PricingPluginVariant `json:"billing_plugin_variants,omitempty"`
+	ModelName             string                 `json:"model_name"`
+	Description           string                 `json:"description,omitempty"`
+	Icon                  string                 `json:"icon,omitempty"`
+	Tags                  string                 `json:"tags,omitempty"`
+	VendorID              int                    `json:"vendor_id,omitempty"`
+	QuotaType             int                    `json:"quota_type"`
+	ModelRatio            float64                `json:"model_ratio"`
+	ModelPrice            float64                `json:"model_price"`
+	PriceMultiplier       *float64               `json:"price_multiplier,omitempty"`
+	// PromoEndsAt is the Unix time a limited-time offer of this model ends.
+	PromoEndsAt            int64                                `json:"promo_ends_at,omitempty"`
 	OwnerBy                string                               `json:"owner_by"`
 	CompletionRatio        float64                              `json:"completion_ratio"`
 	CacheRatio             *float64                             `json:"cache_ratio,omitempty"`
@@ -49,6 +54,12 @@ type Pricing struct {
 	BillingUsageSchema     map[string]jsplugin.UsageFieldSchema `json:"billing_usage_schema,omitempty"`
 	BillingUsageExamples   []jsplugin.UsageExample              `json:"billing_usage_examples,omitempty"`
 	PricingVersion         string                               `json:"pricing_version,omitempty"`
+	InputModalities        []string                             `json:"input_modalities,omitempty"`
+	OutputModalities       []string                             `json:"output_modalities,omitempty"`
+	ContextLength          int                                  `json:"context_length,omitempty"`
+	SupportedParameters    []string                             `json:"supported_parameters,omitempty"`
+	ReleaseDate            string                               `json:"release_date,omitempty"`
+	Series                 string                               `json:"series,omitempty"`
 }
 
 type PricingVendor struct {
@@ -203,8 +214,24 @@ func updatePricing() {
 	names := make([]string, 0, len(enableAbilities))
 	for _, ability := range enableAbilities {
 		names = append(names, ability.Model)
+		if priced := naming_setting.BillingName(ability.Model); priced != ability.Model {
+			names = append(names, priced)
+		}
 	}
 	metaMap := resolveModelMetadata(allMeta, names)
+	// A name that carries a price tier ("-x0.25") is described as the model
+	// it is a tier of, unless it has metadata of its own. Its catalogue facts
+	// are not borrowed that way: another price means other channels.
+	borrowed := map[string]bool{}
+	for _, ability := range enableAbilities {
+		if _, exists := metaMap[ability.Model]; exists {
+			continue
+		}
+		if meta, ok := metaMap[naming_setting.BillingName(ability.Model)]; ok {
+			metaMap[ability.Model] = meta
+			borrowed[ability.Model] = true
+		}
+	}
 
 	// 预加载供应商
 	var vendors []Vendor
@@ -333,6 +360,16 @@ func updatePricing() {
 			SupportedEndpointTypes: modelSupportEndpointTypes[model],
 		}
 
+		// Tier expressions may override their base model's expression, but
+		// still expose the suffix multiplier used by reservation and settlement.
+		priced := naming_setting.BillingName(model)
+		if naming_setting.HasPriceTier(model) {
+			multiplier := naming_setting.PriceMultiplier(model)
+			pricing.PriceMultiplier = &multiplier
+		}
+
+		pricing.PromoEndsAt = operation_setting.GetModelPromotionDeadline(model)
+
 		// 补充模型元数据（描述、标签、供应商、状态）
 		if meta, ok := metaMap[model]; ok {
 			// 若模型被禁用(status!=1)，则直接跳过，不返回给前端
@@ -343,36 +380,44 @@ func updatePricing() {
 			pricing.Icon = meta.Icon
 			pricing.Tags = meta.Tags
 			pricing.VendorID = meta.VendorID
+			if !borrowed[model] {
+				pricing.InputModalities = SplitCatalogList(meta.InputModalities)
+				pricing.OutputModalities = SplitCatalogList(meta.OutputModalities)
+				pricing.ContextLength = meta.ContextLength
+				pricing.SupportedParameters = SplitCatalogList(meta.SupportedParameters)
+				pricing.ReleaseDate = meta.ReleaseDate
+				pricing.Series = meta.Series
+			}
 		}
-		modelPrice, findPrice := ratio_setting.GetModelPrice(model, false)
+		modelPrice, findPrice := ratio_setting.GetModelPrice(priced, false)
 		if findPrice {
 			pricing.ModelPrice = modelPrice
 			pricing.QuotaType = 1
 		} else {
-			modelRatio, _, _ := ratio_setting.GetModelRatio(model)
+			modelRatio, _, _ := ratio_setting.GetModelRatio(priced)
 			pricing.ModelRatio = modelRatio
-			pricing.CompletionRatio = ratio_setting.GetCompletionRatio(model)
+			pricing.CompletionRatio = ratio_setting.GetCompletionRatio(priced)
 			pricing.QuotaType = 0
 		}
-		if cacheRatio, ok := ratio_setting.GetCacheRatio(model); ok {
+		if cacheRatio, ok := ratio_setting.GetCacheRatio(priced); ok {
 			pricing.CacheRatio = &cacheRatio
 		}
-		if createCacheRatio, ok := ratio_setting.GetCreateCacheRatio(model); ok {
+		if createCacheRatio, ok := ratio_setting.GetCreateCacheRatio(priced); ok {
 			pricing.CreateCacheRatio = &createCacheRatio
 		}
-		if imageRatio, ok := ratio_setting.GetImageRatio(model); ok {
+		if imageRatio, ok := ratio_setting.GetImageRatio(priced); ok {
 			pricing.ImageRatio = &imageRatio
 		}
-		if ratio_setting.ContainsAudioRatio(model) {
-			audioRatio := ratio_setting.GetAudioRatio(model)
+		if ratio_setting.ContainsAudioRatio(priced) {
+			audioRatio := ratio_setting.GetAudioRatio(priced)
 			pricing.AudioRatio = &audioRatio
 		}
-		if ratio_setting.ContainsAudioCompletionRatio(model) {
-			audioCompletionRatio := ratio_setting.GetAudioCompletionRatio(model)
+		if ratio_setting.ContainsAudioCompletionRatio(priced) {
+			audioCompletionRatio := ratio_setting.GetAudioCompletionRatio(priced)
 			pricing.AudioCompletionRatio = &audioCompletionRatio
 		}
-		if billingMode := billing_setting.GetBillingMode(model); billingMode == "tiered_expr" {
-			if expr, ok := billing_setting.GetBillingExpr(model); ok && strings.TrimSpace(expr) != "" {
+		if billingMode := billing_setting.GetBillingMode(priced); billingMode == "tiered_expr" {
+			if expr, ok := billing_setting.GetBillingExpr(priced); ok && strings.TrimSpace(expr) != "" {
 				pricing.BillingMode = billingMode
 				pricing.BillingExpr = expr
 			}
@@ -384,8 +429,8 @@ func updatePricing() {
 				}
 			}
 		}
-		usageModel := model
-		plugin, ok := pluginGeneration.GetByModel(model)
+		usageModel := priced
+		plugin, ok := pluginGeneration.GetByModel(priced)
 		if !ok {
 			if target, resolved := ResolveTaskModelAlias(pluginGeneration, model); resolved {
 				plugin, ok = pluginGeneration.Get(target.PluginKey)
@@ -397,23 +442,23 @@ func updatePricing() {
 			pricing.BillingUsageSchema = jsplugin.CloneUsageSchema(usageSchema)
 			pricing.BillingUsageExamples = jsplugin.CloneUsageExamples(usageExamples)
 		}
-		providers := pluginGeneration.PluginsByModel(model)
+		providers := pluginGeneration.PluginsByModel(priced)
 		hasProviderOverride := false
 		for _, provider := range providers {
-			if _, configured := billing_setting.GetPluginBillingExpr(provider.Meta.Key, model); configured {
+			if _, configured := billing_setting.GetPluginBillingExpr(provider.Meta.Key, priced); configured {
 				hasProviderOverride = true
 				break
 			}
 		}
 		if hasProviderOverride || (len(providers) >= 2 && pricing.BillingMode == billing_setting.BillingModeTieredExpr) {
 			for _, provider := range providers {
-				schema, examples := provider.Meta.UsageForModel(model)
+				schema, examples := provider.Meta.UsageForModel(priced)
 				if schema == nil {
 					schema = map[string]jsplugin.UsageFieldSchema{}
 				}
-				expression, hasExpression := billing_setting.ResolveTaskBillingExpr(provider.Meta.Key, model, "")
+				expression, hasExpression := billing_setting.ResolveTaskBillingExpr(provider.Meta.Key, priced, "")
 				mode := billing_setting.BillingModeRatio
-				if hasExpression || billing_setting.GetBillingMode(model) == billing_setting.BillingModeTieredExpr {
+				if hasExpression || billing_setting.GetBillingMode(priced) == billing_setting.BillingModeTieredExpr {
 					mode = billing_setting.BillingModeTieredExpr
 				}
 				if mode == billing_setting.BillingModeTieredExpr && !billing_setting.TaskExprCompatible(expression, schema) {

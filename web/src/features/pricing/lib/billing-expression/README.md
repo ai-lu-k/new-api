@@ -16,7 +16,7 @@
 
 - `compileBillingExpression(source)`：返回 `ready`（源文本、AST、依赖、规则位置）或带诊断的失败结果。
 - `evaluateBillingExpression(sourceOrCompiled, context)`：返回 `success`（`cost`、`matchedTier`、`requestRules`），或 `invalid` / `unsupported` / `missing_context`。
-- `display.ts`：只识别完整的标准 token 阶梯、schema 支持的任务枚举阶梯，以及标准阶梯外层的时间分支。任务阶梯中引用 schema 未声明枚举值的分支视为不可达并跳过，其余档位照常识别；`task-display.ts` 对这类比较按恒不成立处理。
+- `display.ts`：只识别完整的标准 token 阶梯、请求参数枚举选择的固定价格、schema 支持的任务枚举阶梯，以及标准阶梯外层的时间分支。请求固定价格要求各分支使用相同的 `param()` / `??` 选择链、互不重叠的字符串枚举，并且所有价格叶子都是完整的 `tier(name, fixed(amount))`；详情列出全部档位，摘要显示固定价格范围。任务阶梯中引用 schema 未声明枚举值的分支视为不可达并跳过，其余档位照常识别；`task-display.ts` 对这类比较按恒不成立处理。
 - `structure.ts`：无损拆分顶层表达式；字符串内的括号、运算符和转义不作为表达式结构。
 - `condition-display.ts`：从 AST 将星期范围、小时区间、条件组合及补集转换为本地化说明。详情、分组表、日志和模拟规则共用；原始源码只在无法识别的条件上回退。
 - `visual.ts`：`parseVisualBillingDocument(source)` 将 AST 转为条件分支与价格叶子；`serializeVisualBillingDocument(document)` 返回完整源码或字段错误，不返回残缺表达式。文档保留源码、节点身份、来源区间、变量是否存在及字符串草稿；通过与来源节点比较识别修改并局部替换。
@@ -46,6 +46,8 @@
 ## 支持语法与后端语义
 
 支持默认版本和 `v1:`，十进制数及科学计数法、单/双引号字符串及常用转义、`true` / `false` / `nil`、括号、`+ - * / %`、比较、`!`、`&&`、`||` 和三元条件。
+
+支持 `??` 空值合并与 `in` 字符串字面量列表。`??` 仅在左侧为 `nil` 时读取右侧，保留显式零、false 和空字符串；与其他运算组合时沿用后端 Expr 的括号要求。列表不扩展为任意容器或对象表达式。
 
 函数：`tier`、`param`、`header`、`has`、`u`、`hour`、`minute`、`weekday`、`month`、`day`、`min`、`max`、`abs`、`ceil`、`floor`。
 

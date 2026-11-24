@@ -19,43 +19,58 @@ For commercial licensing, please contact support@quantumnous.com
 import { Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
-import { useStatus } from '@/hooks/use-status'
-
 import { AuthLayout } from '../auth-layout'
-import { TermsFooter } from '../components/terms-footer'
 import { SignUpForm } from './components/sign-up-form'
 
-export function SignUp() {
+const SWITCH_CLASS =
+  'decoration-border hover:decoration-foreground text-foreground cursor-pointer underline decoration-1 underline-offset-[3px]'
+
+type SignUpPanelProps = {
+  /** Switch to sign-in in place; absent means link to the sign-in page. */
+  onSwitchMode?: () => void
+  onAuthenticated?: () => void
+  /** See {@link SignInPanel}: lets the dialog own the heading element. */
+  headingAs?: React.ElementType
+}
+
+/** The registration heading and form, shared by the page and the dialog. */
+export function SignUpPanel(props: SignUpPanelProps) {
   const { t } = useTranslation()
-  const { status } = useStatus()
+  const Heading = props.headingAs ?? 'h2'
 
   return (
-    <AuthLayout>
-      <div className='w-full space-y-8'>
-        <div className='space-y-2'>
-          <h2 className='text-center text-2xl font-semibold tracking-tight sm:text-left'>
-            {t('Create an account')}
-          </h2>
-          <p className='text-muted-foreground text-left text-sm sm:text-base'>
-            {t('Already have an account?')}{' '}
-            <Link
-              to='/sign-in'
-              className='hover:text-primary font-medium underline underline-offset-4'
-            >
-              {t('Sign in')}
-            </Link>
-            .
-          </p>
-        </div>
-
-        <SignUpForm />
-
-        <TermsFooter
-          variant='sign-up'
-          status={status}
-          className='text-center'
-        />
+    <div className='w-full'>
+      <Heading className='mt-3 text-xl leading-[1.2] font-bold tracking-[-0.01em]'>
+        {t('Create an account')}
+      </Heading>
+      <div className='mt-7'>
+        <SignUpForm onAuthenticated={props.onAuthenticated} />
       </div>
+
+      <p className='text-muted-foreground mt-3.5 text-xs leading-[1.6]'>
+        {t('Already have an account?')}{' '}
+        {props.onSwitchMode ? (
+          <button
+            type='button'
+            onClick={props.onSwitchMode}
+            className={SWITCH_CLASS}
+          >
+            {t('Sign in')}
+          </button>
+        ) : (
+          <Link to='/sign-in' className={SWITCH_CLASS}>
+            {t('Sign in')}
+          </Link>
+        )}
+      </p>
+    </div>
+  )
+}
+
+export function SignUp() {
+  return (
+    <AuthLayout mode='sign-up'>
+      <SignUpPanel />
     </AuthLayout>
   )
 }

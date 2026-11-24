@@ -100,9 +100,9 @@ func userCheckinWithTransaction(checkin *Checkin, userId int, quotaAwarded int) 
 			return errors.New("签到失败，请稍后重试")
 		}
 
-		// 步骤2: 在事务中增加用户额度
-		if err := tx.Model(&User{}).Where("id = ?", userId).
-			Update("quota", gorm.Expr("quota + ?", quotaAwarded)).Error; err != nil {
+		// 步骤2: 在事务中增加用户额度。签到额度是赠送额度，必须同步记入
+		// bonus_quota，这样以后花掉它不会推高消费等级。
+		if err := CreditGiftQuota(tx, userId, quotaAwarded); err != nil {
 			return errors.New("签到失败：更新额度出错")
 		}
 
@@ -129,12 +129,14 @@ func userCheckinWithoutTransaction(checkin *Checkin, userId int, quotaAwarded in
 		return nil, errors.New("签到失败，请稍后重试")
 	}
 
-	// 步骤2: 增加用户额度
-	// 使用 db=true 强制直接写入数据库，不使用批量更新
-	if err := IncreaseUserQuota(userId, quotaAwarded, true); err != nil {
+	// 步骤2: 增加用户额度（赠送额度同样记入 bonus_quota）
+	if err := CreditGiftQuota(DB, userId, quotaAwarded); err != nil {
 		// 如果增加额度失败，需要回滚签到记录
 		DB.Delete(checkin)
 		return nil, errors.New("签到失败：更新额度出错")
+	}
+	if err := cacheIncrUserQuota(userId, int64(quotaAwarded)); err != nil {
+		common.SysLog("failed to increase checkin quota cache: " + err.Error())
 	}
 
 	return checkin, nil

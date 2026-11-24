@@ -119,6 +119,11 @@ var WeChatAccountQRCodeImageURL = ""
 var TurnstileSiteKey = ""
 var TurnstileSecretKey = ""
 
+// GeeTest CAPTCHA v4 credentials. The captcha id is public and handed to the
+// browser; the key stays server-side and only signs validation requests.
+var GeeTestCaptchaId = ""
+var GeeTestCaptchaKey = ""
+
 var TelegramBotToken = ""
 var TelegramBotName = ""
 
@@ -139,6 +144,10 @@ var RetryTimes = 0
 //var RootUserEmail = ""
 
 var IsMasterNode bool
+
+// TokenPlanRetired is enabled on every gateway after the voucher cutover.
+// Keep legacy ledgers available for settlement and an operator-led rollback.
+var TokenPlanRetired bool
 
 const (
 	NodeNameSourceManual   = "manual"

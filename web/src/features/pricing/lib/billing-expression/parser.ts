@@ -39,6 +39,7 @@ type Lexeme = {
   kind: 'number' | 'string' | 'symbol' | 'name' | 'end'
 }
 const PRECEDENCE: Readonly<Record<string, number>> = {
+  '??': 8,
   '||': 1,
   '&&': 2,
   '==': 3,
@@ -47,6 +48,7 @@ const PRECEDENCE: Readonly<Record<string, number>> = {
   '<=': 4,
   '>': 4,
   '>=': 4,
+  in: 3,
   '+': 5,
   '-': 5,
   '*': 6,
@@ -184,7 +186,9 @@ class BillingParser {
       this.cursor += name[0].length
       return { kind: 'name', text: name[0], start, end: this.cursor }
     }
-    const operator = rest.match(/^(?:&&|\|\||==|!=|<=|>=|[+\-*/%<>()!?:,])/)
+    const operator = rest.match(
+      /^(?:\?\?|&&|\|\||==|!=|<=|>=|[+\-*/%<>()!?:,[\]])/
+    )
     if (!operator) {
       throw new BillingExpressionError({
         code: 'unsupported',
@@ -237,11 +241,19 @@ class BillingParser {
       })
     }
     let left = this.primary()
+    let previousOperator = ''
     while (
       Object.hasOwn(PRECEDENCE, this.current.text) &&
       PRECEDENCE[this.current.text] >= minimum
     ) {
       const operator = this.take().text
+      if (previousOperator === '??' && operator !== '??') {
+        throw new BillingExpressionError({
+          code: 'syntax',
+          detail: 'Wrap coalescing in parentheses before mixing operators',
+          position: this.current.start,
+        })
+      }
       const right = this.expression(PRECEDENCE[operator] + 1)
       left = {
         kind: 'binary',
@@ -251,6 +263,7 @@ class BillingParser {
         start: left.start,
         end: right.end,
       }
+      previousOperator = operator
     }
     if (minimum === 0 && this.current.text === '?') {
       this.take()
@@ -283,6 +296,27 @@ class BillingParser {
     }
     if (token.kind === 'string') {
       return { kind: 'literal', value: token.value as string, ...span }
+    }
+    if (token.text === '[') {
+      const values: string[] = []
+      while (!this.is(']')) {
+        if (this.current.kind !== 'string') {
+          throw new BillingExpressionError({
+            code: 'unsupported',
+            detail: 'only string membership lists are supported',
+            position: this.current.start,
+          })
+        }
+        values.push(this.take().value as string)
+        if (!this.is(',')) break
+        this.take()
+      }
+      return {
+        kind: 'literal',
+        value: values,
+        start: token.start,
+        end: this.expect(']').end,
+      }
     }
     if (token.text === '(') {
       const expression = this.expression()
@@ -346,7 +380,13 @@ class BillingParser {
   }
 }
 
-type ExpressionType = 'number' | 'string' | 'boolean' | 'nil' | 'dynamic'
+type ExpressionType =
+  | 'number'
+  | 'string'
+  | 'boolean'
+  | 'nil'
+  | 'dynamic'
+  | 'string-list'
 
 function checkExpressionTypes(ast: ExpressionNode): void {
   const types = new Map<ExpressionNode, ExpressionType>()
@@ -367,6 +407,7 @@ function checkExpressionTypes(ast: ExpressionNode): void {
     let result: ExpressionType = 'dynamic'
     if (node.kind === 'literal') {
       if (node.value === null) result = 'nil'
+      else if (Array.isArray(node.value)) result = 'string-list'
       else if (typeof node.value === 'number') result = 'number'
       else if (typeof node.value === 'string') result = 'string'
       else result = 'boolean'
@@ -380,7 +421,14 @@ function checkExpressionTypes(ast: ExpressionNode): void {
         result = types.get(node.yes) ?? 'dynamic'
       }
     } else if (node.kind === 'binary') {
-      if (['&&', '||'].includes(node.operator)) {
+      if (node.operator === '??') {
+        const left = types.get(node.left)
+        const right = types.get(node.right)
+        if (left === 'nil' || left === right) result = right ?? 'dynamic'
+      } else if (node.operator === 'in') {
+        requireType(node.right, 'string-list')
+        result = 'boolean'
+      } else if (['&&', '||'].includes(node.operator)) {
         requireType(node.left, 'boolean')
         requireType(node.right, 'boolean')
         result = 'boolean'
@@ -443,7 +491,10 @@ function validateFixedPricingTree(
       [node.right, node.left],
       [node.left, node.right],
     ]) {
-      if (factor.kind === 'variable' && factor.name === 'image_count') {
+      if (
+        factor.kind === 'variable' &&
+        (factor.name === 'image_count' || factor.name === 'chars')
+      ) {
         validateFixedPricingTree(pricing, rules)
         return
       }

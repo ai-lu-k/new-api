@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type TFunction } from 'i18next'
+import type { TFunction } from 'i18next'
 
 import type { TokenUnit } from './types'
 
@@ -145,3 +145,10 @@ export type ViewMode = (typeof VIEW_MODES)[keyof typeof VIEW_MODES]
 
 /** Default page size for pricing table */
 export const DEFAULT_PRICING_PAGE_SIZE = 20
+
+export const TIME_PRICING_TONES = [
+  'border-primary/20 bg-primary/10 text-primary',
+  'border-border bg-muted text-muted-foreground',
+  'border-violet-500/25 bg-violet-500/10 text-violet-800 dark:text-violet-300',
+  'border-emerald-500/25 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300',
+]

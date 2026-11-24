@@ -22,18 +22,23 @@ import {
   RefreshIcon,
 } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
+import { motion, useReducedMotion } from 'motion/react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
+import { MOTION_SHIFT, MOTION_TRANSITION } from '@/lib/motion'
 import { ROLE } from '@/lib/roles'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { SystemUpdateDialog } from './system-update-dialog'
 import { useSystemUpdate } from './use-system-update'
+
+/** The badge raises 4px as it appears, on the base token (contract §5). */
+const MotionBadge = motion.create(Badge)
 
 type SystemUpdateActionProps = {
   /** Version labels expand when the header's system-brand container has room. */
@@ -51,6 +56,7 @@ export function SystemUpdateAction(props: SystemUpdateActionProps) {
 
 function AdminSystemUpdateAction(props: SystemUpdateActionProps) {
   const { t } = useTranslation()
+  const shouldReduce = useReducedMotion()
   const update = useSystemUpdate()
   const [open, setOpen] = useState(false)
   const compact = props.compact ?? true
@@ -108,12 +114,17 @@ function AdminSystemUpdateAction(props: SystemUpdateActionProps) {
           {version}
         </span>
         {update.shouldNotify && (
-          <Badge
+          <MotionBadge
             variant='secondary'
+            initial={
+              shouldReduce ? false : { opacity: 0, y: MOTION_SHIFT.micro }
+            }
+            animate={{ opacity: 1, y: 0 }}
+            transition={MOTION_TRANSITION.base}
             className='bg-primary/10 text-primary hidden h-5 px-1.5 text-[10px] @min-[22rem]/system-brand:inline-flex'
           >
             {t('Update available')}
-          </Badge>
+          </MotionBadge>
         )}
       </>
     )
@@ -147,8 +158,11 @@ function AdminSystemUpdateAction(props: SystemUpdateActionProps) {
         >
           {triggerContent}
           {update.shouldNotify && (versionPresentation || compact) && (
-            <Badge
+            <MotionBadge
               aria-hidden='true'
+              initial={shouldReduce ? false : { opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={MOTION_TRANSITION.base}
               className={cn(
                 'absolute -end-0.5 -top-0.5 size-1.5 min-w-0 p-0',
                 versionPresentation

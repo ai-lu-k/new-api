@@ -27,6 +27,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/naming_setting"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -57,6 +58,7 @@ type responsesWSCreateRequest struct {
 type responsesWSErrorEvent struct {
 	Type       string             `json:"type"`
 	Status     int                `json:"status"`
+	RetryAfter int                `json:"retry_after,omitempty"`
 	EventID    string             `json:"event_id,omitempty"`
 	StreamID   string             `json:"stream_id,omitempty"`
 	ResponseID string             `json:"response_id,omitempty"`
@@ -101,8 +103,11 @@ type responsesWSSession struct {
 	connectionMu  sync.Mutex
 	target        *websocket.Conn
 	unregister    func()
-	stateMu       sync.Mutex
-	current       *responsesWSCallState
+	// releaseChannelLease frees the generation capacity held by the current
+	// upstream connection; it follows the same lifetime as target.
+	releaseChannelLease func()
+	stateMu             sync.Mutex
+	current             *responsesWSCallState
 
 	// These fields belong to the serial request worker and describe the actual
 	// established connection. Per-request token/user data is never stored here.
@@ -226,7 +231,10 @@ func (s *responsesWSSession) runRequest(state *responsesWSCallState, message []b
 
 func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState, create responsesWSCreateRequest) (apiErr *types.NewAPIError) {
 	policy := service.RequestPolicy(c)
-	modelName := create.Request.Model
+	modelName := naming_setting.ResolveAlias(create.Request.Model)
+	if modelName != create.Request.Model {
+		common.SetContextKey(c, appconstant.ContextKeyRequestedModel, create.Request.Model)
+	}
 	started := time.Now()
 	var info *relaycommon.RelayInfo
 	billingPrepared := false
@@ -327,6 +335,15 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 			if !s.setTarget(target) {
 				return types.NewError(context.Canceled, types.ErrorCodeBadResponse, types.ErrOptionWithSkipRetry())
 			}
+			// One upstream connection is one live generation: hold the channel's
+			// capacity until this session closes it, so an open stream cannot
+			// bypass the limit and cannot hoard capacity after it is gone.
+			release, capacityErr := service.StartChannelGeneration(c, channel.Id, info.UserId, channel.GetSetting(), modelName)
+			if capacityErr != nil {
+				s.closeTarget()
+				return capacityErr
+			}
+			s.registerChannelLease(release)
 			if err := s.writeTarget(websocket.TextMessage, payload); err != nil {
 				state.closeAfter = true
 				return types.NewError(err, types.ErrorCodeBadResponse, types.ErrOptionWithSkipRetry())
@@ -720,8 +737,8 @@ func (s *responsesWSSession) sendError(eventID, streamID string, apiErr *types.N
 
 func (s *responsesWSSession) closeTarget() {
 	s.connectionMu.Lock()
-	target, unregister := s.target, s.unregister
-	s.target, s.unregister = nil, nil
+	target, unregister, release := s.target, s.unregister, s.releaseChannelLease
+	s.target, s.unregister, s.releaseChannelLease = nil, nil, nil
 	s.connectionMu.Unlock()
 	if unregister != nil {
 		unregister()
@@ -729,6 +746,22 @@ func (s *responsesWSSession) closeTarget() {
 	if target != nil {
 		_ = target.Close()
 	}
+	if release != nil {
+		release()
+	}
+}
+
+// registerChannelLease records the capacity lease of the established upstream
+// connection. A session that is already ending releases it immediately.
+func (s *responsesWSSession) registerChannelLease(release func()) {
+	s.connectionMu.Lock()
+	if s.ctx.Err() != nil {
+		s.connectionMu.Unlock()
+		release()
+		return
+	}
+	s.releaseChannelLease = release
+	s.connectionMu.Unlock()
 }
 
 func (s *responsesWSSession) shutdown() {
@@ -879,12 +912,24 @@ func buildResponsesWSErrorPayload(eventID, streamID string, apiErr *types.NewAPI
 		status = http.StatusInternalServerError
 	}
 	openaiErr := apiErr.ToOpenAIError()
+	retryAfter := 0
+	if openaiErr.Code == "account_generation_concurrency_exceeded" || openaiErr.Code == "generation_concurrency_unavailable" {
+		retryAfter = 1
+	}
+	var daily *appmodel.ModelDailyTokenLimitError
+	if errors.As(apiErr, &daily) {
+		retryAfter = int(max(1, daily.ResetsAt-time.Now().Unix()))
+	}
+	if openaiErr.Code == "model_daily_token_limit_unavailable" {
+		retryAfter = 1
+	}
 	return common.Marshal(&responsesWSErrorEvent{
-		Type:     "error",
-		Status:   status,
-		EventID:  eventID,
-		StreamID: streamID,
-		Error:    &openaiErr,
+		RetryAfter: retryAfter,
+		Type:       "error",
+		Status:     status,
+		EventID:    eventID,
+		StreamID:   streamID,
+		Error:      &openaiErr,
 	})
 }
 

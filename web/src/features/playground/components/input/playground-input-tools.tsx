@@ -50,6 +50,7 @@ type PlaygroundInputToolsProps = {
   config: PlaygroundConfig
   disabled?: boolean
   hasMessages?: boolean
+  isImageGeneration?: boolean
   onClearMessages?: () => void
   onConfigChange: <K extends keyof PlaygroundConfig>(
     key: K,
@@ -66,6 +67,7 @@ export function PlaygroundInputTools({
   config,
   disabled,
   hasMessages = false,
+  isImageGeneration = false,
   onClearMessages,
   onConfigChange,
   onParameterEnabledChange,
@@ -152,6 +154,7 @@ export function PlaygroundInputTools({
         <PlaygroundParameterPanel
           config={config}
           disabled={disabled}
+          isImageGeneration={isImageGeneration}
           onConfigChange={onConfigChange}
           onParameterEnabledChange={onParameterEnabledChange}
           parameterEnabled={parameterEnabled}

@@ -20,33 +20,30 @@ import { Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
 import { AuthLayout } from '../auth-layout'
+
+const BOTTOM_LINK_CLASS =
+  'decoration-border hover:decoration-foreground text-foreground cursor-pointer underline decoration-1 underline-offset-[3px]'
 import { OtpForm } from './components/otp-form'
 
 export function Otp() {
   const { t } = useTranslation()
   return (
-    <AuthLayout>
-      <div className='w-full space-y-8'>
-        <div className='space-y-3'>
-          <h2 className='text-center text-2xl font-semibold tracking-tight sm:text-left'>
-            {t('Security verification')}
-          </h2>
-          <p className='text-muted-foreground text-left text-sm sm:text-base'>
-            {t('Verify your identity to finish signing in.')}
-          </p>
-          <p className='text-muted-foreground text-left text-sm sm:text-base'>
-            {t('Session expired?')}{' '}
-            <Link
-              to='/sign-in'
-              className='hover:text-primary font-medium underline underline-offset-4'
-            >
-              {t('Re-login')}
-            </Link>
-            .
-          </p>
+    <AuthLayout eyebrow={t('Security verification')}>
+      <div className='w-full'>
+        <h2 className='mt-3 text-xl leading-[1.2] font-bold tracking-[-0.01em]'>
+          {t('Security verification')}
+        </h2>
+
+        <div className='mt-7'>
+          <OtpForm />
         </div>
 
-        <OtpForm />
+        <p className='text-muted-foreground mt-3.5 text-xs leading-[1.6]'>
+          {t('Session expired?')}{' '}
+          <Link to='/sign-in' className={BOTTOM_LINK_CLASS}>
+            {t('Re-login')}
+          </Link>
+        </p>
       </div>
     </AuthLayout>
   )

@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/pkg/relaytrace"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -91,7 +92,11 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	streamingTimeout := time.Duration(constant.StreamingTimeout) * time.Second
+	streamingTimeout := time.Duration(max(1, constant.StreamingTimeout)) * time.Second
+	phaseTimeouts := relaytrace.CurrentConfig().Enabled && info.TransportTrace != nil
+	if info.TransportTrace != nil {
+		streamingTimeout = time.Duration(max(1, info.TransportTrace.Snapshot().Budgets.Idle)) * time.Second
+	}
 
 	var (
 		stopChan    = make(chan bool, 3) // 增加缓冲区避免阻塞
@@ -113,6 +118,12 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 	generalSettings := operation_setting.GetGeneralSetting()
 	pingEnabled := generalSettings.PingIntervalEnabled && !info.DisablePing
 	pingInterval := time.Duration(generalSettings.PingIntervalSeconds) * time.Second
+	if interval := info.TransportTrace.KeepaliveInterval(); interval > 0 && !info.DisablePing {
+		if !pingEnabled || pingInterval <= 0 || interval < pingInterval {
+			pingInterval = interval
+		}
+		pingEnabled = true
+	}
 	if pingInterval <= 0 {
 		pingInterval = DefaultPingInterval
 	}
@@ -186,6 +197,7 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 						info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonPingFail, err)
 						return
 					}
+					info.TransportTrace.Mark("ping", "downstream", 0)
 					logger.LogDebug(c, "ping data sent")
 				case <-ctx.Done():
 					return
@@ -243,6 +255,7 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 			wg.Done()
 		}()
 
+		sseErrorEvent := false
 		for scanner.Scan() {
 			// 检查是否需要停止
 			select {
@@ -253,20 +266,44 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 			default:
 			}
 
-			ticker.Reset(streamingTimeout)
+			// Phase-enabled streams use raw-byte timers in the response body wrapper.
+			if !phaseTimeouts {
+				ticker.Reset(streamingTimeout)
+			}
 			data := scanner.Text()
-			logger.LogDebug(c, "stream scanner data: %s", data)
-
-			if len(data) < 6 {
+			if event, ok := strings.CutPrefix(data, "event:"); ok {
+				sseErrorEvent = strings.TrimSpace(event) == "error"
 				continue
 			}
-			if data[:5] != "data:" && data[:6] != "[DONE]" {
-				continue
-			}
-			data = data[5:]
-			data = strings.TrimSpace(data)
 			if data == "" {
+				sseErrorEvent = false
+			}
+			logger.LogDebug(c, "stream scanner line bytes: %d", len(data))
+			if strings.HasPrefix(data, ":") {
+				info.TransportTrace.Mark("heartbeat", "upstream", len(data))
+			}
+
+			value, isData := strings.CutPrefix(data, "data:")
+			if isData {
+				data = strings.TrimSpace(value)
+			} else if data != "[DONE]" {
 				continue
+			}
+
+			if data == "" {
+				info.TransportTrace.ObserveSSE(data)
+				continue
+			}
+			kind := "upstream_error"
+			if sseErrorEvent && info.ChannelSetting.RetryAllUpstreamErrors {
+				info.TransportTrace.Mark(kind, "upstream", len(data))
+			} else {
+				kind = info.TransportTrace.ObserveSSE(data)
+			}
+			if info.ChannelSetting.RetryAllUpstreamErrors && kind == "upstream_error" && info.TransportTrace.HoldingPrelude() {
+				info.StreamStatus.MarkFailed("upstream_stream_error", "upstream_error", 0)
+				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonScannerErr, fmt.Errorf("upstream stream error before output"))
+				return
 			}
 			if !strings.HasPrefix(data, "[DONE]") {
 				info.SetFirstResponseTime()
@@ -289,16 +326,26 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 		if err := scanner.Err(); err != nil {
 			if err != io.EOF {
 				logger.LogError(c, "scanner error: "+err.Error())
-				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonScannerErr, err)
+				if info.TransportTrace != nil && info.TransportTrace.Snapshot().TimeoutPhase != "" {
+					info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonTimeout, err)
+				} else {
+					info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonScannerErr, err)
+				}
 			}
 		}
 		info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonEOF, nil)
 	})
 
-	// 主循环等待完成或超时
+	// Phase-enabled streams use only the observed raw-byte timers.
+	timeoutChan := ticker.C
+	if phaseTimeouts {
+		ticker.Stop()
+		timeoutChan = nil
+	}
 	select {
-	case <-ticker.C:
+	case <-timeoutChan:
 		info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonTimeout, nil)
+
 	case <-stopChan:
 		// EndReason already set by the goroutine that triggered stopChan
 	case <-c.Request.Context().Done():
@@ -308,6 +355,10 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 	}
 
 	cleanup()
+	if info.TransportTrace != nil {
+		info.TransportTrace.Outcome(string(info.StreamStatus.EndReason))
+		service.QueueRelayTimeoutLog(c, info)
+	}
 	if info.StreamStatus.IsNormalEnd() && !info.StreamStatus.HasErrors() {
 		logger.LogInfo(c, fmt.Sprintf("stream ended: %s", info.StreamStatus.Summary()))
 	} else {

@@ -1187,7 +1187,7 @@ export function CodexUsageDialog({
             render={
               <button
                 type='button'
-                className='hover:bg-muted/40 flex w-full items-start justify-between gap-3 p-3 text-left transition-colors'
+                className='hover:bg-muted/40 flex w-full items-start justify-between gap-3 p-3 text-left transition-colors duration-(--motion-fast) ease-(--ease-out)'
                 aria-expanded={showResetCredits}
               />
             }
@@ -1283,7 +1283,7 @@ export function CodexUsageDialog({
             render={
               <button
                 type='button'
-                className='hover:bg-muted/40 flex w-full items-center justify-between gap-2 p-3 transition-colors'
+                className='hover:bg-muted/40 flex w-full items-center justify-between gap-2 p-3 transition-colors duration-(--motion-fast) ease-(--ease-out)'
                 aria-expanded={showRawJson}
               />
             }

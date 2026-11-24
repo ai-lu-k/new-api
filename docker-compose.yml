@@ -33,6 +33,17 @@ services:
 #      - LOG_SQL_CLICKHOUSE_TTL_DAYS=0 # OPTIONAL: ClickHouse log retention days. Unset or 0 disables automatic deletion; set to e.g. 30 to keep 30 days
       - REDIS_CONN_STRING=redis://:123456@redis:6379 # ⚠️ IMPORTANT: Change the password in production!
       - TZ=Asia/Shanghai
+      - RELAY_LATENCY_ENABLED=${RELAY_LATENCY_ENABLED:-false}
+      - RELAY_LATENCY_ENFORCE=${RELAY_LATENCY_ENFORCE:-false}
+      - RELAY_LATENCY_ENFORCE_SCOPES=${RELAY_LATENCY_ENFORCE_SCOPES:-[]}
+      - RELAY_LATENCY_FALLBACK_SECONDS=${RELAY_LATENCY_FALLBACK_SECONDS:-60}
+      - RELAY_LATENCY_MIN_SECONDS=${RELAY_LATENCY_MIN_SECONDS:-10}
+      - RELAY_LATENCY_MAX_SECONDS=${RELAY_LATENCY_MAX_SECONDS:-600}
+      - RELAY_LATENCY_REFERENCE_PERCENT=${RELAY_LATENCY_REFERENCE_PERCENT:-1}
+      - RELAY_LATENCY_REFERENCE_SECONDS=${RELAY_LATENCY_REFERENCE_SECONDS:-600}
+      - RELAY_LATENCY_MINIMUM_SAMPLES=${RELAY_LATENCY_MINIMUM_SAMPLES:-500}
+      - RELAY_LATENCY_KEEPALIVE_SECONDS=${RELAY_LATENCY_KEEPALIVE_SECONDS:-10}
+      - RELAY_OBSERVATION_COST_PROFILES=${RELAY_OBSERVATION_COST_PROFILES:-[]}
       - ERROR_LOG_ENABLED=true # 是否启用错误日志记录 (Whether to enable error log recording)
       - BATCH_UPDATE_ENABLED=true  # 是否启用批量更新 (Whether to enable batch update)
       - NODE_NAME=new-api-node-1  # 节点名称，用于审计日志中标识节点身份；多节点/容器部署时建议设置 (Node name used in audit logs; recommended when running multiple instances or in containers)

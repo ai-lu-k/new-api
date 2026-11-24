@@ -21,6 +21,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { memo, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { Reveal } from '@/components/motion/reveal'
 import { Button } from '@/components/ui/button'
 import { getPerfMetricsSummary } from '@/features/performance-metrics/api'
 import { requireServerSuccess } from '@/lib/server-error-message'
@@ -38,6 +39,7 @@ export interface ModelCardGridProps {
   tokenUnit?: TokenUnit
   showRechargePrice?: boolean
   selectedGroup?: string
+  showGroups?: boolean
 }
 
 export const ModelCardGrid = memo(function ModelCardGrid(
@@ -81,18 +83,26 @@ export const ModelCardGrid = memo(function ModelCardGrid(
   return (
     <div className='flex flex-col gap-4 sm:gap-5'>
       <div className='grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3'>
-        {pagedModels.map((model) => (
-          <ModelCard
+        {pagedModels.map((model, index) => (
+          <Reveal
             key={model.id ?? model.model_name}
-            model={model}
-            tokenUnit={tokenUnit}
-            priceRate={props.priceRate}
-            usdExchangeRate={props.usdExchangeRate}
-            showRechargePrice={props.showRechargePrice}
-            selectedGroup={props.selectedGroup}
-            perf={perfMap.get(model.model_name || '')}
-            onClick={props.onModelClick}
-          />
+            // One frame of stagger for the first few cards, then the same
+            // 140ms entrance for the rest: a page of cards must not crawl in.
+            delay={Math.min(index, 3) * 0.04}
+            className='h-full min-w-0'
+          >
+            <ModelCard
+              model={model}
+              tokenUnit={tokenUnit}
+              priceRate={props.priceRate}
+              usdExchangeRate={props.usdExchangeRate}
+              showRechargePrice={props.showRechargePrice}
+              selectedGroup={props.selectedGroup}
+              showGroups={props.showGroups}
+              perf={perfMap.get(model.model_name || '')}
+              onClick={props.onModelClick}
+            />
+          </Reveal>
         ))}
       </div>
 

@@ -21,7 +21,6 @@ import {
   Coins,
   Layers,
   Gauge,
-  Zap,
   Flame,
   TrendingUp,
   Activity,
@@ -77,15 +76,6 @@ export function useModelStatCardsConfig(): StatCardConfig[] {
       iconTone: 'chart-2',
       getValue: (stat, timeRangeMinutes = 1) =>
         safeDivide(stat?.rpm ?? 0, timeRangeMinutes),
-    },
-    {
-      key: 'avgTpm',
-      title: t('Average TPM'),
-      description: t('Tokens per minute'),
-      icon: Zap,
-      iconTone: 'warning',
-      getValue: (stat, timeRangeMinutes = 1) =>
-        safeDivide(stat?.tpm ?? 0, timeRangeMinutes),
     },
   ]
 }

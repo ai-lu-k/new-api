@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useNavigate } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { CheckIcon, CopyIcon } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -32,6 +32,8 @@ import { copyToClipboard } from '@/lib/copy-to-clipboard'
 import { handleServerError } from '@/lib/handle-server-error'
 import { AuthOperationError } from '@/lib/secure-verification'
 import { createServerError } from '@/lib/server-error-message'
+import { textActionClass } from '@/lib/text-action'
+import { cn } from '@/lib/utils'
 
 import { AuthLayout } from '../auth-layout'
 
@@ -75,15 +77,14 @@ export function ResetPasswordConfirm({
       if (res?.data?.success) {
         const password = res.data.data
         setNewPassword(password)
+        // The password stays in the field. A toast carries it onto the screen,
+        // into screenshots and into the notification centre.
+        toast.success(t('auth.resetPasswordConfirm.success'))
         const copySuccess = await copyToClipboard(password)
         if (copySuccess) {
-          toast.success(
-            t('Password reset and copied to clipboard: {{password}}', {
-              password,
-            })
-          )
+          toast.success(t('Copied to clipboard'))
         } else {
-          toast.success(t('Password reset: {{password}}', { password }))
+          toast.error(t('Failed to copy to clipboard'))
         }
       } else {
         handleServerError(createServerError(res.data, t('Request failed')))
@@ -99,36 +100,41 @@ export function ResetPasswordConfirm({
     if (!newPassword) return
 
     const copySuccess = await copyToClipboard(newPassword)
-    if (copySuccess) {
-      setCopied(true)
-      toast.success(
-        t('Password copied to clipboard: {{password}}', {
-          password: newPassword,
-        })
-      )
-      setTimeout(() => setCopied(false), 2000)
+    if (!copySuccess) {
+      setCopied(false)
+      toast.error(t('Failed to copy to clipboard'))
+      return
     }
+    setCopied(true)
+    toast.success(t('Copied to clipboard'))
+    setTimeout(() => setCopied(false), 2000)
   }
 
   return (
-    <AuthLayout>
-      <div className='w-full space-y-8'>
-        <div className='space-y-2'>
-          <h2 className='text-center text-2xl font-semibold tracking-tight sm:text-left'>
+    <AuthLayout eyebrow={t('Reset password')}>
+      <div className='w-full space-y-6'>
+        <div className='space-y-3'>
+          <h2 className='mt-3 text-xl leading-[1.2] font-bold tracking-[-0.01em]'>
             {t('Reset password')}
           </h2>
-          <p className='text-muted-foreground text-left text-sm sm:text-base'>
-            {newPassword
-              ? t('auth.resetPasswordConfirm.success')
-              : t('auth.resetPasswordConfirm.description')}
-          </p>
+          {newPassword ? (
+            <p className='text-muted-foreground text-left text-xs leading-[1.6]'>
+              {t('auth.resetPasswordConfirm.success')}
+            </p>
+          ) : null}
         </div>
 
         <div className='space-y-4'>
           {!isValidResetLink && (
             <Alert variant='destructive'>
               <AlertDescription>
-                {t('Invalid reset link, please request a new password reset.')}
+                {t('Invalid reset link, please request a new password reset.')}{' '}
+                <Link
+                  to='/forgot-password'
+                  className={cn(textActionClass, 'font-medium')}
+                >
+                  {t('Forgot password?')}
+                </Link>
               </AlertDescription>
             </Alert>
           )}
@@ -167,9 +173,11 @@ export function ResetPasswordConfirm({
                   )}
                 </Button>
               </div>
-              <p className='text-muted-foreground text-xs'>
-                {t('Password has been copied to clipboard')}
-              </p>
+              {copied ? (
+                <p className='text-muted-foreground text-xs' role='status'>
+                  {t('Password has been copied to clipboard')}
+                </p>
+              ) : null}
             </div>
           )}
 

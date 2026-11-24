@@ -42,13 +42,8 @@ test.each([
   ['ru', 'понедельник'],
   ['ja', '月曜日'],
   ['vi', 'Thứ Hai'],
-  [
-    'invalid_locale',
-    new Intl.DateTimeFormat(undefined, {
-      weekday: 'long',
-      timeZone: 'UTC',
-    }).format(new Date('2026-01-05T00:00:00Z')),
-  ],
+  // An unknown language formats in English, matching the interface fallback.
+  ['invalid_locale', 'Monday'],
 ])(
   'formats weekdays for %s and updates after a language switch',
   async (language, monday) => {

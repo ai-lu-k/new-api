@@ -284,7 +284,7 @@ export function EditTagDialog({ open, onOpenChange }: EditTagDialogProps) {
                       <StatusBadge
                         key={model}
                         variant='neutral'
-                        className='cursor-pointer transition-opacity hover:opacity-70'
+                        className='cursor-pointer transition-opacity duration-(--motion-fast) ease-(--ease-out) hover:opacity-70'
                         copyable={false}
                         onClick={() => handleRemoveModel(model)}
                       >
@@ -407,7 +407,7 @@ export function EditTagDialog({ open, onOpenChange }: EditTagDialogProps) {
                 <GroupBadge
                   key={group}
                   group={group}
-                  className={`cursor-pointer rounded-sm transition-opacity hover:opacity-70 ${
+                  className={`cursor-pointer rounded-sm transition-opacity duration-(--motion-fast) ease-(--ease-out) hover:opacity-70 ${
                     selectedGroups.includes(group) ? 'bg-muted/70 px-1' : ''
                   }`}
                   onClick={() => handleToggleGroup(group)}

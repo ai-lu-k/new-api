@@ -1,7 +1,10 @@
 package controller
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/middleware"
@@ -100,6 +103,10 @@ func EmailBind(c *gin.Context) {
 		return
 	}
 	succeeded = true
+	// A verified address can release a referral reward that was waiting for one.
+	if _, err := model.IssueReferralReward(identity.UserID, time.Now()); err != nil && !errors.Is(err, model.ErrReferralRewardNotFound) {
+		common.SysError(fmt.Sprintf("failed to issue the referral reward for user %d: %v", identity.UserID, err))
+	}
 	notificationFailed = service.NotifyAccountSecurityChange(state.CurrentEmail, "Email address changed") != nil
 	if err := service.NotifyAccountSecurityChange(state.Email, "Email address confirmed"); err != nil {
 		notificationFailed = true

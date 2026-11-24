@@ -99,7 +99,7 @@ function AppLink(props: { app: AppRanking }) {
       href={props.app.url}
       target='_blank'
       rel='noreferrer'
-      className='text-foreground hover:text-primary inline-flex items-center gap-1 transition-colors'
+      className='text-foreground hover:text-primary inline-flex items-center gap-1 transition-colors duration-(--motion-fast) ease-(--ease-out)'
     >
       {props.app.name}
       <ExternalLink className='text-muted-foreground/40 size-3' />

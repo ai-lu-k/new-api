@@ -137,3 +137,36 @@ export const SUCCESS_MESSAGES = {
   USER_CREATED: 'User created successfully',
   USER_UPDATED: 'User updated successfully',
 } as const
+
+// ============================================================================
+// Balance Column Metrics
+// ============================================================================
+
+/**
+ * The figures the balance column can be sorted by. The first two come straight
+ * from the account row; the rest are lifetime totals assembled from the funding
+ * records on the server, the last one being the two free sources added up.
+ */
+export const QUOTA_SORT_METRICS = [
+  'quota',
+  'used_quota',
+  'gift_used',
+  'token_plan_used',
+  'gift_plan_used',
+] as const
+
+export type QuotaSortMetric = (typeof QUOTA_SORT_METRICS)[number]
+
+export const QUOTA_METRIC_LABELS: Record<QuotaSortMetric, string> = {
+  quota: 'Available Balance',
+  used_quota: 'Total Used',
+  gift_used: 'Gift used',
+  token_plan_used: 'Token Plan used',
+  gift_plan_used: 'Gift + Token Plan used',
+}
+
+export const isQuotaSortMetric = (
+  value: string | null | undefined
+): value is QuotaSortMetric => {
+  return (QUOTA_SORT_METRICS as readonly string[]).includes(value ?? '')
+}

@@ -140,6 +140,9 @@ func writeRateLimited(c *gin.Context, retryAfterSeconds int64) {
 	if retryAfterSeconds > 0 {
 		c.Header("Retry-After", strconv.FormatInt(retryAfterSeconds, 10))
 	}
+	// A rejection must not be cached by the browser or an intermediary; the
+	// surrounding cache middleware sets long lifetimes for served content.
+	c.Header("Cache-Control", "no-store")
 	c.Status(http.StatusTooManyRequests)
 	c.Abort()
 }
@@ -242,6 +245,14 @@ func userRedisRateLimiter(c *gin.Context, maxRequestNum int, duration int64, key
 	if !allowed {
 		writeRateLimited(c, ttlSeconds)
 	}
+}
+
+// CampaignSubmitRateLimit caps campaign answer submissions per address. The
+// answers are short enough to guess, so failed attempts must stay expensive
+// even for anonymous visitors. Thirty attempts per ten minutes leaves room for
+// typos while still bounding brute force.
+func CampaignSubmitRateLimit() func(c *gin.Context) {
+	return rateLimitFactory(30, 10*60, "CTF")
 }
 
 // SearchRateLimit returns a per-user rate limiter for search endpoints.

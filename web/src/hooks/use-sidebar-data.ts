@@ -18,20 +18,25 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import {
   Activity,
+  Bot,
   Box,
+  ChartColumn,
   ClipboardList,
   CreditCard,
   FileText,
+  Filter,
   FlaskConical,
+  Gift,
   Key,
   LayoutDashboard,
-  ListTodo,
   MessageSquare,
+  MessageSquareText,
   PlugZap,
   Radio,
   ServerCog,
   Settings,
   ShieldCheck,
+  Terminal,
   Ticket,
   User,
   Users,
@@ -41,6 +46,12 @@ import { useTranslation } from 'react-i18next'
 
 import type { SidebarData } from '@/components/layout/types'
 import { ROLE } from '@/lib/roles'
+
+/**
+ * The sidebar groups that make up a signed-in reader's own workspace, in the
+ * order the sidebar shows them. The bar's folded menu lists the same pages.
+ */
+export const WORKSPACE_GROUP_IDS = ['build', 'finance', 'account']
 
 /**
  * Root navigation groups for the application sidebar.
@@ -55,10 +66,10 @@ export function useSidebarData(): SidebarData {
     navGroups: [
       {
         id: 'chat',
-        title: t('Chat'),
+        title: t('Testing'),
         items: [
           {
-            title: t('Playground'),
+            title: t('Model Test'),
             url: '/playground',
             icon: FlaskConical,
           },
@@ -70,8 +81,8 @@ export function useSidebarData(): SidebarData {
         ],
       },
       {
-        id: 'general',
-        title: t('General'),
+        id: 'build',
+        title: t('Build & Use'),
         items: [
           {
             title: t('Overview'),
@@ -81,6 +92,9 @@ export function useSidebarData(): SidebarData {
           {
             title: t('Dashboard'),
             url: '/dashboard/models',
+            // The analysis workspace has sibling sections under the same row:
+            // models, flow and the admin one. Any of them keeps the row lit.
+            activeUrls: ['/dashboard/models', '/dashboard/flow'],
             icon: LayoutDashboard,
           },
           {
@@ -98,26 +112,35 @@ export function useSidebarData(): SidebarData {
             url: '/usage-logs/audit',
             icon: ClipboardList,
           },
-          {
-            title: t('Task Logs'),
-            url: '/usage-logs/task',
-            activeUrls: ['/usage-logs/drawing'],
-            configUrls: ['/usage-logs/drawing', '/usage-logs/task'],
-            icon: ListTodo,
-          },
         ],
       },
       {
-        id: 'personal',
-        title: t('Personal'),
+        id: 'finance',
+        title: t('Finance'),
         items: [
           {
-            title: t('Wallet'),
+            title: t('Top-up'),
             url: '/wallet',
             icon: Wallet,
           },
           {
-            title: t('Profile'),
+            title: t('Referral Program'),
+            url: '/referral',
+            icon: Gift,
+          },
+        ],
+      },
+      {
+        id: 'account',
+        title: t('Account & Security'),
+        items: [
+          {
+            title: t('Feedback and tickets'),
+            url: '/tickets',
+            icon: MessageSquareText,
+          },
+          {
+            title: t('Settings'),
             url: '/profile',
             icon: User,
           },
@@ -148,6 +171,16 @@ export function useSidebarData(): SidebarData {
             icon: Users,
           },
           {
+            title: t('Ticket queue'),
+            url: '/ticket-queue',
+            icon: MessageSquareText,
+          },
+          {
+            title: t('Token Plan'),
+            url: '/token-plan',
+            icon: ChartColumn,
+          },
+          {
             title: t('Redemption Codes'),
             url: '/redemption-codes',
             icon: Ticket,
@@ -174,6 +207,30 @@ export function useSidebarData(): SidebarData {
             url: '/system-settings/site',
             activeUrls: ['/system-settings'],
             icon: Settings,
+          },
+          {
+            title: t('Operations info'),
+            url: '/finance',
+            icon: ChartColumn,
+            requiredRole: ROLE.SUPER_ADMIN,
+          },
+          {
+            title: t('Request funnel'),
+            url: '/relay-funnel',
+            icon: Filter,
+            requiredRole: ROLE.SUPER_ADMIN,
+          },
+          {
+            title: t('WorkBuddy'),
+            url: '/workbuddy',
+            icon: Bot,
+            requiredRole: ROLE.SUPER_ADMIN,
+          },
+          {
+            title: t('CommandCode'),
+            url: '/commandcode',
+            icon: Terminal,
+            requiredRole: ROLE.SUPER_ADMIN,
           },
         ],
       },

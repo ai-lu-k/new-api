@@ -10,6 +10,8 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	filterdto "github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -20,6 +22,47 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestPlaygroundUsesChatRouteForSelectionAndRelay(t *testing.T) {
+	config := &dto.AdvancedCustomConfig{Routes: []dto.AdvancedCustomRoute{{
+		IncomingPath:           "/v1/chat/completions",
+		UpstreamPath:           "/provider/chat/completions",
+		Models:                 []string{"gpt-test"},
+		PassThroughBodyEnabled: true,
+	}}}
+	channel := &model.Channel{Type: constant.ChannelTypeAdvancedCustom}
+	channel.SetOtherSettings(dto.ChannelOtherSettings{AdvancedCustom: config})
+	for _, path := range []string{"/v1/chat/completions", "/pg/chat/completions"} {
+		t.Run(path, func(t *testing.T) {
+			filters := []filterdto.ChannelFilter{{Kind: filterdto.FilterRequestPath, RequestPath: path}}
+			ok, _ := model.ChannelSatisfiesFilters(channel, "gpt-test", filters)
+			require.True(t, ok, "chat-capable channel must remain eligible for playground")
+			ok, _ = model.ChannelSatisfiesFilters(channel, "other-model", filters)
+			assert.False(t, ok, "model restrictions must still apply")
+
+			c := advancedCustomGinContext(path)
+			info := advancedCustomRelayInfo(config)
+			adaptor := &Adaptor{}
+			require.NoError(t, adaptor.resolve(c, info))
+			upstream, err := adaptor.GetRequestURL(info)
+			require.NoError(t, err)
+			assert.Equal(t, "https://fallback.example/provider/chat/completions", upstream)
+			assert.Equal(t, path, c.Request.URL.Path, "preserve the internal route for auth, grouping and logs")
+
+			common.SetContextKey(c, constant.ContextKeyChannelType, constant.ChannelTypeAdvancedCustom)
+			common.SetContextKey(c, constant.ContextKeyChannelOtherSetting, dto.ChannelOtherSettings{AdvancedCustom: config})
+			info.InitChannelMeta(c)
+			assert.True(t, info.ChannelSetting.PassThroughBodyEnabled)
+
+			fallback := advancedCustomRelayInfo(config)
+			fallback.RequestURLPath = path + "?client=1"
+			_, err = (&Adaptor{}).GetRequestURL(fallback)
+			require.NoError(t, err, "request-path fallback must also resolve the chat route")
+		})
+	}
+	ok, _ := model.ChannelSatisfiesFilters(channel, "gpt-test", []filterdto.ChannelFilter{{Kind: filterdto.FilterRequestPath, RequestPath: "/pg/chat/completions/other"}})
+	assert.False(t, ok, "do not alias arbitrary playground paths")
+}
 
 func TestAdaptorUsesExactRouteAndQueryAuth(t *testing.T) {
 	adaptor := &Adaptor{}

@@ -103,7 +103,14 @@ async function renderFilter(
       await screen.findByRole('button', { name: /^Filter/ })
     )
   }
-  await screen.findByRole('combobox', { name: 'Group' })
+  await screen.findByPlaceholderText('Model Name')
+  if (
+    !groups ||
+    Object.keys(groups).some((group) => group !== 'default') ||
+    initialEntry.includes('group=')
+  ) {
+    await screen.findByRole('combobox', { name: 'Group' })
+  }
   return router
 }
 
@@ -301,4 +308,24 @@ it('keeps historical auto values editable when auto is the only available group'
   await waitFor(() =>
     expect(router.state.location.search).toMatchObject({ group: 'retired' })
   )
+})
+
+it('keeps the precise filters visible in order when default is the only group', async () => {
+  await renderFilter('/usage-logs/common', { default: { desc: '', ratio: 1 } })
+  await waitFor(() =>
+    expect(api.get).toHaveBeenCalledWith('/api/user/self/groups')
+  )
+  expect(
+    screen.queryByRole('combobox', { name: 'Group' })
+  ).not.toBeInTheDocument()
+  const request = screen.getByPlaceholderText('Request ID')
+  const upstream = screen.getByPlaceholderText('Upstream Request ID')
+  const token = screen.getByPlaceholderText('Token Name')
+  expect(request).toBeVisible()
+  expect(
+    request.compareDocumentPosition(upstream) & Node.DOCUMENT_POSITION_FOLLOWING
+  ).toBeTruthy()
+  expect(
+    upstream.compareDocumentPosition(token) & Node.DOCUMENT_POSITION_FOLLOWING
+  ).toBeTruthy()
 })

@@ -366,3 +366,28 @@ describe('request policy settings', () => {
     expect(api.put).not.toHaveBeenCalled()
   })
 })
+
+it('saves multiple model daily limits through the shared model-value editor', async () => {
+  await renderPolicies('/system-settings/request-policies/model-daily-tokens')
+  const input = await screen.findByRole('textbox', {
+    name: 'Daily token limit',
+  })
+  fireEvent.change(input, { target: { value: '100000000' } })
+  await userEvent.click(screen.getByRole('button', { name: 'Add Row' }))
+  const names = screen.getAllByRole('textbox', { name: 'Model' })
+  const amounts = screen.getAllByRole('textbox', { name: 'Daily token limit' })
+  fireEvent.change(names[1], { target: { value: 'another-model' } })
+  fireEvent.change(amounts[1], { target: { value: '300000000' } })
+  await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+  await waitFor(() =>
+    expect(api.patch).toHaveBeenCalledWith('/api/option/request_policy', {
+      options: {
+        ModelDailyTokenLimits: JSON.stringify(
+          { 'deepseek-v4.1-flash-x0.1': 100000000, 'another-model': 300000000 },
+          null,
+          2
+        ),
+      },
+    })
+  )
+})

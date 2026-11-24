@@ -25,6 +25,7 @@ import {
   CardTitle,
   CardDescription,
 } from '@/components/ui/card'
+import { cn } from '@/lib/utils'
 
 type SettingsCardProps = {
   title: string
@@ -40,12 +41,17 @@ export const SettingsCard = memo(function SettingsCard({
   className,
 }: SettingsCardProps) {
   return (
-    <Card className={className}>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
+    <Card
+      className={cn(
+        'bg-transparent ring-0 rounded-none px-0 shadow-none',
+        className
+      )}
+    >
+      <CardHeader className='px-0'>
+        <CardTitle className='text-base font-semibold'>{title}</CardTitle>
         {description && <CardDescription>{description}</CardDescription>}
       </CardHeader>
-      <CardContent>{children}</CardContent>
+      <CardContent className='px-0'>{children}</CardContent>
     </Card>
   )
 })

@@ -55,6 +55,13 @@ token.auto_groups_too_many: "每个令牌最多可选择 {{.Max}} 个 Auto 分�
 token.auto_groups_duplicate: "Auto 分组 {{.Group}} 重复"
 token.auto_groups_invalid: "Auto 分组 {{.Group}} 不可用或无权访问"
 
+# DSH setup messages
+dsh_setup.disabled: "本站尚未开启 DSH 一键配置"
+dsh_setup.auto_group_unavailable: "当前账号不能使用自动分组，无法一键配置 DSH"
+dsh_setup.no_models: "当前没有可以配置给 DSH 的模型"
+dsh_setup.token_limit: "API 密钥数量已达上限，请先删除不用的密钥再试"
+dsh_setup.token_unavailable: "这把 API 密钥不可用，请换一把"
+
 # Redemption messages
 redemption.name_length: "兑换码名称长度必须在1-20之间"
 redemption.count_positive: "兑换码个数必须大于0"
@@ -103,6 +110,7 @@ user.topup_processing: "充值处理中，请稍后重试"
 user.register_failed: "用户注册失败或用户ID获取失败"
 user.default_token_failed: "生成默认令牌失败"
 user.aff_code_empty: "affCode 为空！"
+user.aff_code_invalid: "邀请码不存在，请核对后重试。"
 user.email_empty: "email 为空！"
 user.github_id_empty: "GitHub id 为空！"
 user.discord_id_empty: "discord id 为空！"
@@ -112,6 +120,8 @@ user.telegram_id_empty: "Telegram id 为空！"
 user.telegram_not_bound: "该 Telegram 账户未绑定"
 user.linux_do_id_empty: "Linux DO id 为空！"
 user.quota_change_zero: "额度变更量不能为0"
+user.quota_reason_required: '手动增加额度需要选择理由；理由为「其他」时还要填写说明'
+user.quota_paid_amount_required: '付费类理由需要填写实收金额'
 
 # Quota messages
 quota.negative: "额度不能为负数！"
@@ -275,6 +285,7 @@ distributor.channel_disabled: "该渠道已被禁用"
 distributor.affinity_channel_disabled: "渠道亲和性命中的渠道已被禁用，已按规则停止重试，请联系管理员处理"
 distributor.token_no_model_access: "该令牌无权访问任何模型"
 distributor.token_model_forbidden: "该令牌无权访问模型 {{.Model}}"
+distributor.model_level_too_low: "模型 {{.Model}} 需要 LV{{.Level}} 及以上才能使用（等级按累计消耗计算）"
 distributor.model_name_required: "未指定模型名称，模型名称不能为空"
 distributor.invalid_playground_request: "无效的playground请求，{{.Error}}"
 distributor.group_access_denied: "无权访问该分组"
@@ -283,6 +294,9 @@ distributor.no_available_channel: "分组 {{.Group}} 下模型 {{.Model}} 无可
 distributor.no_available_channel_task_plugin: "分组 {{.Group}} 下模型 {{.Model}} 无可用渠道：该模型由任务插件认领，但当前没有启用的渠道可服务此模型（distributor）"
 distributor.invalid_midjourney_request: "无效的midjourney请求，{{.Error}}"
 distributor.invalid_request_parse_model: "无效的请求，无法解析模型"
+distributor.channel_concurrency_exceeded: "模型 {{.Model}} 的个人并发已满（{{.InUse}}/{{.Limit}} 正在生成），请稍后重试"
+distributor.channel_capacity_exceeded: "模型 {{.Model}} 的渠道并发已满（{{.InUse}}/{{.Limit}} 正在生成），请稍后重试"
+distributor.channel_concurrency_unavailable: "无法校验模型 {{.Model}} 的并发限制，请稍后重试"
 
 # Custom OAuth provider messages
 custom_oauth.not_found: "自定义 OAuth 提供商不存在"
@@ -292,3 +306,31 @@ custom_oauth.name_empty: "提供商名称不能为空"
 custom_oauth.has_bindings: "无法删除已有用户绑定的提供商"
 custom_oauth.binding_not_found: "OAuth 绑定不存在"
 custom_oauth.provider_id_field_invalid: "无法从提供商响应中提取用户 ID"
+
+# Text of the public pages as served before the front end starts
+site_page.home: "首页"
+site_page.models: "模型广场"
+site_page.models_description: "{{.Site}} 上全部 {{.Count}} 个可用模型，以及它们的价格、延迟和吞吐。"
+site_page.cheap: "便宜模型"
+site_page.cheap_description: "{{.Site}} 上 {{.Count}} 个按 token 计价的模型按输入价格从低到高排列，最低的是 {{.Model}}，输入 ${{.Price}}/百万 token。"
+site_page.cheap_empty: "价格暂时无法读取，请直接查看模型广场。"
+site_page.cheap_skipped: "另有 {{.Count}} 个模型不按 token 计价，未列入。"
+site_page.model_description: "{{.Model}} 在 {{.Site}} 上的价格与调用方式。"
+site_page.model_price: "输入 ${{.Input}} / 百万 token，输出 ${{.Output}} / 百万 token"
+site_page.model_vendor: "供应商：{{.Vendor}}"
+site_page.model_cheaper: "同系列更便宜：{{.Models}}"
+site_page.rankings: "公开数据"
+site_page.rankings_description: "{{.Site}} 上各模型按调用量的排行。"
+site_page.guide: "快速开始"
+site_page.guide_description: "在 {{.Site}} 上开始调用：创建 API 密钥，选好要调用的模型，再用 OpenAI 或 Anthropic 兼容的格式发出第一个请求。"
+site_page.about: "关于"
+
+# Catalogue facts a model must carry when it is saved by hand
+model_catalog.input_modalities: "请至少选择一种输入模态（文本、图片、文件、音频、视频）"
+model_catalog.context_length: "请填写上下文长度（token 数，大于 0）"
+model_catalog.supported_parameters: "支持的参数里有无法识别的项"
+model_catalog.release_date: "请填写发布时间，格式为年-月，例如 2026-09"
+model_catalog.series: "请填写模型系列（不超过 64 个字符）"
+ticket.content_invalid: '工单标题需要 2 到 120 个字，内容需要 5 到 4000 个字'
+ticket.attachment_invalid: '附件只支持 PNG、JPEG、GIF、WebP 图片，单张不超过 5 MB，每条消息最多 3 张'
+ticket.closed: '工单已关闭，不能再发送新消息'

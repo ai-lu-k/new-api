@@ -1,13 +1,16 @@
 package model
 
 import (
+	"errors"
 	"maps"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/pkg/benchmark"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/config"
@@ -140,6 +143,8 @@ func InitOptionMap() {
 	common.OptionMap["WeChatAccountQRCodeImageURL"] = ""
 	common.OptionMap["TurnstileSiteKey"] = ""
 	common.OptionMap["TurnstileSecretKey"] = ""
+	common.OptionMap["GeeTestCaptchaId"] = ""
+	common.OptionMap["GeeTestCaptchaKey"] = ""
 	common.OptionMap["QuotaForNewUser"] = strconv.Itoa(common.QuotaForNewUser)
 	common.OptionMap["QuotaForInviter"] = strconv.Itoa(common.QuotaForInviter)
 	common.OptionMap["QuotaForInvitee"] = strconv.Itoa(common.QuotaForInvitee)
@@ -207,6 +212,9 @@ func loadOptionsFromDatabase() {
 	options, _ := AllOption()
 	passkeyOptions := make(map[string]string)
 	for _, option := range options {
+		if isBenchmarkDataOption(option.Key) {
+			continue
+		}
 		if IsPasskeyDomainOption(option.Key) {
 			passkeyOptions[option.Key] = option.Value
 			continue
@@ -217,6 +225,12 @@ func loadOptionsFromDatabase() {
 		}
 	}
 	applyPasskeyDomainOptions(passkeyOptions)
+	if err := SyncBenchmarkMappings(); err != nil {
+		common.SysError("failed to sync benchmark mappings: " + err.Error())
+	}
+	if err := SyncBenchmarkSnapshots(); err != nil {
+		common.SysError("failed to sync benchmark snapshots: " + err.Error())
+	}
 }
 
 func SyncOptions(frequency int) {
@@ -243,7 +257,19 @@ func validateOptionValue(key string, value string) error {
 	return nil
 }
 
+// isBenchmarkDataOption reports the benchmark rows that are published through
+// the model management endpoints instead of the generic option map.
+func isBenchmarkDataOption(key string) bool {
+	return slices.Contains([]string{benchmark.MappingsOptionKey, benchmark.TextSnapshotOptionKey, benchmark.ImageSnapshotOptionKey}, key)
+}
+
 func UpdateOption(key string, value string) error {
+	if isBenchmarkDataOption(key) {
+		return errors.New("update benchmark data through the model management endpoint")
+	}
+	if strings.HasPrefix(key, "legal.") {
+		return errors.New("publish legal documents through the legal publication endpoint")
+	}
 	if IsRequestPolicyOption(key) {
 		return UpdateRequestPolicyOptions(map[string]string{key: value})
 	}
@@ -282,6 +308,12 @@ func UpdateOptionsBulk(values map[string]string) error {
 		return nil
 	}
 	for key := range values {
+		if isBenchmarkDataOption(key) {
+			return errors.New("update benchmark data through the model management endpoint")
+		}
+		if strings.HasPrefix(key, "legal.") {
+			return errors.New("publish legal documents through the legal publication endpoint")
+		}
 		if IsPasskeyDomainOption(key) {
 			_, err := UpdatePasskeyDomainOptions(values, false, "")
 			return err
@@ -602,6 +634,10 @@ func updateOptionMap(key string, value string) (err error) {
 		common.TurnstileSiteKey = value
 	case "TurnstileSecretKey":
 		common.TurnstileSecretKey = value
+	case "GeeTestCaptchaId":
+		common.GeeTestCaptchaId = strings.TrimSpace(value)
+	case "GeeTestCaptchaKey":
+		common.GeeTestCaptchaKey = strings.TrimSpace(value)
 	case "QuotaForNewUser":
 		common.QuotaForNewUser, _ = strconv.Atoi(value)
 	case "QuotaForInviter":

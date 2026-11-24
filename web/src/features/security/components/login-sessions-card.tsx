@@ -24,15 +24,8 @@ import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { SectionPanel } from '@/components/section-panel'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import {
   Empty,
   EmptyDescription,
@@ -174,31 +167,33 @@ export function LoginSessionsCard() {
 
   return (
     <>
-      <Card data-card-hover='false'>
-        <CardHeader>
-          <CardTitle>{t('Login sessions')}</CardTitle>
-          <CardDescription>
-            {t('Review and sign out devices currently using your account.')}
-          </CardDescription>
-          <CardAction>
-            <Button
-              type='button'
-              variant='outline'
-              size='sm'
-              disabled={!hasOtherSessions || revokeOthersMutation.isPending}
-              onClick={() => setConfirmOthers(true)}
-            >
-              <HugeiconsIcon
-                icon={Logout01Icon}
-                data-icon='inline-start'
-                strokeWidth={2}
-              />
-              {t('Sign out other sessions')}
-            </Button>
-          </CardAction>
-        </CardHeader>
-        <CardContent>{sessionsContent}</CardContent>
-      </Card>
+      <SectionPanel
+        title={t('Login sessions')}
+        description={t(
+          'Review and sign out devices currently using your account.'
+        )}
+        level='card'
+        contentClassName='pt-1'
+        actions={
+          <Button
+            type='button'
+            variant='outline'
+            size='sm'
+            className='min-h-11 sm:min-h-8'
+            disabled={!hasOtherSessions || revokeOthersMutation.isPending}
+            onClick={() => setConfirmOthers(true)}
+          >
+            <HugeiconsIcon
+              icon={Logout01Icon}
+              data-icon='inline-start'
+              strokeWidth={2}
+            />
+            {t('Sign out other sessions')}
+          </Button>
+        }
+      >
+        {sessionsContent}
+      </SectionPanel>
 
       <LoginSessionDialogs
         revokeTarget={revokeTarget}

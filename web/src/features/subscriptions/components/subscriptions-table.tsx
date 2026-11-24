@@ -20,8 +20,16 @@ import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { DataTablePage, useDataTable } from '@/components/data-table'
+import {
+  DataTablePage,
+  SECTION_FRAME_CLASSNAME,
+  SECTION_TABLE_HEAD_CLASSNAME,
+  useDataTable,
+} from '@/components/data-table'
+import { ErrorState } from '@/components/error-state'
+import { SectionHeading } from '@/components/section-heading'
 import { requireServerSuccess } from '@/lib/server-error-message'
+import { cn } from '@/lib/utils'
 
 import { getAdminPlans } from '../api'
 import { useSubscriptionsColumns } from './subscriptions-columns'
@@ -32,7 +40,7 @@ export function SubscriptionsTable() {
   const columns = useSubscriptionsColumns()
   const { refreshTrigger } = useSubscriptions()
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin-subscription-plans', refreshTrigger],
     queryFn: async () => {
       const result = requireServerSuccess(await getAdminPlans())
@@ -50,15 +58,22 @@ export function SubscriptionsTable() {
     withFacetedRowModel: false,
   })
 
+  if (isError && !data) {
+    return <ErrorState onRetry={() => void refetch()} />
+  }
+
   return (
     <DataTablePage
       table={table}
       columns={columns}
       isLoading={isLoading}
+      tableHeading={<SectionHeading as='h2' title={t('Subscription Plans')} />}
+      tableClassName={cn(SECTION_FRAME_CLASSNAME, SECTION_TABLE_HEAD_CLASSNAME)}
       emptyTitle={t('No subscription plans yet')}
       emptyDescription={t(
         'Click "Create Plan" to create your first subscription plan'
       )}
+      showPagination={plans.length > 0}
       skeletonKeyPrefix='subscriptions-skeleton'
       applyHeaderSize
     />

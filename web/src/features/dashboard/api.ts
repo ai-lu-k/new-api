@@ -19,9 +19,11 @@ For commercial licensing, please contact support@quantumnous.com
 import { api } from '@/lib/api'
 
 import type {
+  DailyQuotaItem,
   FlowQuotaDataItem,
   QuotaDataItem,
   UptimeGroupResult,
+  UsageSource,
 } from './types'
 
 // ============================================================================
@@ -48,6 +50,31 @@ export async function getUserQuotaDates(
     endpoint,
     { params }
   )
+  return res.data
+}
+
+// Get the signed-in user's usage per Asia/Shanghai calendar day. The server
+// caps the range at one year and reports the first recorded hour.
+export async function getUserDailyQuotaData(params: {
+  start_timestamp: number
+  end_timestamp: number
+}) {
+  const res = await api.get<{
+    success: boolean
+    message?: string
+    data: DailyQuotaItem[]
+  }>('/api/data/self/daily', { params })
+  return res.data
+}
+
+// Get the signed-in user's usage split by funding source. The overview only
+// uses it for the gift line under the remaining credit.
+export async function getUserUsageSource() {
+  const res = await api.get<{
+    success: boolean
+    message?: string
+    data?: UsageSource
+  }>('/api/user/self/usage-source')
   return res.data
 }
 

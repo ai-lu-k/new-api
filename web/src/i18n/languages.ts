@@ -29,8 +29,15 @@ export const INTERFACE_LANGUAGE_OPTIONS = [
 export type InterfaceLanguageCode =
   (typeof INTERFACE_LANGUAGE_OPTIONS)[number]['code']
 
+/**
+ * The interface language a visitor gets before choosing one, and the language a
+ * missing translation falls back to. Not the browser's language: every visitor
+ * starts on the same page and switches deliberately.
+ */
+export const DEFAULT_INTERFACE_LANGUAGE: InterfaceLanguageCode = 'en'
+
 export function normalizeInterfaceLanguage(value?: string | null): string {
-  if (!value) return 'en'
+  if (!value) return DEFAULT_INTERFACE_LANGUAGE
 
   let normalized = value.trim().replaceAll('_', '-').toLowerCase()
   if (
@@ -74,14 +81,20 @@ export function convertDetectedLanguage(value: string): string {
   return 'zhCN'
 }
 
+/** The language the UI falls back to, so formatting matches the visible text. */
+const INVALID_LOCALE_FALLBACK = 'en'
+
 /**
  * Convert an interface language code (the values i18next uses, such as `zhCN` /
  * `zhTW`) into a valid BCP-47 locale tag that the `Intl.*` APIs accept.
  *
  * `new Intl.NumberFormat('zhCN')` throws `RangeError: Invalid language tag`, so
  * any locale derived from `i18n.language` / `i18n.resolvedLanguage` MUST be run
- * through this before it reaches an `Intl` constructor. Unknown values fall back
- * to `undefined`, which makes `Intl` use the runtime default locale.
+ * through this before it reaches an `Intl` constructor. A value the runtime
+ * cannot format with — malformed like `bad_locale`, or well formed but unknown
+ * like `invalid-language` — formats in English, matching the `fallbackLng` that
+ * renders the rest of the interface; handing `Intl` no locale instead would
+ * format in the runtime default and split one screen between two languages.
  */
 export function toIntlLocale(value?: string | null): string | undefined {
   if (!value) return undefined
@@ -93,9 +106,16 @@ export function toIntlLocale(value?: string | null): string | undefined {
     default:
       break
   }
+  let canonical: string | undefined
   try {
-    return Intl.getCanonicalLocales(value)[0]
+    canonical = Intl.getCanonicalLocales(value)[0]
   } catch {
-    return undefined
+    return INVALID_LOCALE_FALLBACK
   }
+  if (!canonical) return INVALID_LOCALE_FALLBACK
+  // A tag can be well formed and still name no language the runtime knows;
+  // `Intl` would then silently use the runtime default. Ask first.
+  return Intl.DateTimeFormat.supportedLocalesOf([canonical]).length > 0
+    ? canonical
+    : INVALID_LOCALE_FALLBACK
 }

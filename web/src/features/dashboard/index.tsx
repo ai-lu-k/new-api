@@ -22,6 +22,10 @@ import { useState, useCallback, useMemo, lazy, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
+import {
+  sharedElementName,
+  useSharedName,
+} from '@/components/motion/use-shared-name'
 import { FadeIn } from '@/components/page-transition'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -67,15 +71,6 @@ const LOG_STAT_CARD_FALLBACK_KEYS = [
   'average-rpm',
   'average-tpm',
 ] as const
-const PERFORMANCE_METRIC_FALLBACK_KEYS = [
-  'success-rate',
-  'average-latency',
-  'throughput',
-] as const
-const PERFORMANCE_MODEL_FALLBACK_KEYS = [
-  'primary-model',
-  'secondary-model',
-] as const
 
 const LazyLogStatCards = lazy(() =>
   import('./components/models/log-stat-cards').then((m) => ({
@@ -114,64 +109,34 @@ const LazyFlowCharts = lazy(() =>
 )
 
 function LogStatCardsFallback() {
+  // The lazy band lands one frame after the navigation, so the skeleton claims
+  // the same name as the loaded row: the overview → models handoff morphs on the
+  // first visit instead of dropping out of the transition.
+  const bandName = useSharedName(sharedElementName('card', 'model-usage'))
+
   return (
-    <div className='overflow-hidden rounded-lg border'>
-      <div className='divide-border/60 grid grid-cols-2 divide-x sm:grid-cols-3 lg:grid-cols-5'>
-        {LOG_STAT_CARD_FALLBACK_KEYS.map((key, index) => (
-          <div
-            key={key}
-            className={cn(
-              'px-2.5 py-1.5 sm:px-5 sm:py-4',
-              index === LOG_STAT_CARD_FALLBACK_KEYS.length - 1 &&
-                'col-span-2 sm:col-span-1'
-            )}
-          >
-            <div className='flex items-center gap-1.5 sm:gap-2'>
-              <Skeleton className='size-4 rounded-sm sm:size-7 sm:rounded-md' />
-              <Skeleton className='h-4 w-16' />
-            </div>
-            <Skeleton className='mt-1 h-5 w-16 sm:mt-2 sm:h-7 sm:w-20' />
-            <Skeleton className='mt-1 hidden h-3.5 w-28 md:block' />
-          </div>
-        ))}
-      </div>
+    <div
+      {...bandName}
+      className='grid min-w-0 grid-cols-2 gap-y-4 lg:grid-cols-5 lg:divide-x'
+    >
+      {LOG_STAT_CARD_FALLBACK_KEYS.map((key) => (
+        <div key={key} className='min-w-0 pe-4 not-first:ps-4'>
+          <Skeleton className='h-3.5 w-16' />
+          <Skeleton className='mt-2 h-7 w-24' />
+        </div>
+      ))}
     </div>
   )
 }
 
-function ModelChartsFallback() {
+/** Reserves the block's heading and body so a chart does not shift the page. */
+function SectionPanelFallback(props: { placeholderClassName: string }) {
   return (
-    <div className='overflow-hidden rounded-lg border'>
-      <div className='flex items-center justify-between border-b px-4 py-3 sm:px-5'>
-        <Skeleton className='h-5 w-32' />
-        <Skeleton className='h-8 w-72' />
+    <div className='border-t-foreground flex min-w-0 flex-col border-t'>
+      <div className='py-3'>
+        <Skeleton className='h-6 w-40' />
       </div>
-      <div className='h-96 p-2'>
-        <Skeleton className='h-full w-full' />
-      </div>
-    </div>
-  )
-}
-
-function PerformanceOverviewFallback() {
-  return (
-    <div className='overflow-hidden rounded-lg border'>
-      <div className='flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3 sm:px-5'>
-        <div className='flex items-center gap-2'>
-          <Skeleton className='h-4 w-24' />
-        </div>
-        {PERFORMANCE_METRIC_FALLBACK_KEYS.map((key) => (
-          <div key={key} className='flex items-center gap-1.5'>
-            <Skeleton className='h-3 w-14' />
-            <Skeleton className='h-4 w-16' />
-          </div>
-        ))}
-        <div className='ml-auto flex items-center gap-2'>
-          {PERFORMANCE_MODEL_FALLBACK_KEYS.map((key) => (
-            <Skeleton key={key} className='h-5 w-28 rounded-full' />
-          ))}
-        </div>
-      </div>
+      <Skeleton className={cn('w-full', props.placeholderClassName)} />
     </div>
   )
 }
@@ -322,16 +287,29 @@ export function Dashboard() {
   }
 
   return (
-    <SectionPageLayout>
+    <SectionPageLayout pageIndex={<>{t('Personal workspace')} / 04</>}>
       <SectionPageLayout.Title>{t(meta.titleKey)}</SectionPageLayout.Title>
+      {/* Every section carries one line of description: without it the header
+          shrinks on a switch and the tabs jump up under the pointer. */}
+      <SectionPageLayout.Description>
+        {activeSection === 'flow'
+          ? t('How traffic is split from token to group to model.')
+          : t('Aggregated usage metrics and trend charts.')}
+      </SectionPageLayout.Description>
       <SectionPageLayout.Content>
         <div className='space-y-3 sm:space-y-4'>
           <div className='flex flex-wrap items-center justify-between gap-1.5 sm:gap-2'>
             {showSectionTabs ? (
               <Tabs value={activeSection} onValueChange={handleSectionChange}>
-                <TabsList className='max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto'>
+                <TabsList className='relative max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto'>
+                  {/* The black block is one element that travels between the
+                      tabs; the labels sit above it and only swap colour. */}
                   {visibleSections.map((section) => (
-                    <TabsTrigger key={section} value={section}>
+                    <TabsTrigger
+                      key={section}
+                      value={section}
+                      className='data-active:text-background relative z-10 data-active:bg-transparent!'
+                    >
                       {t(SECTION_META[section].titleKey)}
                     </TabsTrigger>
                   ))}
@@ -346,71 +324,102 @@ export function Dashboard() {
               </div>
             )}
           </div>
-          {activeSection === 'models' && (
-            <>
-              <FadeIn>
-                <Suspense fallback={<LogStatCardsFallback />}>
-                  <LazyLogStatCards
-                    filters={modelFilters}
-                    onDataUpdate={handleDataUpdate}
-                  />
-                </Suspense>
-              </FadeIn>
-              {isAdmin && (
-                <FadeIn delay={0.05}>
-                  <Suspense fallback={<PerformanceOverviewFallback />}>
-                    <LazyPerformanceOverview />
+          {/* Keyed by the section, so a switch mounts a new panel and it
+              arrives with the tab entrance (220ms fade, 4px rise) instead of
+              replacing the previous one between two frames. */}
+          <div
+            key={activeSection}
+            data-tab-switch-panel=''
+            className='space-y-3 sm:space-y-4'
+          >
+            {activeSection === 'models' && (
+              <>
+                <FadeIn>
+                  <Suspense fallback={<LogStatCardsFallback />}>
+                    <LazyLogStatCards
+                      filters={modelFilters}
+                      onDataUpdate={handleDataUpdate}
+                    />
                   </Suspense>
                 </FadeIn>
-              )}
-              <FadeIn delay={0.1}>
-                <Suspense fallback={<ModelChartsFallback />}>
-                  <LazyConsumptionDistributionChart
-                    data={modelData}
-                    loading={dataLoading}
-                    defaultChartType={
-                      chartPreferences.consumptionDistributionChart
+                {isAdmin && (
+                  <FadeIn delay={0.05}>
+                    <Suspense
+                      fallback={
+                        <SectionPanelFallback placeholderClassName='h-12' />
+                      }
+                    >
+                      <LazyPerformanceOverview />
+                    </Suspense>
+                  </FadeIn>
+                )}
+                <FadeIn delay={0.1}>
+                  <Suspense
+                    fallback={
+                      <SectionPanelFallback placeholderClassName='h-96' />
                     }
-                    timeGranularity={
-                      modelFilters.time_granularity || DEFAULT_TIME_GRANULARITY
+                  >
+                    <LazyConsumptionDistributionChart
+                      data={modelData}
+                      loading={dataLoading}
+                      defaultChartType={
+                        chartPreferences.consumptionDistributionChart
+                      }
+                      timeGranularity={
+                        modelFilters.time_granularity ||
+                        DEFAULT_TIME_GRANULARITY
+                      }
+                    />
+                  </Suspense>
+                </FadeIn>
+                <FadeIn delay={0.15}>
+                  <Suspense
+                    fallback={
+                      <SectionPanelFallback placeholderClassName='h-96' />
                     }
+                  >
+                    <LazyModelCharts
+                      data={modelData}
+                      loading={dataLoading}
+                      defaultChartTab={chartPreferences.modelAnalyticsChart}
+                      timeGranularity={
+                        modelFilters.time_granularity ||
+                        DEFAULT_TIME_GRANULARITY
+                      }
+                    />
+                  </Suspense>
+                </FadeIn>
+              </>
+            )}
+            {activeSection === 'users' && (
+              <FadeIn>
+                <Suspense
+                  fallback={
+                    <SectionPanelFallback placeholderClassName='h-96' />
+                  }
+                >
+                  <LazyUserCharts
+                    filters={userChartsFilters}
+                    onFiltersChange={setUserChartsFilters}
                   />
                 </Suspense>
               </FadeIn>
-              <FadeIn delay={0.15}>
-                <Suspense fallback={<ModelChartsFallback />}>
-                  <LazyModelCharts
-                    data={modelData}
-                    loading={dataLoading}
-                    defaultChartTab={chartPreferences.modelAnalyticsChart}
-                    timeGranularity={
-                      modelFilters.time_granularity || DEFAULT_TIME_GRANULARITY
-                    }
+            )}
+            {activeSection === 'flow' && (
+              <FadeIn>
+                <Suspense
+                  fallback={
+                    <SectionPanelFallback placeholderClassName='h-[560px]' />
+                  }
+                >
+                  <LazyFlowCharts
+                    filters={modelFilters}
+                    sensitiveVisible={flowSensitiveVisible}
                   />
                 </Suspense>
               </FadeIn>
-            </>
-          )}
-          {activeSection === 'users' && (
-            <FadeIn>
-              <Suspense fallback={<ModelChartsFallback />}>
-                <LazyUserCharts
-                  filters={userChartsFilters}
-                  onFiltersChange={setUserChartsFilters}
-                />
-              </Suspense>
-            </FadeIn>
-          )}
-          {activeSection === 'flow' && (
-            <FadeIn>
-              <Suspense fallback={<ModelChartsFallback />}>
-                <LazyFlowCharts
-                  filters={modelFilters}
-                  sensitiveVisible={flowSensitiveVisible}
-                />
-              </Suspense>
-            </FadeIn>
-          )}
+            )}
+          </div>
         </div>
       </SectionPageLayout.Content>
     </SectionPageLayout>

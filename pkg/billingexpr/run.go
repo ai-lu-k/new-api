@@ -67,8 +67,20 @@ func runProgram(prog *vm.Program, requestRules []RequestRuleTrace, usedVars map[
 		trace.ImageCount = &imageCount
 	}
 
+	chars := 0
+	if usedVars["chars"] {
+		if request.Chars != nil {
+			chars = *request.Chars
+		}
+		if chars < 0 || chars > dto.MaxSpeechCharacters {
+			return 0, trace, fmt.Errorf("chars must be between 0 and %d", dto.MaxSpeechCharacters)
+		}
+		trace.Chars = &chars
+	}
+
 	env := map[string]any{
 		"image_count": float64(imageCount),
+		"chars":       float64(chars),
 		"p":           params.P,
 		"c":           params.C,
 		"len":         params.Len,

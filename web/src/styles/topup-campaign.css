@@ -1,0 +1,696 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
+.double11-offer {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow: hidden;
+  padding: 18px 22px;
+  border: 1px solid #4d5740;
+  border-radius: 0;
+  background: #161b14;
+  color: #f0f0e6;
+}
+.double11-offer::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  width: 280px;
+  height: 280px;
+  top: -130px;
+  right: -100px;
+  border: 1px solid #cbff4845;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.double11-offer-topline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.double11-day {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #cbff48;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+.double11-deadline {
+  color: #b7c0ac;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 10px;
+}
+.double11-offer-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+.double11-offer-heading {
+  min-width: 0;
+}
+.double11-offer-heading h2 {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 850;
+  line-height: 1.3;
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+}
+.double11-offer-heading p {
+  margin-top: 9px;
+  color: #c4ccba;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.double11-rate {
+  position: relative;
+  flex-shrink: 0;
+  color: #cbff48;
+  font-family: 'Public Sans Variable', sans-serif;
+  font-size: 66px;
+  font-weight: 950;
+  line-height: 0.95;
+  letter-spacing: -0.09em;
+  transform: rotate(-7deg);
+}
+.double11-rate::after {
+  content: '';
+  position: absolute;
+  height: 1px;
+  width: 125%;
+  left: -7%;
+  bottom: -12px;
+  background: #cbff4870;
+  transform: rotate(7deg);
+}
+.double11-rate > span {
+  font-size: 0.43em;
+  vertical-align: 0.12em;
+  letter-spacing: -0.06em;
+}
+.double11-offer-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid #535d46;
+  padding-top: 14px;
+}
+.double11-base {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #d6ddcb;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.double11-base svg {
+  flex-shrink: 0;
+  color: #cbff48;
+}
+.double11-offer .double11-details {
+  flex-shrink: 0;
+  border: 1px solid #778469;
+  border-radius: 0;
+  background: transparent;
+  color: #d6ddcb;
+}
+.double11-offer .double11-details:hover {
+  background: #cbff4820;
+}
+.double11-offer-stamp {
+  position: absolute;
+  z-index: -1;
+  right: -8px;
+  bottom: -108px;
+  color: transparent;
+  -webkit-text-stroke: 1px #cbff4830;
+  font-family: ui-monospace, monospace;
+  font-size: 330px;
+  font-weight: 300;
+  line-height: 1;
+  transform: rotate(12deg);
+  pointer-events: none;
+}
+
+.double11-voucher {
+  position: relative;
+  display: grid;
+  grid-template-columns: 19px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 14px 16px;
+  border: 1px solid #171a14;
+  border-radius: 0;
+  background: #cbff48;
+  color: #171a14;
+  box-shadow: 4px 4px 0 #171a14;
+}
+.double11-voucher::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: repeating-linear-gradient(
+    0deg,
+    #171a14 0 2px,
+    transparent 2px 5px
+  );
+}
+.double11-voucher-icon {
+  width: 19px;
+  height: 19px;
+  color: #171a14;
+}
+.double11-voucher > span {
+  font-size: 12px;
+  font-weight: 650;
+}
+.double11-voucher > strong {
+  padding-inline-start: 12px;
+  border-inline-start: 1px dashed #171a14;
+  color: #171a14;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 25px;
+  font-weight: 850;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+  text-align: end;
+}
+
+/* A single editorial canvas: poster, live amount, bonus and payment rail. */
+.double11-entry[data-slot='button'] {
+  height: 30px;
+  flex-shrink: 0;
+  gap: 5px;
+  padding: 0 9px;
+  margin-inline-end: 5px;
+  border: 1px solid #171a14;
+  border-radius: 0;
+  background: #cbff48;
+  color: #171a14;
+  box-shadow: 3px 3px 0 #171a14;
+  transform: rotate(-3deg);
+}
+.double11-entry[data-slot='button']:hover {
+  background: #e4ff9d;
+  color: #171a14;
+}
+.double11-modal[data-slot='dialog-content'] {
+  --background: #151714;
+  --foreground: #eeeee5;
+  --muted: #30342c;
+  --muted-foreground: #b9bfb0;
+  --border: #535b49;
+  --ring: #cbff48;
+  width: calc(100% - 24px);
+  max-width: 650px;
+  gap: 0;
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid #171a14;
+  border-radius: 0;
+  background: #151714;
+  color: #eeeee5;
+  box-shadow:
+    14px 14px 0 #171a1460,
+    0 24px 100px #0007;
+}
+.double11-modal-recharge[data-slot='dialog-content'] {
+  max-width: 880px;
+}
+.double11-modal [data-slot='dialog-close'] {
+  z-index: 20;
+  color: #171a14;
+  border-radius: 0;
+}
+.double11-modal [data-slot='dialog-close']:hover {
+  background: #171a1412;
+}
+.double11-modal .double11-viewport {
+  margin: 0;
+  min-height: 0;
+  overflow: auto;
+}
+.double11-modal .double11-dialog-body {
+  padding: 0;
+}
+.double11-modal .double11-footer {
+  margin: 0;
+  padding: 20px 28px;
+  background: #151714;
+}
+.double11-modal .double11-cta {
+  width: 100%;
+  min-height: 46px;
+  border-radius: 0;
+  background: #cbff48;
+  color: #171a14;
+  font-weight: 800;
+}
+.double11-modal .double11-cta:hover {
+  background: #e4ff9d;
+}
+
+.double11-offer-featured {
+  gap: 18px;
+  padding: 25px 32px 0;
+  border: 0;
+  background: #eeeee5;
+  color: #171a14;
+}
+.double11-offer-featured::before {
+  display: none;
+}
+.double11-edition {
+  position: absolute;
+  z-index: -1;
+  left: 34%;
+  top: -100px;
+  font-family: 'Public Sans Variable', sans-serif;
+  font-size: 340px;
+  line-height: 1;
+  font-weight: 950;
+  letter-spacing: -0.15em;
+  color: transparent;
+  -webkit-text-stroke: 1px #171a1418;
+  transform: skew(-14deg);
+  pointer-events: none;
+}
+.double11-offer-featured .double11-day {
+  color: #171a14;
+  font-size: 13px;
+}
+.double11-offer-featured .double11-deadline {
+  color: #535b49;
+  padding-inline-end: 22px;
+}
+.double11-offer-featured .double11-offer-main {
+  gap: 26px;
+  padding: 7px 0 12px;
+}
+.double11-offer-featured .double11-offer-heading h2 {
+  max-width: 12em;
+  font-size: clamp(30px, 4.4vw, 46px);
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  line-height: 1.16;
+}
+.double11-offer-featured .double11-offer-heading p {
+  margin-top: 16px;
+  color: #535b49;
+  font-size: 12px;
+}
+.double11-offer-featured .double11-rate {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  padding: 23px 17px;
+  margin-inline-end: 4px;
+  background: #cbff48;
+  color: #171a14;
+  font-size: 98px;
+  line-height: 0.95;
+  transform: rotate(-8deg);
+  clip-path: polygon(8% 0, 100% 5%, 96% 91%, 0 100%);
+}
+.double11-offer-featured .double11-rate::after {
+  display: none;
+}
+.double11-offer-featured .double11-rate > span {
+  font-size: 0.4em;
+}
+.double11-offer-featured .double11-offer-bottom {
+  padding: 12px 0;
+  border-color: #171a1440;
+}
+.double11-offer-featured .double11-base {
+  color: #171a14;
+}
+.double11-offer-featured .double11-base svg {
+  color: #171a14;
+}
+.double11-offer-featured .double11-details {
+  color: #171a14;
+  border-color: #171a1460;
+}
+.double11-offer-featured .double11-details:hover {
+  background: #171a1412;
+}
+.double11-offer-featured .double11-offer-stamp {
+  display: none;
+}
+
+.double11-checkout {
+  min-width: 0;
+  padding: 24px 32px 14px;
+  background: #151714;
+}
+.double11-recharge[data-slot='section-panel'] {
+  border: 0;
+}
+.double11-recharge [data-slot='button'],
+.double11-recharge [data-slot='input'] {
+  border-radius: 0;
+}
+.double11-recharge .double11-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+  grid-template-areas: 'amount bonus' 'presets bonus' 'payment payment';
+  column-gap: 32px;
+  row-gap: 18px;
+}
+.double11-workspace > * {
+  margin: 0;
+}
+.double11-amount-entry {
+  min-width: 0;
+}
+.double11-workspace .double11-amount-entry {
+  grid-area: amount;
+}
+.double11-workspace .double11-amount-entry > label {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.double11-step {
+  color: #cbff48;
+  font-family: ui-monospace, monospace;
+  font-size: 10px;
+}
+.double11-workspace .double11-amount-entry > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: stretch;
+}
+.double11-workspace .double11-amount-entry [data-slot='input'] {
+  height: 86px;
+  padding: 0 4px;
+  border: 0;
+  border-bottom: 1px solid #838c76;
+  background: transparent;
+  color: #eeeee5;
+  font-family: 'Public Sans Variable', sans-serif;
+  font-size: 76px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.07em;
+  box-shadow: none;
+  min-width: 0;
+}
+.double11-workspace .double11-amount-entry [data-slot='input']:focus-visible {
+  outline: 2px solid #cbff48;
+  outline-offset: 4px;
+  border-color: #cbff48;
+}
+.double11-workspace .double11-amount-entry [data-slot='input']::placeholder {
+  font-family: inherit;
+  font-size: 16px;
+  letter-spacing: 0;
+}
+.double11-workspace
+  .double11-amount-entry
+  [data-slot='input']::-webkit-inner-spin-button {
+  appearance: none;
+}
+.double11-workspace .double11-amount-entry [data-slot='input'] + div {
+  min-height: 26px;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+.double11-workspace .double11-preset-section {
+  grid-area: presets;
+}
+.double11-workspace .double11-preset-section > label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.double11-recharge .double11-presets {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.double11-recharge .double11-amount-card[data-slot='button'] {
+  min-height: 48px;
+  padding: 8px;
+  border: 1px solid #626b54;
+  border-radius: 0;
+  background: transparent;
+  color: #eeeee5;
+  box-shadow: none;
+}
+.double11-recharge .double11-amount-card > div:first-child {
+  justify-content: center;
+  font-family: ui-monospace, monospace;
+}
+.double11-recharge .double11-amount-card > div:nth-child(2) {
+  display: none;
+}
+.double11-recharge .double11-amount-card[data-slot='button']:hover {
+  background: #30372a;
+  border-color: #cbff48;
+}
+.double11-recharge
+  .double11-amount-card[data-slot='button'][aria-pressed='true'] {
+  background: #cbff48;
+  border-color: #cbff48;
+  color: #171a14;
+}
+.double11-recharge .double11-amount-card:focus-visible {
+  outline: 2px solid #cbff48;
+  outline-offset: 3px;
+}
+
+.double11-workspace .double11-voucher-featured {
+  position: relative;
+  grid-area: bonus;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 22px;
+  min-height: 185px;
+  border: 0;
+  box-shadow: none;
+  transform: rotate(2deg);
+}
+.double11-workspace .double11-voucher-featured::before {
+  left: 10px;
+  top: auto;
+  bottom: 10px;
+  width: calc(100% - 20px);
+  height: 14px;
+  background: repeating-linear-gradient(
+    90deg,
+    #171a14 0 1px,
+    transparent 1px 3px,
+    #171a14 3px 5px,
+    transparent 5px 8px
+  );
+}
+.double11-workspace .double11-voucher-featured::after {
+  content: '';
+  position: absolute;
+  left: -7px;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  background: #151714;
+  border-radius: 50%;
+}
+.double11-workspace .double11-voucher-featured .double11-voucher-icon {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 28px;
+  height: 28px;
+}
+.double11-workspace .double11-voucher-featured > span {
+  padding-inline-end: 30px;
+}
+.double11-workspace .double11-voucher-featured > strong {
+  border: 0;
+  padding: 0 0 22px;
+  font-size: clamp(30px, 4.5vw, 52px);
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  letter-spacing: 0;
+  text-align: start;
+  font-weight: 700;
+}
+.double11-credit-sign {
+  flex-shrink: 0;
+  align-self: center;
+  font-size: 0.7em;
+  line-height: 1;
+}
+.double11-workspace .double11-payment-section {
+  grid-area: payment;
+  display: grid;
+  grid-template-columns: 1fr minmax(0, 2fr);
+  align-items: center;
+  gap: 20px;
+  margin-top: 4px;
+  padding-top: 18px;
+  border-top: 1px solid #535b49;
+}
+.double11-workspace .double11-payment-section > label {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.double11-workspace .double11-payment-section > div {
+  margin: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.double11-workspace .double11-payment-section [data-slot='button'] {
+  min-height: 48px;
+  justify-content: center;
+  border-color: #798568;
+  background: #eeeee5;
+  color: #171a14;
+}
+.double11-workspace .double11-payment-section [data-slot='button']:hover {
+  background: #cbff48;
+  border-color: #cbff48;
+}
+.double11-workspace .double11-payment-section [data-slot='button']:disabled {
+  background: #30342c;
+  color: #b9bfb0;
+}
+@media (max-width: 600px) {
+  .double11-offer-featured {
+    padding: 24px 20px 0;
+    gap: 20px;
+  }
+  .double11-offer-featured .double11-offer-topline {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .double11-offer-featured .double11-offer-main {
+    align-items: flex-start;
+    gap: 8px;
+    padding: 0 0 10px;
+  }
+  .double11-offer-featured .double11-offer-heading h2 {
+    max-width: 6em;
+    font-size: 29px;
+  }
+  .double11-offer-featured .double11-offer-heading p {
+    font-size: 11px;
+    margin-top: 12px;
+  }
+  .double11-offer-featured .double11-rate {
+    margin: 8px -4px 0 0;
+    padding: 18px 10px;
+    font-size: 60px;
+  }
+  .double11-edition {
+    top: -30px;
+    left: 48%;
+    font-size: 230px;
+  }
+  .double11-checkout {
+    padding: 20px 20px 10px;
+  }
+  .double11-recharge .double11-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'amount' 'presets' 'bonus' 'payment';
+    gap: 14px;
+  }
+  .double11-workspace .double11-amount-entry [data-slot='input'] {
+    font-size: 64px;
+    height: 74px;
+  }
+  .double11-workspace .double11-voucher-featured {
+    min-height: 92px;
+    padding: 16px 18px;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    transform: rotate(-2deg);
+    margin-block: 8px;
+  }
+  .double11-workspace .double11-voucher-featured::before {
+    height: 7px;
+    bottom: 6px;
+  }
+  .double11-workspace .double11-voucher-featured .double11-voucher-icon {
+    display: none;
+  }
+  .double11-workspace .double11-voucher-featured > span {
+    padding: 0;
+    font-size: 11px;
+  }
+  .double11-workspace .double11-voucher-featured > strong {
+    padding: 0 0 4px;
+    font-size: 36px;
+    gap: 12px;
+  }
+  .double11-workspace .double11-payment-section {
+    display: flex;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+    padding-top: 14px;
+  }
+  .double11-workspace .double11-payment-section [data-slot='button'] {
+    min-height: 44px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .double11-modal *,
+  .double11-modal *::before,
+  .double11-modal *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Keep the poster input larger than the global 16px mobile zoom safeguard. */
+@layer base {
+  @media (max-width: 767px) {
+    .double11-workspace .double11-amount-entry [data-slot='input'] {
+      font-size: clamp(64px, 10vw, 76px) !important;
+    }
+  }
+}

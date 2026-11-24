@@ -48,7 +48,7 @@ function renderDialog(models = ['gpt-5.4', 'claude-sonnet-4-6']) {
 }
 
 describe('CC Switch model selection', () => {
-  it.each(['Claude', 'Codex', 'Gemini'])(
+  it.each(['Claude', 'Codex', 'Gemini', 'OpenCode', 'OpenClaw'])(
     'opens %s models outside the clipping dialog and keeps the dialog open after selection',
     async (app) => {
       renderDialog()

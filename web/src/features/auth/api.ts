@@ -18,11 +18,13 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import axios from 'axios'
 
+import type { LegalAcceptance } from '@/features/legal/types'
 import { api, refreshAuthentication, type RefreshOutcome } from '@/lib/api'
 import { AuthOperationError } from '@/lib/secure-verification'
 import { getServerErrorMessageKey } from '@/lib/server-error-message'
 import { useAuthStore } from '@/stores/auth-store'
 
+import type { GeeTestSolution } from './hooks/use-geetest'
 import {
   clearPasswordEncryptionCache,
   encryptPassword,
@@ -172,7 +174,8 @@ export async function createOAuthAuthorization(
   intent: 'login' | 'bind' | 'verify',
   operation?: VerificationOperation,
   signal?: AbortSignal,
-  proofToken?: string
+  proofToken?: string,
+  legalAcceptance?: LegalAcceptance
 ): Promise<{ state: string; authorizationUrl?: string }> {
   const aff = intent === 'login' ? getAffiliateCode() : ''
   const res = await api.post(
@@ -180,6 +183,7 @@ export async function createOAuthAuthorization(
     {
       provider,
       intent,
+      legal_consent: legalAcceptance,
       aff: aff || undefined,
       scope: operation?.scope,
       ...(operation?.context ? { context: operation.context } : {}),
@@ -214,15 +218,30 @@ export async function createOAuthFlow(
   provider: string,
   intent: 'login' | 'bind' | 'verify',
   operation?: VerificationOperation,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  legalAcceptance?: LegalAcceptance
 ): Promise<string> {
-  return (await createOAuthAuthorization(provider, intent, operation, signal))
-    .state
+  return (
+    await createOAuthAuthorization(
+      provider,
+      intent,
+      operation,
+      signal,
+      undefined,
+      legalAcceptance
+    )
+  ).state
 }
 
 // WeChat login by authorization code
-export async function wechatLoginByCode(code: string): Promise<ApiResponse> {
-  const res = await api.get('/api/oauth/wechat', { params: { code } })
+export async function wechatLoginByCode(
+  code: string,
+  legalAcceptance?: LegalAcceptance
+): Promise<ApiResponse> {
+  const res = await api.post('/api/oauth/wechat', {
+    code,
+    legal_consent: legalAcceptance,
+  })
   return res.data
 }
 
@@ -243,8 +262,11 @@ export async function telegramLogin(
 // Registration
 // ----------------------------------------------------------------------------
 
-// User registration
-export async function register(payload: RegisterPayload): Promise<ApiResponse> {
+// User registration; the backend now returns the login bundle (or challenge)
+// right after sign-up, matching the login transports.
+export async function register(
+  payload: RegisterPayload
+): Promise<LoginResponse> {
   const res = await api.post(`/api/user/register`, payload, {
     params: { turnstile: payload.turnstile ?? '' },
   })
@@ -259,6 +281,33 @@ export async function sendEmailVerification(
   const res = await api.get('/api/verification', {
     params: { email, turnstile },
   })
+  return res.data
+}
+
+// Send the registration code only after the server revalidated the human check,
+// so the emailed code stays the only thing the visitor has to type.
+export async function sendRegistrationVerificationCode(
+  email: string,
+  captcha?: GeeTestSolution
+): Promise<ApiResponse<{ flow_token: string }>> {
+  const res = await api.post(
+    '/api/user/registration-verification/code',
+    captcha ? { email, captcha } : { email },
+    { singleUseAuthorization: true }
+  )
+  return res.data
+}
+
+// Redeem that code; the human check already happened once, before the send.
+export async function verifyRegistrationCode(
+  flowToken: string,
+  code: string
+): Promise<ApiResponse> {
+  const res = await api.post(
+    '/api/user/registration-verification/verify',
+    { flow_token: flowToken, code },
+    { singleUseAuthorization: true }
+  )
   return res.data
 }
 

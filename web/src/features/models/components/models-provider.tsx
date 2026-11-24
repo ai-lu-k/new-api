@@ -32,6 +32,7 @@ import type {
 // ============================================================================
 
 type DialogType =
+  | 'benchmark-mappings'
   | 'create-model'
   | 'update-model'
   | 'price-model'

@@ -39,6 +39,7 @@ const STATUS_RELATED_KEYS = new Set([
   'general_setting.quota_display_type',
   'general_setting.custom_currency_symbol',
   'general_setting.custom_currency_exchange_rate',
+  'usage_level.thresholds',
   'oidc.display_name',
   'ServerAddress',
   'passkey.enabled',
@@ -57,6 +58,10 @@ export function useUpdateOption() {
       if (data.success) {
         // Always refresh system-options
         queryClient.invalidateQueries({ queryKey: ['system-options'] })
+        if (variables.key === 'usage_level.thresholds') {
+          queryClient.invalidateQueries({ queryKey: ['usage-level'] })
+          queryClient.invalidateQueries({ queryKey: ['users'] })
+        }
 
         // If updating frontend-display-related config, also refresh status
         if (STATUS_RELATED_KEYS.has(variables.key)) {

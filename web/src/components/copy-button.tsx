@@ -17,9 +17,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Check, Copy } from 'lucide-react'
-import { type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { IconCrossfade } from '@/components/motion/icon-crossfade'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -29,8 +30,15 @@ import {
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { cn } from '@/lib/utils'
 
+/** How long the tick stays before the copy glyph fades back (L4). */
+const COPIED_HOLD_MS = 1200
+
 interface CopyButtonProps {
   value: string
+  disabled?: boolean
+  hideIcon?: boolean
+  copiedLabel?: ReactNode
+  onCopy?: (success: boolean) => void
   children?: ReactNode
   className?: string
   iconClassName?: string
@@ -43,6 +51,10 @@ interface CopyButtonProps {
 
 export function CopyButton({
   value,
+  disabled,
+  hideIcon,
+  copiedLabel,
+  onCopy,
   children,
   className,
   iconClassName,
@@ -53,7 +65,12 @@ export function CopyButton({
   'aria-label': ariaLabel,
 }: CopyButtonProps) {
   const { t } = useTranslation()
-  const { copiedText, copyToClipboard } = useCopyToClipboard({ notify: false })
+  // The tick holds for 1.2s: long enough to read, short enough that the button
+  // is a copy button again by the time the reader wants it.
+  const { copiedText, copyToClipboard } = useCopyToClipboard({
+    notify: false,
+    resetAfterMs: COPIED_HOLD_MS,
+  })
   const isCopied = copiedText === value
   const resolvedTooltip = tooltip ?? t('Copy to clipboard')
   const resolvedSuccessTooltip = successTooltip ?? t('Copied!')
@@ -65,22 +82,35 @@ export function CopyButton({
       variant={variant}
       size={size}
       className={cn('shrink-0', className)}
-      onClick={() => copyToClipboard(value)}
+      disabled={disabled}
+      onClick={async () => {
+        const success = await copyToClipboard(value)
+        onCopy?.(success)
+      }}
       aria-label={isCopied ? copiedAriaLabel : resolvedAriaLabel}
     >
-      {isCopied ? (
-        <Check className={cn('text-success', iconClassName)} />
-      ) : (
-        <Copy className={cn(iconClassName)} />
+      {!hideIcon && (
+        // 140ms confirmation: the tick cross-fades with the copy glyph in one
+        // fixed cell, so the button never changes width (L4).
+        <IconCrossfade
+          state={isCopied ? 'copied' : 'copy'}
+          glyphs={[
+            { key: 'copy', glyph: <Copy className={cn(iconClassName)} /> },
+            {
+              key: 'copied',
+              glyph: <Check className={cn('text-success', iconClassName)} />,
+            },
+          ]}
+        />
       )}
-      {children}
+      {isCopied && copiedLabel ? copiedLabel : children}
     </Button>
   )
 
   if (tooltip || successTooltip) {
     return (
       <Tooltip>
-        <TooltipTrigger render={button}></TooltipTrigger>
+        <TooltipTrigger render={button} />
         <TooltipContent>
           <p>{isCopied ? resolvedSuccessTooltip : resolvedTooltip}</p>
         </TooltipContent>

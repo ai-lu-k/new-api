@@ -57,6 +57,7 @@ import {
   ADMIN_PERMISSION_RESOURCES,
   hasPermission,
 } from '@/lib/admin-permissions'
+import { withViewTransition } from '@/lib/view-transition'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { MODEL_FETCHABLE_TYPES } from '../constants'
@@ -95,9 +96,13 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
     ADMIN_PERMISSION_ACTIONS.SENSITIVE_WRITE
   )
 
+  // The channel name travels from this row to the drawer header, so the state
+  // change runs inside a view transition (contract §9.2).
   const handleEdit = () => {
-    setCurrentRow(channel)
-    setOpen('update-channel')
+    withViewTransition(() => {
+      setCurrentRow(channel)
+      setOpen('update-channel')
+    })
   }
 
   const handleTest = () => {
@@ -235,11 +240,9 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
               onClick={handleToggleStatus}
               disabled={isTogglingStatus}
               aria-label={isEnabled ? t('Disable') : t('Enable')}
-              className={
-                isEnabled
-                  ? 'text-destructive hover:text-destructive'
-                  : 'text-success hover:text-success'
-              }
+              // State is carried by the status text on every row; a second
+              // red/green colour code here only competes with it.
+              className='text-muted-foreground hover:text-foreground'
             />
           }
         >

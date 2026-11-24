@@ -22,7 +22,14 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
-import { DataTablePage, useDataTable } from '@/components/data-table'
+import {
+  DataTablePage,
+  SECTION_FRAME_CLASSNAME,
+  SECTION_TABLE_HEAD_CLASSNAME,
+  useDataTable,
+} from '@/components/data-table'
+import { ErrorState } from '@/components/error-state'
+import { SectionHeading } from '@/components/section-heading'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,6 +44,7 @@ import { useMediaQuery } from '@/hooks'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
 import { handleServerError } from '@/lib/handle-server-error'
 import { requireServerSuccess } from '@/lib/server-error-message'
+import { cn } from '@/lib/utils'
 
 import { deleteDeployment, listDeployments, searchDeployments } from '../api'
 import { getDeploymentStatusOptions } from '../constants'
@@ -116,7 +124,7 @@ export function DeploymentsTable() {
   const [deleteTarget, setDeleteTarget] = useState<Deployment | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
 
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, isLoading, isFetching, isError, refetch } = useQuery({
     queryKey: deploymentsQueryKeys.list({
       keyword,
       status: activeStatus,
@@ -221,6 +229,10 @@ export function DeploymentsTable() {
     }))
   }, [t])
 
+  if (isError && !data) {
+    return <ErrorState onRetry={() => void refetch()} />
+  }
+
   return (
     <>
       <DataTablePage
@@ -228,6 +240,11 @@ export function DeploymentsTable() {
         columns={columns}
         isLoading={isLoading}
         isFetching={isFetching}
+        tableHeading={<SectionHeading as='h2' title={t('Deployments')} />}
+        tableClassName={cn(
+          SECTION_FRAME_CLASSNAME,
+          SECTION_TABLE_HEAD_CLASSNAME
+        )}
         emptyTitle={t('No Deployments Found')}
         emptyDescription={t(
           'No deployments available. Create one to get started.'

@@ -21,3 +21,20 @@ export type LegalDocumentResponse = {
   message?: string
   data?: string
 }
+
+export interface LegalAcceptance {
+  accepted: boolean
+  version_id: number
+}
+
+export interface LegalVersion {
+  id: number
+  user_agreement: string
+  privacy_policy: string
+  /** Optional English pair; a revision without it serves the text above. */
+  user_agreement_en?: string
+  privacy_policy_en?: string
+  digest: string
+  required_version: number
+  published_at: number
+}

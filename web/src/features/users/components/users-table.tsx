@@ -26,11 +26,16 @@ import {
   DISABLED_ROW_DESKTOP,
   DISABLED_ROW_MOBILE,
   DataTablePage,
+  SECTION_FRAME_CLASSNAME,
+  SECTION_TABLE_HEAD_CLASSNAME,
   useDataTable,
 } from '@/components/data-table'
+import { ErrorState } from '@/components/error-state'
+import { SectionHeading } from '@/components/section-heading'
 import { useMediaQuery } from '@/hooks'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
 import { createServerError } from '@/lib/server-error-message'
+import { cn } from '@/lib/utils'
 
 import { getUsers, searchUsers } from '../api'
 import {
@@ -40,19 +45,25 @@ import {
   isUserDeleted,
 } from '../constants'
 import type { User, UserSortBy } from '../types'
-import { DataTableBulkActions } from './data-table-bulk-actions'
 import { useUsersColumns } from './users-columns'
 import { useUsers } from './users-provider'
 
 const route = getRouteApi('/_authenticated/users/')
 
+// The balance column can sort by any of its figures; the last three are
+// lifetime totals the server assembles from the funding records.
 const USER_SORTABLE_COLUMNS = new Set<UserSortBy>([
   'id',
   'username',
   'quota',
+  'used_quota',
+  'gift_used',
+  'token_plan_used',
+  'gift_plan_used',
   'group',
   'created_at',
   'last_login_at',
+  'usage_level',
 ])
 
 function isDisabledUserRow(user: User) {
@@ -82,7 +93,6 @@ export function UsersTable() {
     columnFilters: [
       { columnId: 'status', searchKey: 'status', type: 'array' },
       { columnId: 'role', searchKey: 'role', type: 'array' },
-      { columnId: 'group', searchKey: 'group', type: 'string' },
     ],
   })
   const statusFilter =
@@ -93,10 +103,6 @@ export function UsersTable() {
     (columnFilters.find((filter) => filter.id === 'role')?.value as
       | string[]
       | undefined) ?? []
-  const groupFilter =
-    (columnFilters.find((filter) => filter.id === 'group')?.value as string) ??
-    ''
-
   const sortParams = useMemo(() => {
     const activeSort = sorting[0]
     if (
@@ -120,7 +126,7 @@ export function UsersTable() {
   }
 
   // Fetch data with React Query
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, isLoading, isFetching, isError, refetch } = useQuery({
     queryKey: [
       'users',
       pagination.pageIndex + 1,
@@ -128,14 +134,12 @@ export function UsersTable() {
       globalFilter,
       statusFilter,
       roleFilter,
-      groupFilter,
       sortParams,
       refreshTrigger,
     ],
     queryFn: async () => {
       const hasFilter = globalFilter?.trim()
-      const hasColumnFilter =
-        statusFilter.length > 0 || roleFilter.length > 0 || Boolean(groupFilter)
+      const hasColumnFilter = statusFilter.length > 0 || roleFilter.length > 0
       const params = {
         p: pagination.pageIndex + 1,
         page_size: pagination.pageSize,
@@ -149,7 +153,6 @@ export function UsersTable() {
               keyword: globalFilter,
               status: statusFilter[0] ?? '',
               role: roleFilter[0] ?? '',
-              group: groupFilter,
             })
           : await getUsers(params)
 
@@ -173,7 +176,10 @@ export function UsersTable() {
   const { table } = useDataTable({
     data: users,
     columns,
-    enableRowSelection: true,
+    // No batch operation exists for users yet, so there is no selection model
+    // and no floating selection bar.
+    enableRowSelection: false,
+    initialColumnVisibility: { invite_info: false },
     columnFilters,
     globalFilter,
     pagination,
@@ -202,18 +208,37 @@ export function UsersTable() {
     ensurePageInRange,
   })
 
+  if (isError && !data) {
+    return <ErrorState onRetry={() => void refetch()} />
+  }
+
+  const filtering = Boolean(
+    globalFilter?.trim() || statusFilter.length || roleFilter.length
+  )
+
   return (
     <DataTablePage
       table={table}
       columns={columns}
       isLoading={isLoading}
       isFetching={isFetching}
-      emptyTitle={t('No Users Found')}
-      emptyDescription={t(
-        'No users available. Try adjusting your search or filters.'
+      emptyTitle={filtering ? t('No matching results') : t('No Users Found')}
+      emptyDescription={
+        filtering
+          ? t('Try adjusting your search')
+          : t('No users yet. Create the first account to get started.')
+      }
+      tableHeading={<SectionHeading as='h2' title={t('All users')} />}
+      // Identity, balance and status are two lines each: 48 px rows keep eleven
+      // accounts on a 900 px screen instead of seven.
+      tableClassName={cn(
+        SECTION_FRAME_CLASSNAME,
+        SECTION_TABLE_HEAD_CLASSNAME,
+        '[&_td]:h-12 [&_td]:!py-1'
       )}
       skeletonKeyPrefix='users-skeleton'
       applyHeaderSize
+      showPagination={users.length > 0}
       toolbarProps={{
         searchPlaceholder: t('Filter by username, name or email...'),
         searchDebounceMs: 500,
@@ -236,7 +261,6 @@ export function UsersTable() {
         if (!isDisabledUserRow(row.original)) return undefined
         return isMobile ? DISABLED_ROW_MOBILE : DISABLED_ROW_DESKTOP
       }}
-      bulkActions={<DataTableBulkActions table={table} />}
     />
   )
 }

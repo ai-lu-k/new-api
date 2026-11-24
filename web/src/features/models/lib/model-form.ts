@@ -25,8 +25,39 @@ import { parseModelTags as parseTagsFromUtils } from './model-utils'
 // Model Form Schema
 // ============================================================================
 
+/** Kinds of input a model can be said to accept, in display order. */
+export const MODEL_INPUT_MODALITIES = [
+  'text',
+  'image',
+  'file',
+  'audio',
+  'video',
+] as const
+
+export const MODEL_REASONING_LEVELS = [
+  'off',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+] as const
+
+/** Request features a model can be said to support, in display order. */
+export const MODEL_SUPPORTED_PARAMETERS = [
+  'tools',
+  'reasoning',
+  'structured_outputs',
+  'response_format',
+] as const
+
 /**
- * Model form validation schema
+ * Model form validation schema.
+ *
+ * The catalogue facts (input modalities, context length, release date and
+ * series) are required: the model list filters on them, and the server
+ * refuses a model saved without them.
  */
 export const modelFormSchema = z.object({
   id: z.number().optional(),
@@ -41,6 +72,109 @@ export const modelFormSchema = z.object({
   sync_official: z.boolean().default(true),
   enable_groups: z.array(z.string()).default([]),
   quota_types: z.array(z.number()).default([]),
+  input_modalities: z
+    .array(z.string())
+    .min(1, 'Select at least one input modality'),
+  context_length: z
+    .string()
+    .trim()
+    .regex(/^[1-9]\d{0,8}$/, 'Enter the context length in tokens'),
+  max_output_tokens: z
+    .string()
+    .trim()
+    .refine(
+      (value) =>
+        value === '' ||
+        (/^[1-9]\d*$/.test(value) && Number(value) <= 100000000),
+      'Invalid model client settings'
+    )
+    .default(''),
+  output_modalities: z
+    .array(z.enum(['text', 'image', 'audio', 'video']))
+    .default([]),
+  client_display_name: z
+    .string()
+    .max(256, 'Invalid model client settings')
+    .default(''),
+  reasoning_efforts: z
+    .record(z.string(), z.string().max(128))
+    .refine(
+      (efforts) =>
+        Object.entries(efforts).every(
+          ([level, value]) =>
+            MODEL_REASONING_LEVELS.includes(
+              level as (typeof MODEL_REASONING_LEVELS)[number]
+            ) &&
+            (level === 'off' || value.trim() !== '')
+        ),
+      'Invalid model client settings'
+    )
+    .default({}),
+  client_compat: z
+    .string()
+    .refine((value) => {
+      try {
+        const parsed: unknown = JSON.parse(value || '{}')
+        return (
+          typeof parsed === 'object' &&
+          parsed !== null &&
+          !Array.isArray(parsed) &&
+          Object.entries(parsed).length <= 32 &&
+          Object.entries(parsed).every(([key, item]) => {
+            if (
+              [
+                'supportsStrictMode',
+                'supportsDeveloperRole',
+                'supportsUsageInStreaming',
+                'supportsReasoningEffort',
+                'supportsStore',
+              ].includes(key)
+            ) {
+              return typeof item === 'boolean'
+            }
+            if (key === 'maxTokensField') {
+              return item === 'max_tokens' || item === 'max_completion_tokens'
+            }
+            if (key === 'thinkingFormat') {
+              return (
+                typeof item === 'string' &&
+                [
+                  'openai',
+                  'deepseek',
+                  'openrouter',
+                  'together',
+                  'baseten',
+                  'zai',
+                  'qwen',
+                  'chat-template',
+                  'qwen-chat-template',
+                  'string-thinking',
+                  'ant-ling',
+                ].includes(item)
+              )
+            }
+            return false
+          })
+        )
+      } catch {
+        return false
+      }
+    }, 'Invalid model client settings')
+    .default(''),
+  quick_import_hidden: z.boolean().default(false),
+  supported_parameters: z.array(z.string()).default([]),
+  release_date: z
+    .string()
+    .trim()
+    .regex(
+      /^\d{4}-(0[1-9]|1[0-2])$/,
+      'Enter the release date as year and month, such as 2026-09'
+    ),
+  series: z
+    .string()
+    .trim()
+    .min(1, 'Enter the model series')
+    .max(64, 'The model series is too long'),
 })
 
 export type ModelFormValues = z.infer<typeof modelFormSchema>
@@ -83,6 +217,21 @@ export function transformModelToFormDefaults(model: Model): ModelFormValues {
     sync_official: model.sync_official === 1,
     enable_groups: model.enable_groups || [],
     quota_types: model.quota_types || [],
+    input_modalities: parseCatalogList(model.input_modalities),
+    context_length: model.context_length ? String(model.context_length) : '',
+    max_output_tokens: model.max_output_tokens
+      ? String(model.max_output_tokens)
+      : '',
+    output_modalities: parseCatalogList(
+      model.output_modalities
+    ) as ModelFormValues['output_modalities'],
+    client_display_name: model.client_config?.name || '',
+    reasoning_efforts: model.client_config?.reasoning_efforts || {},
+    client_compat: JSON.stringify(model.client_config?.compat || {}, null, 2),
+    quick_import_hidden: model.client_config?.hidden || false,
+    supported_parameters: parseCatalogList(model.supported_parameters),
+    release_date: model.release_date || '',
+    series: model.series || '',
   }
 }
 
@@ -105,12 +254,35 @@ export function transformFormDataToModelPayload(
     sync_official: formData.sync_official ? 1 : 0,
     enable_groups: formData.enable_groups,
     quota_types: formData.quota_types,
+    input_modalities: formData.input_modalities.join(','),
+    context_length: Number(formData.context_length),
+    max_output_tokens: Number(formData.max_output_tokens || 0),
+    output_modalities: formData.output_modalities.join(','),
+    client_config: {
+      name: formData.client_display_name,
+      reasoning_efforts: formData.reasoning_efforts,
+      compat: JSON.parse(formData.client_compat || '{}'),
+      hidden: formData.quick_import_hidden,
+    },
+    supported_parameters: formData.supported_parameters.join(','),
+    release_date: formData.release_date,
+    series: formData.series,
   }
 }
 
 // ============================================================================
 // Parsing and Formatting Helpers
 // ============================================================================
+
+/**
+ * Read a stored catalogue list ("text,image") into its items
+ */
+export function parseCatalogList(stored?: string): string[] {
+  return (stored ?? '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
 
 /**
  * Format tags array to string

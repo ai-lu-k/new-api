@@ -21,12 +21,19 @@ import { getRouteApi } from '@tanstack/react-router'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { DataTablePage, useDataTable } from '@/components/data-table'
+import {
+  DataTablePage,
+  SECTION_FRAME_CLASSNAME,
+  SECTION_TABLE_HEAD_CLASSNAME,
+  useDataTable,
+} from '@/components/data-table'
 import { ErrorState } from '@/components/error-state'
+import { SectionHeading } from '@/components/section-heading'
 import { useModelPricing } from '@/features/model-pricing/api'
 import { useMediaQuery } from '@/hooks'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
 import { requireServerSuccess } from '@/lib/server-error-message'
+import { cn } from '@/lib/utils'
 
 import { getModels, searchModels, getVendors } from '../api'
 import { DEFAULT_PAGE_SIZE } from '../constants'
@@ -238,6 +245,8 @@ export function ModelsTable() {
       columns={columns}
       isLoading={isLoading}
       isFetching={isFetching}
+      tableHeading={<SectionHeading as='h2' title={t('All models')} />}
+      tableClassName={cn(SECTION_FRAME_CLASSNAME, SECTION_TABLE_HEAD_CLASSNAME)}
       emptyTitle={t('No Models Found')}
       emptyDescription={
         shouldSearch
@@ -246,6 +255,7 @@ export function ModelsTable() {
       }
       skeletonKeyPrefix='model-skeleton'
       applyHeaderSize
+      showPagination={models.length > 0}
       pinnedColumns={[
         { columnId: 'model_name', side: 'left' },
         { columnId: 'actions', side: 'right' },

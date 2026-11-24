@@ -114,8 +114,62 @@ export interface ToolSurchargeItem {
   price: number
 }
 
+export type RelayScope = { channel_id: number; model: string; path: string }
+export type RelayOutcome = {
+  end_reason: string
+  timeout_phase?: string
+  duration_ms: number
+  max_silence_ms: number
+  first_content_ms?: number | null
+}
+export type RelayAttempt = RelayOutcome & {
+  attempt: number
+  scope: RelayScope
+  effort?: string
+  streaming: boolean
+  format: string
+  input_tokens?: number
+  budgets: {
+    headers_seconds: number
+    first_byte_seconds: number
+    idle_seconds: number
+    total_seconds: number
+    source: string
+  }
+  connected_ms?: number | null
+  header_byte_ms?: number | null
+  headers_ms?: number | null
+  first_byte_ms?: number | null
+  first_event_ms?: number | null
+  first_reasoning_ms?: number | null
+  last_data_ms?: number | null
+  bytes: number
+  event_count: number
+  upstream_heartbeats: number
+  downstream_pings: number
+  unclassified_events?: number
+  status: number
+  protocol?: string
+  detailed: boolean
+  detail_state: string
+  truncated?: boolean
+}
+export type RelayReport = { attempts: RelayAttempt[]; truncated: boolean }
+export type RelayTimeline = {
+  attempt: number
+  events: {
+    sequence: number
+    at_ms: number
+    kind: string
+    direction: string
+    bytes?: number
+  }[]
+}[]
+
 export interface LogOtherData {
+  relay_outcome?: RelayOutcome
   admin_info?: {
+    relay_diagnostics?: RelayReport
     request_policy?: PolicyEvent[]
     is_multi_key?: boolean
     multi_key_index?: number
@@ -149,6 +203,7 @@ export interface LogOtherData {
     task_plugin?: TaskPluginInfo
   }
   root_info?: {
+    relay_timeline?: RelayTimeline
     task_plugin?: TaskPluginRuntimeInfo
     upstream_task_id?: string
     node_name?: string

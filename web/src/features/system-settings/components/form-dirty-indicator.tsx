@@ -16,9 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { motion, useReducedMotion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 
-import { SettingsPageTitleStatusPortal } from './settings-page-context'
+import { MOTION_SHIFT, MOTION_TRANSITION } from '@/lib/motion'
+
+import { SettingsPageSaveBarStatusPortal } from './settings-page-context'
 
 type FormDirtyIndicatorProps = {
   isDirty: boolean
@@ -26,7 +29,9 @@ type FormDirtyIndicatorProps = {
 }
 
 /**
- * Compact page-title status indicator for unsaved form changes.
+ * Compact status marker for unsaved form changes. It renders inside the page's
+ * sticky save bar, next to the actions it guards, so it stays visible while the
+ * fields scroll.
  *
  * @example
  * ```tsx
@@ -38,14 +43,21 @@ export function FormDirtyIndicator({
   message,
 }: FormDirtyIndicatorProps) {
   const { t } = useTranslation()
+  const shouldReduce = useReducedMotion()
   if (!isDirty) return null
 
   return (
-    <SettingsPageTitleStatusPortal>
-      <span className='inline-flex h-5 items-center gap-1.5 rounded-full bg-amber-500/10 px-2 text-[11px] font-medium whitespace-nowrap text-amber-700 ring-1 ring-amber-500/20 ring-inset dark:bg-amber-400/10 dark:text-amber-300 dark:ring-amber-400/20'>
+    <SettingsPageSaveBarStatusPortal>
+      {/* The save bar raises 4px as the marker appears (contract §5). */}
+      <motion.span
+        initial={shouldReduce ? false : { opacity: 0, y: MOTION_SHIFT.micro }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={MOTION_TRANSITION.base}
+        className='inline-flex h-5 items-center gap-1.5 rounded-full bg-amber-500/10 px-2 text-[11px] font-medium whitespace-nowrap text-amber-700 ring-1 ring-amber-500/20 ring-inset dark:bg-amber-400/10 dark:text-amber-300 dark:ring-amber-400/20'
+      >
         <span className='size-1.5 rounded-full bg-amber-500 dark:bg-amber-300' />
         {message ? t(message) : t('Unsaved changes')}
-      </span>
-    </SettingsPageTitleStatusPortal>
+      </motion.span>
+    </SettingsPageSaveBarStatusPortal>
   )
 }

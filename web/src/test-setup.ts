@@ -131,3 +131,12 @@ for (const name of ['localStorage', 'sessionStorage'] as const) {
     value: storage,
   })
 }
+
+// jsdom lacks the Web Animations API used by Base UI ScrollArea's reduced-
+// motion detection. An empty list represents the animation-free test surface.
+if (!Element.prototype.getAnimations) {
+  Object.defineProperty(Element.prototype, 'getAnimations', {
+    configurable: true,
+    value: () => [],
+  })
+}

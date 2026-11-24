@@ -36,6 +36,23 @@ func getHeaderNavAccess(module string) headerNavAccess {
 	return parseHeaderNavAccess(parsed[module], fallback)
 }
 
+// HeaderNavModuleOpen reports whether a visitor who is not signed in can open
+// a module.
+func HeaderNavModuleOpen(module string) bool {
+	access := getHeaderNavAccess(module)
+	return access.Enabled && !access.RequireAuth
+}
+
+// NoIndex keeps responses out of search results while leaving them readable:
+// the pages fill themselves in from the API, so a crawler has to be able to
+// fetch it.
+func NoIndex() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Header("X-Robots-Tag", "noindex")
+		c.Next()
+	}
+}
+
 func parseHeaderNavAccess(raw any, fallback headerNavAccess) headerNavAccess {
 	switch value := raw.(type) {
 	case bool:

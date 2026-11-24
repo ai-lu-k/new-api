@@ -25,6 +25,7 @@ import {
   DataTableMobileFilterPanel,
   DataTableViewOptions,
 } from '@/components/data-table'
+import { SectionHeading } from '@/components/section-heading'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -44,7 +45,11 @@ interface LogsFilterToolbarProps<TData> {
   table: Table<TData>
   primaryFilters: ReactNode
   advancedFilters?: ReactNode
+  /** Block title above the list; defaults to the usage-log wording. */
+  recordsTitle?: ReactNode
   compactMobile?: boolean
+  desktopSecondaryFilters?: ReactNode
+  desktopExtraFilters?: ReactNode
   mobilePinnedFilters?: ReactNode
   mobileFilters?: ReactNode
   mobileFilterCount?: number
@@ -61,6 +66,10 @@ interface LogsFilterToolbarProps<TData> {
 
 interface LogsFilterFieldProps {
   children: ReactNode
+  /** Field name. The filter grid relies on placeholders on desktop, so the
+   * visible label is limited to the narrow layout; every input also carries an
+   * `aria-label` so the condition keeps a name once a value is typed. */
+  label?: string
   wide?: boolean
   className?: string
 }
@@ -74,6 +83,11 @@ export function LogsFilterField(props: LogsFilterFieldProps) {
         props.className
       )}
     >
+      {props.label != null && (
+        <p className='text-muted-foreground mb-1 text-xs leading-4 sm:hidden'>
+          {props.label}
+        </p>
+      )}
       {props.children}
     </div>
   )
@@ -95,6 +109,7 @@ export function LogsFilterToolbar<TData>(props: LogsFilterToolbarProps<TData>) {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
   const isMobile = useMediaQuery('(max-width: 640px)')
 
+  const recordsTitle = props.recordsTitle ?? t('Request records')
   const hasAdvancedFilters = props.advancedFilters != null
   const activeAdvancedCount =
     props.advancedFilterCount ?? (props.hasAdvancedActiveFilters ? 1 : 0)
@@ -141,9 +156,15 @@ export function LogsFilterToolbar<TData>(props: LogsFilterToolbarProps<TData>) {
   if (isMobile && props.mobilePinnedFilters != null) {
     return (
       <Drawer open={mobileFiltersOpen} onOpenChange={setMobileFiltersOpen}>
+        <SectionHeading as='h2' title={recordsTitle} className='pb-2.5' />
         <DataTableMobileFilterPanel
           compact={props.compactMobile}
-          className={props.className}
+          className={cn(
+            props.className,
+            // The narrowed toolbar is a filter row, not a card: the summary
+            // figures above it stay unframed like the desktop row.
+            props.compactMobile && 'border-0 bg-transparent p-0'
+          )}
           actions={
             <>
               {props.actionStart}
@@ -237,6 +258,63 @@ export function LogsFilterToolbar<TData>(props: LogsFilterToolbarProps<TData>) {
           </div>
         </DrawerContent>
       </Drawer>
+    )
+  }
+
+  if (props.desktopSecondaryFilters != null) {
+    const rowClassName =
+      'grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,.55fr)_5rem] gap-2 lg:grid-cols-[minmax(0,392fr)_minmax(0,416fr)_minmax(0,164fr)_6.75rem] lg:gap-4'
+    const fieldRowClassName = cn(
+      rowClassName,
+      '[&_button]:h-10 [&_input]:h-10 [&_[data-slot=select-trigger]]:h-10!'
+    )
+    return (
+      <div className='space-y-4'>
+        {/* Summary figures and the page-level switch: one line, unframed.
+            Pages without either (audit logs) skip the band entirely so it
+            does not read as an empty toolbar. */}
+        {(props.stats != null || props.actionStart != null) && (
+          <div className='flex flex-wrap items-center justify-between gap-2 border-y py-3'>
+            {props.stats}
+            {props.actionStart}
+          </div>
+        )}
+        <div className={fieldRowClassName}>
+          {props.primaryFilters}
+          <Button
+            type='button'
+            onClick={props.onSearch}
+            disabled={props.searchLoading}
+            aria-busy={props.searchLoading}
+          >
+            {props.searchLoading && <Loader2 className='animate-spin' />}
+            {t('Search')}
+          </Button>
+        </div>
+        {/* Exact-match conditions stay on their own row and share the column
+            grid with the row above, so every input lines up. */}
+        <div className={fieldRowClassName}>
+          {props.desktopSecondaryFilters}
+          <Button
+            type='button'
+            variant='outline'
+            onClick={props.onReset}
+            disabled={!props.hasActiveFilters}
+            className='lg:col-start-4'
+          >
+            {t('Reset')}
+          </Button>
+        </div>
+        {/* Admin-only conditions get a third row on the same grid instead of
+            squeezing in beside the block title. */}
+        {props.desktopExtraFilters != null && (
+          <div className={fieldRowClassName}>{props.desktopExtraFilters}</div>
+        )}
+        <div className='flex flex-wrap items-center justify-between gap-2'>
+          <SectionHeading as='h2' title={recordsTitle} />
+          <DataTableViewOptions table={props.table} />
+        </div>
+      </div>
     )
   }
 

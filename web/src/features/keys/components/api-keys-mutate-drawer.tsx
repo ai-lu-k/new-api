@@ -34,6 +34,7 @@ import {
   sideDrawerHeaderClassName,
   sideDrawerSwitchItemClassName,
 } from '@/components/drawer-layout'
+import { useSharedName } from '@/components/motion/use-shared-name'
 import { MultiSelect } from '@/components/multi-select'
 import { Button } from '@/components/ui/button'
 import {
@@ -69,6 +70,7 @@ import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
 import { handleServerError } from '@/lib/handle-server-error'
 import { requireServerSuccess } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
+import { withViewTransition } from '@/lib/view-transition'
 
 import {
   createApiKey,
@@ -84,6 +86,7 @@ import {
   transformFormDataToPayload,
   transformApiKeyToFormDefaults,
 } from '../lib'
+import { apiKeySharedName } from '../lib/key-shared-name'
 import type { ApiKey } from '../types'
 import {
   ApiKeyGroupCombobox,
@@ -114,6 +117,13 @@ export function ApiKeysMutateDrawer({
     null
   )
   const defaultUseAutoGroup = status?.default_use_auto_group === true
+
+  // The row's name and this drawer's title are one object: opening the drawer
+  // morphs the name from the list into the header instead of the list blinking
+  // out. `ApiKeySharedName` releases the name while this drawer holds it.
+  const detailName = useSharedName(
+    open && currentRow ? apiKeySharedName(currentRow.id) : undefined
+  )
 
   // Fetch models
   const { data: modelsData } = useQuery({
@@ -368,7 +378,8 @@ export function ApiKeysMutateDrawer({
     <Sheet
       open={open}
       onOpenChange={(v) => {
-        onOpenChange(v)
+        // Closing hands the name back to the row inside one snapshot.
+        withViewTransition(() => onOpenChange(v))
         if (!v) {
           form.reset()
         }
@@ -379,7 +390,9 @@ export function ApiKeysMutateDrawer({
       >
         <SheetHeader className={sideDrawerHeaderClassName()}>
           <SheetTitle>
-            {isUpdate ? t('Update API Key') : t('Create API Key')}
+            <span {...detailName} data-shared-morph>
+              {isUpdate ? t('Update API Key') : t('Create API Key')}
+            </span>
           </SheetTitle>
           <SheetDescription>
             {isUpdate
@@ -416,35 +429,38 @@ export function ApiKeysMutateDrawer({
                 )}
               />
 
-              <FormField
-                control={form.control}
-                name='group'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Group')}</FormLabel>
-                    <FormControl>
-                      <ApiKeyGroupCombobox
-                        options={groups}
-                        value={field.value}
-                        onValueChange={(group) => {
-                          field.onChange(group)
-                          if (group === 'auto') {
-                            form.setValue('cross_group_retry', true, {
+              {/* With a single group there is nothing to choose. */}
+              {groups.length > 1 && (
+                <FormField
+                  control={form.control}
+                  name='group'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Group')}</FormLabel>
+                      <FormControl>
+                        <ApiKeyGroupCombobox
+                          options={groups}
+                          value={field.value}
+                          onValueChange={(group) => {
+                            field.onChange(group)
+                            if (group === 'auto') {
+                              form.setValue('cross_group_retry', true, {
+                                shouldDirty: true,
+                              })
+                              return
+                            }
+                            form.setValue('cross_group_retry', false, {
                               shouldDirty: true,
                             })
-                            return
-                          }
-                          form.setValue('cross_group_retry', false, {
-                            shouldDirty: true,
-                          })
-                        }}
-                        placeholder={t('Select a group')}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                          }}
+                          placeholder={t('Select a group')}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
 
               {selectedGroup === 'auto' && (
                 <FormField

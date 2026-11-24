@@ -23,6 +23,8 @@ import type {
 } from '@tanstack/react-table'
 import { useEffect, useMemo, useState } from 'react'
 
+import { navigateInPlace, type InPlaceNavigation } from '@/lib/view-transition'
+
 type SearchRecord = Record<string, unknown>
 
 // Page size persists globally under the established storage key (raw number
@@ -31,7 +33,10 @@ const PAGE_SIZE_STORAGE_KEY = 'page-size'
 
 function getStoredPageSize(): number | undefined {
   try {
-    const n = parseInt(localStorage.getItem(PAGE_SIZE_STORAGE_KEY) ?? '', 10)
+    const n = Number.parseInt(
+      localStorage.getItem(PAGE_SIZE_STORAGE_KEY) ?? '',
+      10
+    )
     return n > 0 ? n : undefined // n > 0 also rejects NaN
   } catch {
     return undefined
@@ -46,13 +51,7 @@ function setStoredPageSize(size: number) {
   }
 }
 
-export type NavigateFn = (opts: {
-  search:
-    | true
-    | SearchRecord
-    | ((prev: SearchRecord) => Partial<SearchRecord> | SearchRecord)
-  replace?: boolean
-}) => void
+export type NavigateFn = InPlaceNavigation
 
 type UseTableUrlStateParams = {
   search: SearchRecord
@@ -171,7 +170,7 @@ export function useTableUrlState(
     const nextPage = next.pageIndex + 1
     const nextPageSize = next.pageSize
     if (nextPageSize !== pagination.pageSize) setStoredPageSize(nextPageSize)
-    navigate({
+    navigateInPlace(navigate, {
       search: (prev) => ({
         ...(prev as SearchRecord),
         [pageKey]: nextPage <= defaultPage ? undefined : nextPage,
@@ -195,7 +194,7 @@ export function useTableUrlState(
               : updater
           const value = trimGlobal ? next.trim() : next
           setGlobalFilter(value)
-          navigate({
+          navigateInPlace(navigate, {
             search: (prev) => ({
               ...(prev as SearchRecord),
               [pageKey]: undefined,
@@ -221,14 +220,13 @@ export function useTableUrlState(
         patch[cfg.searchKey] =
           value.trim() !== '' ? serialize(value) : undefined
       } else {
-        const value = Array.isArray(found?.value)
-          ? (found!.value as unknown[])
-          : []
+        const rawValue = found?.value
+        const value = Array.isArray(rawValue) ? rawValue : []
         patch[cfg.searchKey] = value.length > 0 ? serialize(value) : undefined
       }
     }
 
-    navigate({
+    navigateInPlace(navigate, {
       search: (prev) => ({
         ...(prev as SearchRecord),
         [pageKey]: undefined,
@@ -244,7 +242,7 @@ export function useTableUrlState(
     const currentPage = (search as SearchRecord)[pageKey]
     const pageNum = typeof currentPage === 'number' ? currentPage : defaultPage
     if (pageCount > 0 && pageNum > pageCount) {
-      navigate({
+      navigateInPlace(navigate, {
         replace: true,
         search: (prev) => ({
           ...(prev as SearchRecord),

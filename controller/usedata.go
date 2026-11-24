@@ -45,6 +45,38 @@ func GetAllQuotaDates(c *gin.Context) {
 	return
 }
 
+const maxDailyQuotaRangeSeconds = 366 * 24 * 60 * 60
+
+// GetUserDailyQuotaDates returns the signed-in user's usage per Asia/Shanghai
+// calendar day. The range is capped so a dashboard cannot request years of rows.
+func GetUserDailyQuotaDates(c *gin.Context) {
+	userId := c.GetInt("id")
+	startTimestamp, startErr := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
+	endTimestamp, endErr := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
+	if startErr != nil || endErr != nil || startTimestamp <= 0 || endTimestamp < startTimestamp {
+		common.ApiErrorMsg(c, "invalid time range")
+		return
+	}
+	if endTimestamp-startTimestamp > maxDailyQuotaRangeSeconds {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "时间跨度不能超过 1 年",
+		})
+		return
+	}
+	days, err := model.GetUserDailyQuotaData(userId, startTimestamp, endTimestamp)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    days,
+	})
+	return
+}
+
 func GetQuotaDatesByUser(c *gin.Context) {
 	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)

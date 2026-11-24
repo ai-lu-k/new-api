@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Calendar as CalendarIcon } from 'lucide-react'
-import { enUS, fr, ja, ru, vi, zhCN } from 'react-day-picker/locale'
+import { enUS, fr, ja, ru, vi, zhCN, zhTW } from 'react-day-picker/locale'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -31,7 +31,8 @@ import dayjs from '@/lib/dayjs'
 
 const calendarLocales = {
   en: enUS,
-  zh: zhCN,
+  zhCN,
+  zhTW,
   fr,
   ru,
   ja,
@@ -42,12 +43,16 @@ type DatePickerProps = {
   selected: Date | undefined
   onSelect: (date: Date | undefined) => void
   placeholder?: string
+  ariaLabel?: string
+  maxDate?: Date
 }
 
 export function DatePicker({
   selected,
   onSelect,
   placeholder,
+  ariaLabel,
+  maxDate,
 }: DatePickerProps) {
   const { t, i18n } = useTranslation()
   const placeholderText = placeholder ?? t('Pick a date')
@@ -58,6 +63,7 @@ export function DatePicker({
       <PopoverTrigger
         render={
           <Button
+            aria-label={ariaLabel}
             variant='outline'
             data-empty={!selected}
             className='data-[empty=true]:text-muted-foreground w-[240px] justify-start text-start font-normal'
@@ -79,7 +85,7 @@ export function DatePicker({
           onSelect={onSelect}
           locale={calendarLocale}
           disabled={(date: Date) =>
-            date > new Date() || date < new Date('1900-01-01')
+            date > (maxDate ?? new Date()) || date < new Date('1900-01-01')
           }
         />
       </PopoverContent>

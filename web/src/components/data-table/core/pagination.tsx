@@ -170,6 +170,7 @@ export function DataTablePagination<TData>({
                 </span>
               ) : (
                 <Button
+                  aria-current={currentPage === pageNumber ? 'page' : undefined}
                   variant={currentPage === pageNumber ? 'default' : 'outline'}
                   className={cn(
                     'h-8 min-w-8 px-2 tabular-nums',

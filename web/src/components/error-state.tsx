@@ -33,6 +33,8 @@ import {
 import { cn } from '@/lib/utils'
 
 interface ErrorStateProps {
+  compact?: boolean
+  inline?: boolean
   icon?: LucideIcon
   title?: string
   description?: string
@@ -47,21 +49,41 @@ export function ErrorState(props: ErrorStateProps) {
 
   return (
     <FadeIn>
-      <Empty className={cn('min-h-[300px]', props.className)}>
-        <EmptyHeader>
-          <EmptyMedia variant='icon'>
+      <Empty
+        className={cn(
+          props.compact ? 'min-h-0 gap-2 p-0' : 'min-h-[300px]',
+          props.inline && 'min-h-0 flex-row justify-start gap-1 p-0',
+          props.className
+        )}
+      >
+        <EmptyHeader className={props.compact ? 'gap-0' : undefined}>
+          <EmptyMedia
+            variant='icon'
+            className={props.compact ? 'hidden' : undefined}
+          >
             <Icon className='text-destructive size-6' />
           </EmptyMedia>
-          <EmptyTitle>
+          <EmptyTitle
+            className={
+              props.compact && props.description ? 'sr-only' : undefined
+            }
+          >
             {props.title ?? t('Oops! Something went wrong')}
           </EmptyTitle>
           {props.description != null && (
-            <EmptyDescription>{props.description}</EmptyDescription>
+            <EmptyDescription className={props.compact ? 'text-xs' : undefined}>
+              {props.description}
+            </EmptyDescription>
           )}
         </EmptyHeader>
-        <EmptyContent>
+        <EmptyContent className={props.inline ? 'w-auto flex-none' : undefined}>
           {props.onRetry != null && (
-            <Button variant='outline' size='sm' onClick={props.onRetry}>
+            <Button
+              variant='outline'
+              size='sm'
+              onClick={props.onRetry}
+              className={props.inline ? 'h-5 px-1 text-[11px]' : undefined}
+            >
               {t('Retry')}
             </Button>
           )}

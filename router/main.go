@@ -7,12 +7,19 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/middleware"
+	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
 )
 
-func SetRouter(router *gin.Engine, assets WebAssets) {
+func SetRouter(router *gin.Engine, assets WebAssets) error {
+	environment, err := service.LoadEnvironmentConfig()
+	if err != nil {
+		return fmt.Errorf("invalid environment gateway configuration: %w", err)
+	}
+	router.Use(controller.EnvironmentGateway(environment))
 	SetApiRouter(router)
 	SetDashboardRouter(router)
 	SetRelayRouter(router)
@@ -38,4 +45,5 @@ func SetRouter(router *gin.Engine, assets WebAssets) {
 			},
 		)
 	}
+	return nil
 }

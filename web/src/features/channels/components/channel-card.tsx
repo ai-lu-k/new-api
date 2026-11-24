@@ -20,11 +20,9 @@ import { flexRender, type Row } from '@tanstack/react-table'
 import { memo } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { GroupBadge } from '@/components/group-badge'
 import { StatusBadgeTypeContext } from '@/components/status-badge'
 
-import { CHANNEL_STATUS } from '../constants'
-import { isTagAggregateRow, parseGroupsList } from '../lib'
+import { isTagAggregateRow } from '../lib'
 import type { Channel } from '../types'
 import { ChannelRowActionsLayoutContext } from './channel-row-actions-context'
 import { useChannels } from './channels-provider'
@@ -59,8 +57,6 @@ function ChannelCardComponent({
     return flexRender(cell.column.columnDef.cell, cell.getContext())
   }
 
-  const groups = parseGroupsList(row.original.group ?? '')
-
   const selectCell = renderCell('select')
   const typeCell = renderCell('type')
   const nameCell = renderCell('name')
@@ -73,14 +69,6 @@ function ChannelCardComponent({
   const testCell = renderCell('test_time')
 
   const labelClass = 'text-muted-foreground text-[11px] font-medium select-none'
-
-  // In card view the enable/disable state is already conveyed by the inline
-  // power toggle, so the plain "Enabled"/"Disabled" badge is redundant. Keep
-  // only the informative states (e.g. auto-disabled, unknown) and tag rows.
-  const showStatusBadge =
-    isTagRow ||
-    (row.original.status !== CHANNEL_STATUS.ENABLED &&
-      row.original.status !== CHANNEL_STATUS.MANUAL_DISABLED)
 
   return (
     <ChannelRowActionsLayoutContext.Provider value='card'>
@@ -97,7 +85,7 @@ function ChannelCardComponent({
             <div className='min-w-0 overflow-hidden'>{typeCell}</div>
           </div>
           <div className='flex shrink-0 items-center gap-1.5'>
-            {showStatusBadge && statusCell}
+            {statusCell}
             {actionsCell}
           </div>
         </div>
@@ -114,15 +102,18 @@ function ChannelCardComponent({
               )}
               {nameCell}
             </div>
-            <div className='flex min-w-0 flex-col gap-1'>
+            {/* Routing numbers stay off the phone card: the inline steppers are
+                too easy to mis-tap there, and the editor drawer still edits
+                them. */}
+            <div className='hidden min-w-0 flex-col gap-1 sm:flex'>
               <span className={labelClass}>{t('Priority')}</span>
               {priorityCell}
             </div>
-            <div className='flex min-w-0 flex-col gap-1'>
+            <div className='hidden min-w-0 flex-col gap-1 sm:flex'>
               <span className={labelClass}>{t('Weight')}</span>
               {weightCell}
             </div>
-            <dl className='col-span-3 grid grid-cols-subgrid gap-y-1'>
+            <dl className='col-span-3 grid min-w-0 grid-cols-3 gap-x-3 gap-y-1'>
               <div className='row-span-2 grid min-w-0 grid-rows-subgrid'>
                 <dt className={labelClass}>{t('Used / Remaining')}</dt>
                 <dd className='min-w-0 text-sm tabular-nums [&_[data-slot=status-badge]]:!ml-0 [&>div]:ml-0 [&>div]:flex-wrap [&>div]:gap-x-3'>
@@ -148,24 +139,6 @@ function ChannelCardComponent({
             </dl>
           </div>
         </StatusBadgeTypeContext.Provider>
-
-        {/* Groups retain their compact, full-width footer. */}
-        <div className='min-w-0'>
-          {groups.length > 0 ? (
-            <div className='-ml-1.5 flex min-w-0 flex-wrap gap-1'>
-              {groups.map((g) => (
-                <GroupBadge
-                  key={g}
-                  group={g}
-                  label={sensitiveVisible ? undefined : SENSITIVE_MASK}
-                  size='sm'
-                />
-              ))}
-            </div>
-          ) : (
-            <span className='text-muted-foreground text-sm'>-</span>
-          )}
-        </div>
       </div>
     </ChannelRowActionsLayoutContext.Provider>
   )

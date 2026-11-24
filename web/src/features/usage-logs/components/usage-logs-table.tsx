@@ -24,9 +24,14 @@ import { useTranslation } from 'react-i18next'
 
 import {
   DataTablePage,
+  getListEntranceSignature,
   DataTableRow,
+  SECTION_FRAME_CLASSNAME,
+  SECTION_TABLE_HEAD_CLASSNAME,
   useDataTable,
 } from '@/components/data-table'
+import { ErrorState } from '@/components/error-state'
+import { useResultEnter } from '@/features/keys/components/motion/result-enter'
 import {
   getAdminPlans,
   getSelfSubscriptionFull,
@@ -46,7 +51,7 @@ import { shouldShowBillingSource } from '../lib/billing-source'
 import { useColumnsByCategory } from '../lib/columns'
 import { parseLogOther } from '../lib/format'
 import { fetchLogsByCategory } from '../lib/utils'
-import type { LogCategory } from '../types'
+import type { GetLogsResponse, LogCategory } from '../types'
 import { CommonLogsFilterBar } from './common-logs-filter-bar'
 import { TaskLogsFilterBar } from './task-logs-filter-bar'
 import { UsageLogsMobileList } from './usage-logs-mobile-card'
@@ -63,12 +68,28 @@ const logTypeRowTint: Record<number, string> = {
 // Takes precedence over the per-type tint since it flags a billing anomaly.
 const quotaSaturationRowTint = 'bg-amber-50/60 dark:bg-amber-950/25'
 
+/**
+ * Pure numeric columns read as a column of figures, so they are right-aligned
+ * in both the heading and the body and share tabular figures. Composite cells
+ * (timestamp + type, timer + first token, stream + throughput) stay
+ * left-aligned because they mix a label with the figure.
+ */
+const RIGHT_ALIGNED_COLUMNS = new Set(['prompt_tokens', 'quota'])
+
 function getColumnVisibilityStorageKey(
   logCategory: LogCategory,
   viewAccess: LogsViewAccess
 ): string {
-  return `usage-logs:${logCategory}:${viewAccess}:column-visibility`
+  return `usage-logs:${logCategory}:${viewAccess}:column-visibility:v2`
 }
+
+/**
+ * List failures are returned as data instead of a rejected query, so the page
+ * keeps its header, filters and retry affordance.
+ */
+type LogsQueryOutcome =
+  | { ok: true; data: NonNullable<GetLogsResponse['data']> }
+  | { ok: false }
 
 function deserializeLogTypeFilter(value: unknown): unknown[] {
   let values: unknown[] = []
@@ -82,12 +103,20 @@ function deserializeLogTypeFilter(value: unknown): unknown[] {
 
 interface UsageLogsTableProps {
   logCategory: LogCategory
+  sensitiveToggleInHeader?: boolean
 }
 
-export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
+export function UsageLogsTable({
+  logCategory,
+  sensitiveToggleInHeader,
+}: UsageLogsTableProps) {
   const { t } = useTranslation()
   const getColumnClassName = useCallback(
-    () => (logCategory === 'common' ? 'py-2' : 'py-3.5'),
+    (columnId: string) => {
+      const vertical = logCategory === 'common' ? 'py-1.5' : 'py-3.5'
+      if (!RIGHT_ALIGNED_COLUMNS.has(columnId)) return vertical
+      return cn(vertical, 'text-right')
+    },
     [logCategory]
   )
   const {
@@ -160,7 +189,12 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
     ],
   })
 
-  const { data, isLoading, isFetching } = useQuery({
+  const {
+    data: outcome,
+    isLoading,
+    isFetching,
+    refetch,
+  } = useQuery({
     queryKey: [
       'logs',
       logCategory,
@@ -171,21 +205,38 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
       searchParams,
       t,
     ],
-    queryFn: async () => {
-      const result = await fetchLogsByCategory({
-        logCategory,
-        isAdmin,
-        page: pagination.pageIndex + 1,
-        pageSize: pagination.pageSize,
-        searchParams,
-        columnFilters,
-      })
+    // The table renders its own failure state; keep the shell and filters.
+    meta: { skipInternalErrorRedirect: true },
+    queryFn: async (): Promise<LogsQueryOutcome> => {
+      try {
+        const result = await fetchLogsByCategory({
+          logCategory,
+          isAdmin,
+          page: pagination.pageIndex + 1,
+          pageSize: pagination.pageSize,
+          searchParams,
+          columnFilters,
+        })
 
-      if (!result?.success) {
-        throw createServerError(result, t('Failed to load logs'))
+        if (!result?.success) {
+          throw createServerError(result, t('Failed to load logs'))
+        }
+
+        return {
+          ok: true,
+          data: result.data ?? {
+            ...DEFAULT_LOGS_DATA,
+            page: pagination.pageIndex + 1,
+            page_size: pagination.pageSize,
+          },
+        }
+      } catch {
+        // A failed list request belongs in the table area. Rejecting the query
+        // would hand every HTTP 500 to the app-level error handler, which
+        // replaces the page header, filters and pagination with a generic
+        // error screen and leaves no way to retry in place.
+        return { ok: false }
       }
-
-      return result.data || DEFAULT_LOGS_DATA
     },
     placeholderData: (previousData, previousQuery) => {
       if (
@@ -198,6 +249,8 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
     },
   })
 
+  const isError = outcome?.ok === false
+  const data = outcome?.ok ? outcome.data : undefined
   const logs = data?.items || []
   const columns = useColumnsByCategory(
     logCategory,
@@ -205,7 +258,7 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
     isRoot,
     showBillingSource
   )
-  const isLoadingData = isLoading || (isFetching && !data)
+  const isLoadingData = isLoading || (isFetching && !outcome)
 
   const { table } = useDataTable({
     data: logs as Record<string, unknown>[],
@@ -215,6 +268,10 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
       logCategory,
       viewAccess
     ),
+    // Ten columns do not fit the main content width; the admin view opens with
+    // "Stream" folded away and keeps it one click away in the column menu.
+    initialColumnVisibility:
+      logCategory === 'common' && isAdmin ? { is_stream: false } : undefined,
     pagination,
     enableRowSelection: false,
     onPaginationChange,
@@ -226,62 +283,131 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
   })
 
   const isCommon = logCategory === 'common'
+  const hasActiveFilters =
+    isCommon &&
+    Boolean(
+      searchParams.model ||
+      searchParams.token ||
+      searchParams.group ||
+      searchParams.username ||
+      searchParams.channel ||
+      searchParams.requestId ||
+      searchParams.upstreamRequestId
+    )
+  const hasActiveType =
+    isCommon &&
+    (searchParams.type ?? []).some((type) => type !== LOG_TYPE_ALL_VALUE)
+  const toolbar = isCommon ? (
+    <CommonLogsFilterBar
+      table={table}
+      sensitiveToggleInHeader={sensitiveToggleInHeader}
+    />
+  ) : (
+    <TaskLogsFilterBar table={table} logCategory={logCategory} />
+  )
+
+  const showsFilteredResult = hasActiveFilters || hasActiveType
+  // Task and drawing logs are not request logs, so the usage-log empty copy is
+  // wrong for them and no dedicated copy exists yet.
+  let emptyDescription = ''
+  if (showsFilteredResult) emptyDescription = t('Try adjusting your search')
+  else if (isCommon) {
+    emptyDescription = t(
+      'No usage logs available. Logs will appear here once API calls are made.'
+    )
+  }
+
+  // The body arrives once per filter / page change instead of blinking in. The
+  // key is the identity of the rows on screen: the route search turns over a
+  // request earlier than the rows do, and the entrance belongs to the commit
+  // that swapped them.
+  const resultRef = useResultEnter(
+    `${logs.map((log) => log.id).join(',')}|${showsFilteredResult}`
+  )
+
+  if (isError) {
+    return (
+      <div
+        className={
+          isCommon ? 'space-y-4' : 'flex h-full min-h-0 flex-col gap-4'
+        }
+      >
+        {toolbar}
+        <ErrorState
+          title={t('Failed to load logs')}
+          description={t('Please try again later.')}
+          onRetry={() => {
+            void refetch()
+          }}
+        />
+      </div>
+    )
+  }
+
+  // Custom rows still arrive in the same ladder as the default ones.
+  const entranceSignature = getListEntranceSignature(
+    table.getRowModel().rows,
+    table.getState()
+  )
 
   return (
-    <DataTablePage
-      table={table}
-      compactPagination={isMobile && isCommon}
-      columns={columns as ColumnDef<Record<string, unknown>>[]}
-      isLoading={isLoadingData}
-      isFetching={isFetching}
-      emptyTitle={t('No Logs Found')}
-      emptyDescription={t(
-        'No usage logs available. Logs will appear here once API calls are made.'
-      )}
-      skeletonKeyPrefix='usage-log-skeleton'
-      applyHeaderSize
-      tableClassName={cn(
-        '[&_[data-slot=table]]:text-[13px] [&_[data-slot=table]_td]:text-[13px] [&_[data-slot=table]_td_*]:text-[13px] [&_[data-slot=table]_th]:text-[13px] [&_[data-slot=table]_th_*]:text-[13px]'
-      )}
-      mobile={
-        <UsageLogsMobileList
-          table={table}
-          isLoading={isLoadingData}
-          logCategory={logCategory}
-        />
-      }
-      toolbar={
-        isCommon ? (
-          <CommonLogsFilterBar table={table} />
-        ) : (
-          <TaskLogsFilterBar table={table} logCategory={logCategory} />
-        )
-      }
-      renderRow={(row) => {
-        const logType = (row.original as Record<string, unknown>).type as
-          | number
-          | undefined
-        let tintClass =
-          isCommon && logType != null ? (logTypeRowTint[logType] ?? '') : ''
-        if (isCommon && isAdmin) {
-          const other = parseLogOther(
-            ((row.original as Record<string, unknown>).other as string) ?? ''
-          )
-          if (other?.admin_info?.quota_saturation) {
-            tintClass = quotaSaturationRowTint
-          }
+    <div ref={resultRef} className='contents'>
+      <DataTablePage
+        table={table}
+        compactPagination={isMobile && isCommon}
+        columns={columns as ColumnDef<Record<string, unknown>>[]}
+        isLoading={isLoadingData}
+        isFetching={isFetching}
+        emptyTitle={
+          showsFilteredResult ? t('No matching results') : t('No Logs Found')
         }
-
-        return (
-          <DataTableRow
-            key={row.id}
-            row={row}
-            className={cn('transition-colors', tintClass)}
-            getColumnClassName={getColumnClassName}
-            cellRenderColumns={table.options.columns}
+        emptyDescription={emptyDescription}
+        fixedHeight={!isCommon}
+        paginationInFooter={!isCommon}
+        skeletonKeyPrefix='usage-log-skeleton'
+        applyHeaderSize={!isCommon || isAdmin}
+        tableClassName={cn(
+          isCommon && SECTION_FRAME_CLASSNAME,
+          isCommon && SECTION_TABLE_HEAD_CLASSNAME,
+          isCommon && '[&_td]:h-16',
+          '[&_[data-slot=table]]:text-[13px] [&_[data-slot=table]_td]:text-[13px] [&_[data-slot=table]_td_*]:text-[13px] [&_[data-slot=table]_th]:text-[12px] [&_[data-slot=table]_th_*]:text-[12px]'
+        )}
+        mobile={
+          <UsageLogsMobileList
+            table={table}
+            isLoading={isLoadingData}
+            logCategory={logCategory}
           />
-        )
-      }}
-    />
+        }
+        toolbar={toolbar}
+        renderRow={(row) => {
+          const logType = (row.original as Record<string, unknown>).type as
+            | number
+            | undefined
+          let tintClass =
+            isCommon && logType != null ? (logTypeRowTint[logType] ?? '') : ''
+          if (isCommon && isAdmin) {
+            const other = parseLogOther(
+              ((row.original as Record<string, unknown>).other as string) ?? ''
+            )
+            if (other?.admin_info?.quota_saturation) {
+              tintClass = quotaSaturationRowTint
+            }
+          }
+
+          return (
+            <DataTableRow
+              key={row.id}
+              row={row}
+              className={cn('transition-colors', tintClass)}
+              getColumnClassName={getColumnClassName}
+              cellRenderColumns={table.options.columns}
+              entranceSignature={entranceSignature}
+              entranceIndex={row.index}
+            />
+          )
+        }}
+      />
+    </div>
   )
 }

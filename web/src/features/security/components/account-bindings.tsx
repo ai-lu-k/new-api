@@ -358,7 +358,7 @@ export function AccountBindings({ profile, onUpdate }: AccountBindingsProps) {
               <Button
                 variant='outline'
                 size='sm'
-                className='h-7 shrink-0 px-2.5 text-xs'
+                className='min-h-11 shrink-0 px-2.5 text-xs sm:min-h-8'
                 onClick={binding.onBind}
                 disabled={
                   bindingsLocked || (binding.isBound && binding.id !== 'email')
@@ -408,7 +408,7 @@ export function AccountBindings({ profile, onUpdate }: AccountBindingsProps) {
                 <Button
                   variant='ghost'
                   size='sm'
-                  className='text-destructive h-7 shrink-0 px-2.5 text-xs'
+                  className='text-destructive min-h-11 shrink-0 px-2.5 text-xs sm:min-h-8'
                   onClick={() => setUnbindTarget(binding)}
                   disabled={bindingsLocked}
                 >
@@ -419,7 +419,7 @@ export function AccountBindings({ profile, onUpdate }: AccountBindingsProps) {
                 <Button
                   variant='outline'
                   size='sm'
-                  className='h-7 shrink-0 px-2.5 text-xs'
+                  className='min-h-11 shrink-0 px-2.5 text-xs sm:min-h-8'
                   onClick={() => void handleBindCustomOAuth(provider)}
                   disabled={bindingsLocked}
                 >

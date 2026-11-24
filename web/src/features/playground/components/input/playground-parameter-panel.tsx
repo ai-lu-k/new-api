@@ -52,10 +52,12 @@ import {
   type PlaygroundParameterKey,
 } from '../../lib/parameters/playground-parameters'
 import type { ParameterEnabled, PlaygroundConfig } from '../../types'
+import { PlaygroundImageParameters } from './playground-image-parameters'
 
 type PlaygroundParameterPanelProps = {
   config: PlaygroundConfig
   disabled?: boolean
+  isImageGeneration?: boolean
   onConfigChange: <K extends keyof PlaygroundConfig>(
     key: K,
     value: PlaygroundConfig[K]
@@ -75,6 +77,7 @@ function PlaygroundParameterContent({
   compact = false,
   config,
   disabled,
+  isImageGeneration = false,
   onConfigChange,
   onParameterEnabledChange,
   parameterEnabled,
@@ -91,6 +94,23 @@ function PlaygroundParameterContent({
     }
 
     onConfigChange(key, value ?? 0)
+  }
+
+  if (isImageGeneration) {
+    return (
+      <div
+        className={cn(
+          PLAYGROUND_PARAMETER_PANEL_SCROLL_CLASS,
+          compact ? 'px-4 pb-4' : 'p-1'
+        )}
+      >
+        <PlaygroundImageParameters
+          config={config}
+          disabled={disabled}
+          onConfigChange={onConfigChange}
+        />
+      </div>
+    )
   }
 
   return (
@@ -198,9 +218,12 @@ function PlaygroundParameterContent({
 export function PlaygroundParameterPanel(props: PlaygroundParameterPanelProps) {
   const { t } = useTranslation()
   const isMobile = useIsMobile()
-  const activeCount = PLAYGROUND_PARAMETER_CONTROLS.filter(
-    (control) => props.parameterEnabled[control.key]
-  ).length
+  const isImageGeneration = props.isImageGeneration ?? false
+  const activeCount = isImageGeneration
+    ? 0
+    : PLAYGROUND_PARAMETER_CONTROLS.filter(
+        (control) => props.parameterEnabled[control.key]
+      ).length
 
   const trigger = (
     <PromptInputButton
@@ -210,9 +233,11 @@ export function PlaygroundParameterPanel(props: PlaygroundParameterPanelProps) {
       variant='ghost'
     >
       <SlidersHorizontalIcon size={16} />
-      <span className='bg-primary text-primary-foreground absolute -top-1 -right-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full px-1 text-[9px] leading-none font-semibold'>
-        {activeCount}
-      </span>
+      {!isImageGeneration && (
+        <span className='bg-primary text-primary-foreground absolute -top-1 -right-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full px-1 text-[9px] leading-none font-semibold'>
+          {activeCount}
+        </span>
+      )}
     </PromptInputButton>
   )
 
@@ -256,7 +281,9 @@ export function PlaygroundParameterPanel(props: PlaygroundParameterPanelProps) {
         <div className='space-y-1 px-1'>
           <div className='text-sm font-semibold'>{t('Parameter settings')}</div>
           <div className='text-muted-foreground text-xs leading-4'>
-            {t('Only enabled parameters are sent with the request.')}
+            {isImageGeneration
+              ? t('Blank size and quality use the model default.')
+              : t('Only enabled parameters are sent with the request.')}
           </div>
         </div>
         <PlaygroundParameterContent {...props} />

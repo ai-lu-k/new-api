@@ -7,6 +7,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -38,6 +39,44 @@ func TestFixedPriceBranches(t *testing.T) {
 	for _, count := range []int{-1, 0, 129} {
 		_, _, err := billingexpr.RunExprWithRequest(`tier("image", fixed(0.04)) * image_count`, billingexpr.TokenParams{}, billingexpr.RequestInput{ImageCount: &count})
 		require.ErrorContains(t, err, "image_count")
+	}
+}
+
+func TestSpeechCharsBillingQuantity(t *testing.T) {
+	const expression = `tier("char", fixed(0.000015)) * chars`
+	chars := 12
+
+	cost, trace, err := billingexpr.RunExprWithRequest(expression, billingexpr.TokenParams{}, billingexpr.RequestInput{Chars: &chars})
+	require.NoError(t, err)
+	assert.Equal(t, 180.0, cost, "12 characters at $0.000015 each, in the v1 $/1M scaled unit")
+	assert.Equal(t, billingexpr.BillingUnitRequest, trace.BillingUnit)
+	require.NotNil(t, trace.Chars)
+	assert.Equal(t, chars, *trace.Chars)
+	require.NotNil(t, trace.FixedPrice)
+	assert.Equal(t, 0.000015, *trace.FixedPrice)
+
+	snap := &billingexpr.BillingSnapshot{
+		ExprString:   expression,
+		ExprHash:     billingexpr.ExprHashString(expression),
+		GroupRatio:   1,
+		QuotaPerUnit: 500000,
+	}
+	result, err := billingexpr.ComputeTieredQuotaWithRequest(snap, billingexpr.TokenParams{}, billingexpr.RequestInput{Chars: &chars})
+	require.NoError(t, err)
+	assert.Equal(t, 90, result.ActualQuotaAfterGroup, "12 characters must cost $0.00018")
+	require.NotNil(t, result.Chars)
+	assert.Equal(t, chars, *result.Chars)
+
+	// No character quantity supplied means no per-character charge, never one unit.
+	zero, zeroTrace, err := billingexpr.RunExpr(expression, billingexpr.TokenParams{})
+	require.NoError(t, err)
+	assert.Zero(t, zero)
+	assert.Equal(t, 0, *zeroTrace.Chars)
+
+	for _, invalid := range []int{-1, dto.MaxSpeechCharacters + 1} {
+		count := invalid
+		_, _, err := billingexpr.RunExprWithRequest(expression, billingexpr.TokenParams{}, billingexpr.RequestInput{Chars: &count})
+		require.ErrorContains(t, err, "chars")
 	}
 }
 

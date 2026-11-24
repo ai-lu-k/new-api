@@ -47,8 +47,10 @@ func serveTaskPluginImageProtocol(c *gin.Context, pinned pluginruntime.PinnedEnd
 	// bridge. Only the in-request wait and the response write observe the
 	// client connection.
 	func() {
+		leaseContext, cancelLease := model.WithChannelGenerationLeaseCancellation(context.WithoutCancel(clientRequest.Context()))
+		defer cancelLease()
 		submissionContext, cancelSubmission := context.WithTimeout(
-			context.WithoutCancel(clientRequest.Context()),
+			leaseContext,
 			deps.submissionTimeout,
 		)
 		c.Request = clientRequest.Clone(submissionContext)

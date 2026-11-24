@@ -90,6 +90,14 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
 
       {model.id > 0 && (
         <DataTableRowActionMenu ariaLabel={t('Open menu')}>
+          <DropdownMenuItem
+            onClick={() => {
+              setCurrentRow(model)
+              setOpen('benchmark-mappings')
+            }}
+          >
+            {t('Benchmark mappings')}
+          </DropdownMenuItem>
           <DropdownMenuItem onClick={handleToggleStatus}>
             {toggleLabel}
             <DropdownMenuShortcut>

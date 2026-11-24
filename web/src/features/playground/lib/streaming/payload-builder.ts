@@ -22,7 +22,12 @@ import type {
   PlaygroundConfig,
   ParameterEnabled,
 } from '../../types'
-import { formatMessageForAPI, isValidMessage } from '../message/message-utils'
+import {
+  formatMessageForAPI,
+  isValidMessage,
+  redactInlineImageData,
+} from '../message/message-utils'
+import type { PlaygroundModelMode } from '../model/model-mode'
 
 /**
  * Build API request payload from messages and config
@@ -30,18 +35,27 @@ import { formatMessageForAPI, isValidMessage } from '../message/message-utils'
 export function buildChatCompletionPayload(
   messages: Message[],
   config: PlaygroundConfig,
-  parameterEnabled: ParameterEnabled
+  parameterEnabled: ParameterEnabled,
+  mode: PlaygroundModelMode = 'text'
 ): ChatCompletionRequest {
-  // Filter and format valid messages
-  const processedMessages = messages
-    .filter(isValidMessage)
-    .map(formatMessageForAPI)
+  // Filter and format valid messages. Inline base64 images from an earlier
+  // chat-image turn are replaced with a short placeholder: re-sending them
+  // would push ~1 MB back upstream on every follow-up request.
+  const processedMessages = messages.filter(isValidMessage).map((message) => {
+    const formatted = formatMessageForAPI(message)
+
+    return typeof formatted.content === 'string'
+      ? { ...formatted, content: redactInlineImageData(formatted.content) }
+      : formatted
+  })
 
   const payload: ChatCompletionRequest = {
     model: config.model,
     group: config.group,
     messages: processedMessages,
-    stream: config.stream,
+    // A chat-image answer is one markdown image built from a single base64
+    // payload, so streaming it has no benefit.
+    stream: mode === 'chat-image' ? false : config.stream,
   }
 
   if (parameterEnabled.temperature) {

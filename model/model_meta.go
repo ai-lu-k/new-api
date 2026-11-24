@@ -52,6 +52,17 @@ type Model struct {
 	QuotaTypes    []int          `json:"quota_types,omitempty" gorm:"-"`
 	NameRule      int            `json:"name_rule" gorm:"default:0"`
 
+	// Catalogue facts, entered by hand (see model_catalog.go). The two lists
+	// are stored comma-separated, like Tags.
+	InputModalities     string             `json:"input_modalities" gorm:"type:varchar(64)"`
+	ContextLength       int                `json:"context_length" gorm:"default:0"`
+	MaxOutputTokens     int                `json:"max_output_tokens" gorm:"default:0"`
+	OutputModalities    string             `json:"output_modalities" gorm:"type:varchar(64)"`
+	ClientConfig        *ModelClientConfig `json:"client_config" gorm:"serializer:json;type:text"`
+	SupportedParameters string             `json:"supported_parameters" gorm:"type:varchar(255)"`
+	ReleaseDate         string             `json:"release_date" gorm:"type:varchar(16)"`
+	Series              string             `json:"series" gorm:"type:varchar(64)"`
+
 	MatchedModels []string `json:"matched_models,omitempty" gorm:"-"`
 	MatchedCount  int      `json:"matched_count,omitempty" gorm:"-"`
 
@@ -97,6 +108,36 @@ func resolveModelMetadata(records []Model, names []string) map[string]*Model {
 		}
 	}
 	return resolved
+}
+
+// GetModelOutputModalities resolves concrete model names against the catalogue
+// metadata and returns the configured output modalities per name. Names without
+// a metadata record, or whose record configures no output modalities, are
+// absent from the result, so an unconfigured model is never mistaken for one
+// that emits images.
+func GetModelOutputModalities(names []string) (map[string][]string, error) {
+	names = normalizeLookupValues(names)
+	modalities := make(map[string][]string, len(names))
+	if len(names) == 0 {
+		return modalities, nil
+	}
+	var records []Model
+	if err := DB.Find(&records).Error; err != nil {
+		return nil, err
+	}
+	resolved := resolveModelMetadata(records, names)
+	for _, name := range names {
+		metadata := resolved[name]
+		if metadata == nil {
+			continue
+		}
+		values := SplitCatalogList(metadata.OutputModalities)
+		if len(values) == 0 {
+			continue
+		}
+		modalities[name] = values
+	}
+	return modalities, nil
 }
 
 // FillModelSquareStates applies the same metadata policy as the public catalog
@@ -264,8 +305,13 @@ func (mi *Model) Update() error {
 			return err
 		}
 		mi.UpdatedTime = common.GetTimestamp()
-		return tx.Model(&Model{}).Where("id = ?", mi.Id).
-			Select("model_name", "description", "icon", "tags", "vendor_id", "endpoints", "status", "sync_official", "name_rule", "updated_time").Updates(mi).Error
+		fields := []string{"model_name", "description", "icon", "tags", "vendor_id", "endpoints", "status", "sync_official", "name_rule", "updated_time",
+			"input_modalities", "context_length", "supported_parameters", "release_date", "series"}
+		// Older clients omit the client profile; they must not erase it.
+		if mi.ClientConfig != nil {
+			fields = append(fields, "max_output_tokens", "output_modalities", "client_config")
+		}
+		return tx.Model(&Model{}).Where("id = ?", mi.Id).Select(fields).Updates(mi).Error
 	})
 }
 

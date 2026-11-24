@@ -66,7 +66,8 @@ export function ApiKeysProvider({ children }: { children: React.ReactNode }) {
   const markKeyCopied = useCallback((id: number) => {
     setCopiedKeyId(id)
     clearTimeout(copiedTimerRef.current)
-    copiedTimerRef.current = setTimeout(() => setCopiedKeyId(null), 2000)
+    // 1.2s matches the shared copy feedback (`components/copy-button`).
+    copiedTimerRef.current = setTimeout(() => setCopiedKeyId(null), 1200)
   }, [])
 
   const triggerRefresh = useCallback(() => {

@@ -69,6 +69,9 @@ func GetAndValidAudioRequest(c *gin.Context, relayMode int) (*dto.AudioRequest, 
 		if audioRequest.Model == "" {
 			return nil, errors.New("model is required")
 		}
+		if chars := len([]rune(audioRequest.Input)); chars > dto.MaxSpeechCharacters {
+			return nil, fmt.Errorf("input must be at most %d characters, got %d", dto.MaxSpeechCharacters, chars)
+		}
 	default:
 		if audioRequest.Model == "" {
 			return nil, errors.New("model is required")

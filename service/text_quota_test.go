@@ -81,6 +81,7 @@ func TestFixedPriceBillingDatabaseMatrix(t *testing.T) {
 			common.SetDatabaseTypes(dialect.name, dialect.name)
 			t.Cleanup(func() { model.DB, model.LOG_DB = oldDB, oldLogDB; common.SetDatabaseTypes(oldMainType, oldLogType) })
 			require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}, &model.Channel{}))
+			require.NoError(t, db.AutoMigrate(&model.TokenPlanAccount{}, &model.TokenPlanWeek{}, &model.TokenPlanReservation{}))
 			require.NoError(t, logDB.AutoMigrate(&model.Log{}))
 			versionQuery := "select version()"
 			if dialect.name == common.DatabaseTypeSQLite {
@@ -110,6 +111,8 @@ func runFixedPriceAccountingCases(t *testing.T, db, logDB *gorm.DB) {
 		usage                                     *dto.Usage
 		audio, stream, refund, insufficient, tool bool
 		realtime, reserveInsufficient             bool
+		failed                                    bool
+		plan                                      bool
 		wallet, outboundImages                    int
 		groupRatio                                float64
 		want                                      int
@@ -119,6 +122,13 @@ func runFixedPriceAccountingCases(t *testing.T, db, logDB *gorm.DB) {
 		{name: "missing usage charges once", expression: flat, want: 5000, unit: billingexpr.BillingUnitRequest},
 		{name: "zero usage charges once", expression: flat, usage: &dto.Usage{}, want: 5000, unit: billingexpr.BillingUnitRequest},
 		{name: "stream charges once", expression: flat, stream: true, usage: &dto.Usage{PromptTokens: 100, CompletionTokens: 20, TotalTokens: 120}, want: 5000, unit: billingexpr.BillingUnitRequest},
+		{name: "failed empty stream refunds fixed base", expression: flat, stream: true, failed: true, usage: &dto.Usage{}, unit: billingexpr.BillingUnitRequest},
+		{name: "failed partial stream refunds fixed base", expression: flat, stream: true, failed: true, usage: &dto.Usage{PromptTokens: 100, CompletionTokens: 20, TotalTokens: 120}, unit: billingexpr.BillingUnitRequest},
+		{name: "failed fixed stream retains performed tool cost", expression: flat, stream: true, failed: true, tool: true, usage: &dto.Usage{}, want: 2000, unit: billingexpr.BillingUnitRequest},
+		{name: "failed token stream preserves reported usage", expression: `tier("base", p * 2 + c * 4)`, stream: true, failed: true, usage: &dto.Usage{PromptTokens: 100, CompletionTokens: 20, TotalTokens: 120}, want: 140, unit: billingexpr.BillingUnitToken},
+		{name: "plan failed zero usage releases reservation", expression: `tier("base", p * 2 + c * 4)`, estimate: 100, stream: true, failed: true, plan: true, usage: &dto.Usage{}, unit: billingexpr.BillingUnitToken},
+		{name: "plan failed stream retains reported prompt", expression: `tier("base", p * 2 + c * 4)`, estimate: 100, stream: true, failed: true, plan: true, usage: &dto.Usage{PromptTokens: 12, TotalTokens: 12}, want: 12, unit: billingexpr.BillingUnitToken},
+		{name: "plan partial failure settles observed estimate", expression: `tier("base", p * 2 + c * 4)`, estimate: 100, stream: true, failed: true, plan: true, usage: &dto.Usage{PromptTokens: 100, CompletionTokens: 2, TotalTokens: 102}, want: 104, unit: billingexpr.BillingUnitToken},
 		{name: "audio zero usage charges once", expression: flat, audio: true, usage: &dto.Usage{}, want: 5000, unit: billingexpr.BillingUnitRequest},
 		{name: "audio missing usage charges once", expression: flat, audio: true, want: 5000, unit: billingexpr.BillingUnitRequest},
 		{name: "token reservation refunds to fixed price", expression: mixed, estimate: 50000, usage: &dto.Usage{PromptTokens: 100, TotalTokens: 100}, want: 5000, unit: billingexpr.BillingUnitRequest},
@@ -150,12 +160,27 @@ func runFixedPriceAccountingCases(t *testing.T, db, logDB *gorm.DB) {
 				quota = tc.wallet
 			}
 			user := model.User{Username: fmt.Sprintf("fixed_billing_%d", index), Quota: quota, Status: common.UserStatusEnabled}
+			initialUsed := 0
+			if tc.plan {
+				initialUsed = 1 // LV1 has a funded plan without changing wallet balance.
+				user.UsedQuota = initialUsed
+				user.LevelQuota = initialUsed
+			}
 			require.NoError(t, db.Create(&user).Error)
 			token := model.Token{UserId: user.Id, Key: fmt.Sprintf("fixed-billing-test-%d", index), Name: "fixed-billing", RemainQuota: startingQuota, Status: common.TokenStatusEnabled}
 			require.NoError(t, db.Create(&token).Error)
+			if tc.plan {
+				require.NoError(t, db.Model(&token).UpdateColumn("token_plan", true).Error)
+				require.NoError(t, db.Create(&model.TokenPlanAccount{UserId: user.Id, TokenId: token.Id, KeyCiphertext: "unused-fixture", MaskedKey: "fixture"}).Error)
+			}
 			channel := model.Channel{Name: "fixed-billing", Key: "unused", Status: common.ChannelStatusEnabled}
 			require.NoError(t, db.Create(&channel).Error)
 			t.Cleanup(func() {
+				if tc.plan {
+					require.NoError(t, db.Where("user_id = ?", user.Id).Delete(&model.TokenPlanReservation{}).Error)
+					require.NoError(t, db.Where("user_id = ?", user.Id).Delete(&model.TokenPlanWeek{}).Error)
+					require.NoError(t, db.Where("user_id = ?", user.Id).Delete(&model.TokenPlanAccount{}).Error)
+				}
 				require.NoError(t, logDB.Where("user_id = ?", user.Id).Delete(&model.Log{}).Error)
 				require.NoError(t, db.Unscoped().Delete(&token).Error)
 				require.NoError(t, db.Unscoped().Delete(&user).Error)
@@ -177,6 +202,13 @@ func runFixedPriceAccountingCases(t *testing.T, db, logDB *gorm.DB) {
 			snapshot.EstimatedImageCount = trace.ImageCount
 			info := &relaycommon.RelayInfo{UserId: user.Id, TokenId: token.Id, TokenKey: token.Key, ChannelMeta: &relaycommon.ChannelMeta{ChannelId: channel.Id}, OriginModelName: "fixed-test", UsingGroup: "default", UserGroup: "default", UserSetting: dto.UserSetting{BillingPreference: "wallet_only"}, ForcePreConsume: true, StartTime: time.Now(), IsStream: tc.stream, RelayFormat: types.RelayFormatOpenAI, PriceData: hosttypes.PriceData{GroupRatioInfo: hosttypes.GroupRatioInfo{GroupRatio: group}}, TieredBillingSnapshot: snapshot, BillingRequestInput: request}
 			info.SetEstimatePromptTokens(tc.estimate)
+			info.RelayMode = relayconstant.RelayModeChatCompletions
+			info.TokenPlan, info.TokenUnlimited = tc.plan, tc.plan
+			if tc.failed {
+				info.StreamStatus = relaycommon.NewStreamStatus()
+				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonDone, nil)
+				info.StreamStatus.MarkFailed("upstream_finish_reason_error", "upstream_error", 0)
+			}
 			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 			ctx.Request = httptest.NewRequest("POST", "/v1/chat/completions", nil)
 			if tc.expression == imageExpression {
@@ -191,7 +223,14 @@ func runFixedPriceAccountingCases(t *testing.T, db, logDB *gorm.DB) {
 				require.Nil(t, apiErr)
 				held, err := model.GetUserQuota(user.Id, true)
 				require.NoError(t, err)
-				assert.Equal(t, quota-reservation, held)
+				if tc.plan {
+					assert.Equal(t, quota, held)
+					var reserved model.TokenPlanReservation
+					require.NoError(t, db.First(&reserved, info.TokenPlanReservationId).Error)
+					assert.EqualValues(t, reservation, reserved.ReservedQuota)
+				} else {
+					assert.Equal(t, quota-reservation, held)
+				}
 				if tc.outboundImages > 0 {
 					reserveErr := PrepareImageBillingForRequest(ctx, info, tc.outboundImages)
 					if tc.reserveInsufficient {
@@ -241,7 +280,9 @@ func runFixedPriceAccountingCases(t *testing.T, db, logDB *gorm.DB) {
 					require.NoError(t, logDB.Where("user_id = ?", user.Id).Take(&log).Error)
 					assert.Equal(t, tc.want, log.Quota)
 					assert.Equal(t, tc.stream, log.IsStream)
-					assert.NotContains(t, log.Content, "无法扣费")
+					if tc.want > 0 || tc.unit == billingexpr.BillingUnitRequest {
+						assert.NotContains(t, log.Content, "无法扣费")
+					}
 					var other map[string]any
 					require.NoError(t, common.UnmarshalJsonStr(log.Other, &other))
 					assert.Equal(t, string(tc.unit), other["billing_unit"])
@@ -286,11 +327,21 @@ func runFixedPriceAccountingCases(t *testing.T, db, logDB *gorm.DB) {
 			}
 			require.NoError(t, db.First(&user, user.Id).Error)
 			require.NoError(t, db.First(&token, token.Id).Error)
-			assert.Equal(t, quota-tc.want, user.Quota)
+			if tc.plan {
+				var week model.TokenPlanWeek
+				require.NoError(t, db.First(&week, info.TokenPlanWeekId).Error)
+				assert.EqualValues(t, tc.want, week.UsedQuota)
+				assert.Zero(t, week.ReservedQuota)
+				assert.Equal(t, quota, user.Quota)
+				assert.Zero(t, user.TokenPlanWalletHold)
+				assert.Equal(t, initialUsed, user.UsedQuota, "free plan usage must not raise the user level")
+			} else {
+				assert.Equal(t, quota-tc.want, user.Quota)
+				assert.Equal(t, initialUsed+tc.want, user.UsedQuota)
+			}
 			assert.Equal(t, startingQuota-tc.want, token.RemainQuota)
-			assert.Equal(t, tc.want, user.UsedQuota)
 			assert.Equal(t, tc.want, token.UsedQuota)
-			if !tc.refund && !tc.insufficient {
+			if !tc.refund && !tc.insufficient && (tc.want > 0 || tc.unit == billingexpr.BillingUnitRequest) {
 				assert.Equal(t, 1, user.RequestCount)
 			}
 		})

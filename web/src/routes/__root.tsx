@@ -27,12 +27,17 @@ import {
 import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
 import { useEffect } from 'react'
 
+import { DocumentTitle } from '@/components/document-title'
 import { NavigationProgress } from '@/components/navigation-progress'
 import { Toaster } from '@/components/ui/sonner'
 import { ThemeCustomizationProvider } from '@/context/theme-customization-provider'
+import { AuthDialog } from '@/features/auth/components/auth-dialog'
 import { saveAffiliateCode } from '@/features/auth/lib/storage'
+import { EnvironmentWatermark } from '@/features/environment/components/environment-watermark'
 import { GeneralError } from '@/features/errors/general-error'
 import { NotFoundError } from '@/features/errors/not-found-error'
+import { usePageViewTracker } from '@/features/page-views/hooks/use-page-view-tracker'
+import { PreviewRoleNotice } from '@/features/preview/components/preview-role-notice'
 import { getSetupStatus } from '@/features/setup/api'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import {
@@ -48,8 +53,21 @@ function RootComponent() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
+  useEffect(() => {
+    const invalidateLegal = () => {
+      void queryClient.invalidateQueries({ queryKey: ['legal-version'] })
+      void queryClient.invalidateQueries({ queryKey: ['legal-consent'] })
+    }
+    window.addEventListener('legal-consent-required', invalidateLegal)
+    return () =>
+      window.removeEventListener('legal-consent-required', invalidateLegal)
+  }, [queryClient])
+
   // Load system configuration (logo, system name, etc.) from backend
   useSystemConfig({ autoLoad: true })
+
+  // Feed the site-wide popularity ranking behind the profile shortcuts.
+  usePageViewTracker()
 
   useEffect(() => {
     const aff = new URLSearchParams(window.location.search).get('aff')?.trim()
@@ -94,8 +112,18 @@ function RootComponent() {
 
   return (
     <ThemeCustomizationProvider>
+      <EnvironmentWatermark />
+      <PreviewRoleNotice />
+      <DocumentTitle />
       <NavigationProgress />
-      <Outlet />
+      {/* Every route, the home page included, uses the Swiss editorial
+          tokens: the section marker, hairlines and type scale are defined
+          against this attribute, and switching it per route made the home
+          page lose its marker and flip the theme variables on navigation. */}
+      <div className='contents' data-page-style='swiss'>
+        <Outlet />
+      </div>
+      <AuthDialog />
       <Toaster closeButton duration={5000} position='top-center' richColors />
       {import.meta.env.MODE === 'development' && (
         <>
@@ -128,10 +156,10 @@ export const Route = createRootRouteWithContext<{
     // 只检查 setup 状态（如果需要）
     if (needsSetupCheck) {
       const [status] = await Promise.all([
-        getSetupStatus().catch((error) => {
+        getSetupStatus().catch(() => {
           if (import.meta.env.DEV) {
             // eslint-disable-next-line no-console
-            console.warn('[root.beforeLoad] setup status check failed', error)
+            console.warn('[root.beforeLoad] setup status check failed')
           }
           return null
         }),

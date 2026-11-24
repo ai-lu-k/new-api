@@ -16,6 +16,7 @@ type UserSetting struct {
 	SidebarModules                   string  `json:"sidebar_modules,omitempty"`                      // SidebarModules 左侧边栏模块配置
 	BillingPreference                string  `json:"billing_preference,omitempty"`                   // BillingPreference 扣费策略（订阅/钱包）
 	Language                         string  `json:"language,omitempty"`                             // Language 用户语言偏好 (zh, en)
+	ReferralBannerDismissed          string  `json:"referral_banner_dismissed,omitempty"`            // ReferralBannerDismissed 已关闭邀请活动横幅的活动标识
 }
 
 var (

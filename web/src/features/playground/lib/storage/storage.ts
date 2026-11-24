@@ -24,7 +24,10 @@ import {
   sanitizeMessagesOnLoad,
 } from '../message/message-streaming-utils'
 import { completeAssistantTiming } from '../message/message-timing-utils'
-import { hasMessageContent } from '../message/message-utils'
+import {
+  hasMessageContent,
+  redactInlineImageData,
+} from '../message/message-utils'
 import {
   MAX_LOADED_MESSAGE_CHARS,
   MAX_LOADED_MESSAGES_CHARS,
@@ -253,6 +256,27 @@ function normalizeStoredMessageForLoad(message: Message): Message {
   )
 }
 
+/**
+ * Inline base64 images are dropped before writing: a single chat-image answer
+ * would exceed MAX_STORED_MESSAGES_BYTES on its own, so the stored history keeps
+ * a short `[image]` placeholder instead.
+ */
+function redactStoredMessage(message: Message): Message {
+  return {
+    ...message,
+    versions: message.versions.map((version) => ({
+      ...version,
+      content: redactInlineImageData(version.content),
+    })),
+    reasoning: message.reasoning
+      ? {
+          ...message.reasoning,
+          content: redactInlineImageData(message.reasoning.content),
+        }
+      : undefined,
+  }
+}
+
 function trimMessagesByContentSize(messages: Message[]): Message[] {
   let totalSize = 0
   const result: Message[] = []
@@ -376,7 +400,7 @@ export function saveMessages(messages: Message[]): void {
   try {
     const trimmed = trimMessages(messages)
     const parsed = messagesSchema.parse(trimmed) as Message[]
-    writeStoredValue(STORAGE_KEYS.MESSAGES, parsed)
+    writeStoredValue(STORAGE_KEYS.MESSAGES, parsed.map(redactStoredMessage))
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error('Failed to save messages:', error)

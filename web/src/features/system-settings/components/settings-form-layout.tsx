@@ -58,6 +58,8 @@ export function SettingsFormGrid(props: SettingsFormGridProps) {
         '[&>[data-slot=form-item]]:min-w-0',
         'lg:[&>[data-slot=form-item]:has(textarea)]:col-span-2',
         'lg:[&>[data-slot=form-item]:has([data-slot=switch])]:col-span-2',
+        '[&_[data-slot=form-label]]:text-[13px]',
+        '[&_[data-slot=form-description]]:text-[13px]',
         props.className
       )}
     >
@@ -192,6 +194,8 @@ export function SettingsForm({ className, ...props }: ComponentProps<'form'>) {
         '[&>[data-slot=form-item]]:min-w-0',
         'lg:[&>[data-slot=form-item]:has(textarea)]:col-span-2',
         'lg:[&>[data-slot=form-item]:has([data-slot=switch])]:col-span-2',
+        '[&_[data-slot=form-label]]:text-[13px]',
+        '[&_[data-slot=form-description]]:text-[13px]',
         className
       )}
       {...props}

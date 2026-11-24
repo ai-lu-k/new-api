@@ -23,8 +23,8 @@ import {
   CHANNEL_STATUS_CONFIG,
   CHANNEL_TYPES,
   MULTI_KEY_STATUS_CONFIG,
+  RESPONSE_TIME_ABNORMAL_MS,
   RESPONSE_TIME_CONFIG,
-  RESPONSE_TIME_THRESHOLDS,
   TYPE_TO_KEY_PROMPT,
 } from '../constants'
 import type { Channel, ChannelSettings, ChannelOtherSettings } from '../types'
@@ -381,25 +381,17 @@ export function formatResponseTime(timeMs: number, t?: TFunction): string {
 }
 
 /**
- * Get response time performance rating
+ * Get response time performance rating: untested, normal, or the single
+ * abnormal tier at or above {@link RESPONSE_TIME_ABNORMAL_MS}.
  */
 export function getResponseTimeConfig(timeMs: number) {
-  if (timeMs === 0) {
+  if (!timeMs) {
     return RESPONSE_TIME_CONFIG.UNKNOWN
   }
-  if (timeMs <= RESPONSE_TIME_THRESHOLDS.EXCELLENT) {
-    return RESPONSE_TIME_CONFIG.EXCELLENT
+  if (timeMs >= RESPONSE_TIME_ABNORMAL_MS) {
+    return RESPONSE_TIME_CONFIG.ABNORMAL
   }
-  if (timeMs <= RESPONSE_TIME_THRESHOLDS.GOOD) {
-    return RESPONSE_TIME_CONFIG.GOOD
-  }
-  if (timeMs <= RESPONSE_TIME_THRESHOLDS.FAIR) {
-    return RESPONSE_TIME_CONFIG.FAIR
-  }
-  if (timeMs <= RESPONSE_TIME_THRESHOLDS.POOR) {
-    return RESPONSE_TIME_CONFIG.POOR
-  }
-  return RESPONSE_TIME_CONFIG.POOR
+  return RESPONSE_TIME_CONFIG.NORMAL
 }
 
 // ============================================================================

@@ -23,13 +23,17 @@ import { useTranslation } from 'react-i18next'
 
 import { CopyButton } from '@/components/copy-button'
 import { Dialog } from '@/components/dialog'
-import { GroupBadge } from '@/components/group-badge'
 import { StatusBadge, type StatusVariant } from '@/components/status-badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
+import { toIntlLocale } from '@/i18n/languages'
 import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
 import dayjs from '@/lib/dayjs'
-import { formatLogQuota, formatTimestampToDate } from '@/lib/format'
+import {
+  formatLogQuota,
+  formatNumber,
+  formatTimestampToDate,
+} from '@/lib/format'
 
 import type { UsageLog } from '../data/schema'
 import { formatModelName, parseLogOther } from '../lib/format'
@@ -42,14 +46,7 @@ import { ModelBadge, ResponseModelDetails } from './model-badge'
 import { StreamTpsCell, TimingMetricsCell } from './timing-metrics-cell'
 import { useUsageLogsContext } from './usage-logs-provider'
 
-type FieldName =
-  | 'model'
-  | 'cost'
-  | 'user'
-  | 'channel'
-  | 'token'
-  | 'group'
-  | 'time'
+type FieldName = 'model' | 'cost' | 'user' | 'channel' | 'token' | 'time'
 type LogField = {
   label: string
   value: string
@@ -62,7 +59,8 @@ export function CommonLogMobileCard<TData>(props: {
   log: UsageLog
   cells: Map<string, Cell<TData, unknown>>
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const context = useUsageLogsContext()
   const [selectedField, setSelectedField] = useState<FieldName | null>(null)
   const log = props.log
@@ -71,7 +69,6 @@ export function CommonLogMobileCard<TData>(props: {
   const timing = isTimingLogType(log.type)
   const model = formatModelName(log)
   const config = getLogTypeConfig(log.type)
-  const group = log.group || other?.group || ''
   const groupRatio =
     other?.user_group_ratio != null && other.user_group_ratio !== -1
       ? other.user_group_ratio
@@ -110,19 +107,14 @@ export function CommonLogMobileCard<TData>(props: {
       visible: displayable && props.cells.has('token_name') && !!log.token_name,
       sensitive: true,
     },
-    group: {
-      label: t('Group'),
-      value: group,
-      visible: displayable && props.cells.has('token_name') && !!group,
-      sensitive: true,
-    },
   }
   const selected = selectedField ? fields[selectedField] : undefined
   const activeField =
     selected?.visible && (!selected.sensitive || context.sensitiveVisible)
       ? selected
       : undefined
-  const metadata: FieldName[] = ['user', 'channel', 'token', 'group']
+  // This instance only runs the `default` group, so the card does not repeat it.
+  const metadata: FieldName[] = ['user', 'channel', 'token']
   const visibleMetadata = metadata.filter((id) => fields[id].visible)
   const costCell = props.cells.get('quota')
   const contentCell = props.cells.get('content')
@@ -222,15 +214,7 @@ export function CommonLogMobileCard<TData>(props: {
           {visibleMetadata.map((id) => {
             const field = fields[id]
             let fieldContent = <span className='truncate'>{field.value}</span>
-            if (id === 'group') {
-              fieldContent = (
-                <GroupBadge
-                  group={field.value}
-                  type='text'
-                  className='max-w-full text-sm'
-                />
-              )
-            } else if (id === 'token') {
+            if (id === 'token') {
               fieldContent = (
                 <StatusBadge
                   label={field.value}
@@ -293,23 +277,23 @@ export function CommonLogMobileCard<TData>(props: {
           <span>
             {t('Input')}{' '}
             <span className='text-foreground tabular-nums'>
-              {log.prompt_tokens.toLocaleString()}
+              {formatNumber(log.prompt_tokens, locale)}
             </span>
           </span>
           <span>
             {t('Output')}{' '}
             <span className='text-foreground tabular-nums'>
-              {log.completion_tokens.toLocaleString()}
+              {formatNumber(log.completion_tokens, locale)}
             </span>
           </span>
           {cacheRead > 0 && (
             <span>
-              {t('Cache')} ↓ {cacheRead.toLocaleString()}
+              {t('Cache')} ↓ {formatNumber(cacheRead, locale)}
             </span>
           )}
           {cacheWrite > 0 && (
             <span>
-              {t('Cache')} ↑ {cacheWrite.toLocaleString()}
+              {t('Cache')} ↑ {formatNumber(cacheWrite, locale)}
             </span>
           )}
         </div>

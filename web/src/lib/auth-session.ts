@@ -21,6 +21,15 @@ import axios from 'axios'
 import { t } from 'i18next'
 
 import { publishAuthSessionEvent } from '@/lib/auth-session-sync'
+import {
+  getEnvironmentHeaders,
+  blockEnvironmentRecovery,
+  confirmEnvironmentRecovery,
+  getAppEnvironment,
+  isEnvironmentRecoveryBlocked,
+  requestEnvironmentReload,
+} from '@/lib/environment'
+import { getPreviewHeaders } from '@/lib/preview-mode'
 import { hasSessionHint } from '@/lib/session-hint'
 import {
   useAuthStore,
@@ -219,6 +228,10 @@ export function createRefreshRunner(
     raceAttempt: number,
     allowMismatchRetry: boolean
   ): Promise<RefreshOutcome> => {
+    if (isEnvironmentRecoveryBlocked()) {
+      runtime.markTransient()
+      return { kind: 'transient_error', error: { code: 'ENVIRONMENT_CHANGED' } }
+    }
     if (runtime.isCurrent && !runtime.isCurrent()) return superseded()
     const response = await runtime.request(runtime.getExpectedSID())
     if (runtime.isCurrent && !runtime.isCurrent()) return superseded()
@@ -227,8 +240,24 @@ export function createRefreshRunner(
       typeof responseData?.code === 'string' ? responseData.code : undefined
     const bundle = runtime.parseBundle(responseData?.data)
     if (responseData?.success === true && bundle) {
+      confirmEnvironmentRecovery()
       runtime.acceptBundle(bundle)
       return { kind: 'authenticated', bundle }
+    }
+
+    if (response.status === 409 && code === 'ENVIRONMENT_CHANGED') {
+      requestEnvironmentReload()
+      runtime.markTransient()
+      return { kind: 'transient_error', error: response.error ?? response.data }
+    }
+
+    if (
+      code === 'ENVIRONMENT_UNAVAILABLE' &&
+      getAppEnvironment() === 'staging'
+    ) {
+      blockEnvironmentRecovery()
+      runtime.markTransient()
+      return { kind: 'transient_error', error: response.error ?? response.data }
     }
 
     if (response.status === 409 && code === 'AUTH_REFRESH_RACE') {
@@ -281,7 +310,13 @@ async function requestRefresh(
       '/api/user/auth/refresh',
       undefined,
       {
-        headers: expectedSID ? { 'X-Auth-Session': expectedSID } : undefined,
+        headers: {
+          ...getEnvironmentHeaders(),
+          // This client bypasses the shared request interceptor, so the
+          // ordinary-user preview must be carried here as well.
+          ...getPreviewHeaders(),
+          ...(expectedSID ? { 'X-Auth-Session': expectedSID } : {}),
+        },
       }
     )
     return { status: response.status, data: response.data }
@@ -410,6 +445,8 @@ export async function bootstrapAuthentication(): Promise<RefreshOutcome> {
 export function getCommonHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    ...getEnvironmentHeaders(),
+    ...getPreviewHeaders(),
   }
   const accessToken = useAuthStore.getState().auth.accessToken
   if (accessToken) {
@@ -418,8 +455,26 @@ export function getCommonHeaders(): Record<string, string> {
   return headers
 }
 
-export async function getFreshAuthHeaders(): Promise<Record<string, string>> {
+/**
+ * Resolve headers for a request that spends a single-use proof.
+ *
+ * `allowAnonymous` keeps public flows such as sign-up verification usable: a
+ * visitor with no stored session and no session hint is already anonymous, so
+ * refreshing first would fail with 401 and report a bogus expired session
+ * instead of sending the request.
+ */
+export async function getFreshAuthHeaders(
+  options: { allowAnonymous?: boolean } = {}
+): Promise<Record<string, string>> {
   const auth = useAuthStore.getState().auth
+  if (
+    options.allowAnonymous &&
+    !auth.accessToken &&
+    !auth.session &&
+    !hasSessionHint()
+  ) {
+    return getCommonHeaders()
+  }
   const refreshBefore = Math.floor(Date.now() / 1000) + 60
   if (
     auth.accessToken &&
@@ -445,6 +500,9 @@ export async function getFreshAuthHeaders(): Promise<Record<string, string>> {
 
   if (outcome.kind === 'transient_error') {
     throw new Error(t('Request failed'), { cause: outcome.error })
+  }
+  if (options.allowAnonymous && outcome.kind === 'anonymous') {
+    return getCommonHeaders()
   }
   throw new Error(t('Session expired!'))
 }

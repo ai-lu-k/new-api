@@ -34,6 +34,9 @@ const (
 	VerificationScopePasswordSet         = "account.password.set"
 	VerificationScopePasswordChange      = "account.password.change"
 	VerificationScopeAccountDelete       = "account.delete"
+	VerificationScopeTokenPlanKeyRead    = "token_plan.key.read"
+	VerificationScopeTokenPlanKeyRotate  = "token_plan.key.rotate"
+	VerificationScopeTokenPlanSettings   = "token_plan.settings"
 )
 
 var (
@@ -120,6 +123,7 @@ func BindVerificationOperation(operation VerificationOperation) (VerificationBin
 	case VerificationScopePasskeyRegister, VerificationScopePasskeyDelete, VerificationScopeTwoFASetup,
 		VerificationScopeTwoFADisable, VerificationScopeTwoFABackupCodes,
 		VerificationScopeAccessTokenGenerate, VerificationScopeAccessTokenRevoke,
+		VerificationScopeTokenPlanKeyRead, VerificationScopeTokenPlanKeyRotate, VerificationScopeTokenPlanSettings,
 		VerificationScopePasswordSet, VerificationScopePasswordChange, VerificationScopeAccountDelete:
 		if len(fields) != 0 {
 			return VerificationBinding{}, ErrVerificationContextInvalid
@@ -185,6 +189,7 @@ func securityVerificationPolicy(scope string, state model.UserVerificationState)
 		}
 	case VerificationScopePasskeyRegister, VerificationScopeTwoFASetup,
 		VerificationScopeAccessTokenGenerate, VerificationScopeAccessTokenRevoke,
+		VerificationScopeTokenPlanKeyRead, VerificationScopeTokenPlanKeyRotate, VerificationScopeTokenPlanSettings,
 		VerificationScopeAccountBind, VerificationScopeAccountUnbind,
 		VerificationScopePasswordSet, VerificationScopePasswordChange, VerificationScopeAccountDelete:
 		if scope == VerificationScopeAccountDelete && state.Role == common.RoleRootUser {

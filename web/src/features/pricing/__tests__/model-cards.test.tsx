@@ -36,9 +36,14 @@ import {
 } from '@/stores/system-config-store'
 
 import { CachedPriceCell } from '../components/cached-price-cell'
+import { DynamicPricingBreakdown } from '../components/dynamic-pricing-breakdown'
 import { ModelCard } from '../components/model-card'
 import { ModelCardGrid } from '../components/model-card-grid'
+import { ModelDetailsContent } from '../components/model-details'
+import { PricingTable } from '../components/pricing-table'
 import type { PricingModel } from '../types'
+
+vi.mock('@visactor/react-vchart', () => ({ VChart: () => null }))
 
 function pricingModel(overrides: Partial<PricingModel> = {}): PricingModel {
   return {
@@ -88,6 +93,42 @@ afterEach(() => {
 })
 
 describe('model cards', () => {
+  it('shows all image resolution prices in CNY details and a range on cards', () => {
+    useSystemConfigStore.getState().setConfig({
+      currency: {
+        ...DEFAULT_CURRENCY_CONFIG,
+        quotaDisplayType: 'CNY',
+        usdExchangeRate: 1,
+      },
+    })
+    const selector =
+      '(param("generationConfig.imageConfig.imageSize") ?? param("extra_body.google.image_config.image_size") ?? "1K")'
+    const expression = `${selector} in ["4K", "4k"] ? tier("4K", fixed(0.45)) : ${selector} in ["2K", "2k"] ? tier("2K", fixed(0.25)) : tier("1K", fixed(0.15))`
+    render(
+      <>
+        <DynamicPricingBreakdown billingExpr={expression} />
+        <ModelCard
+          model={pricingModel({
+            billing_mode: 'tiered_expr',
+            billing_expr: expression,
+          })}
+          onClick={vi.fn()}
+        />
+      </>
+    )
+    for (const price of ['¥0.15', '¥0.25', '¥0.45']) {
+      expect(
+        screen.getAllByText(price, { exact: false }).length
+      ).toBeGreaterThan(0)
+    }
+    expect(
+      screen.getAllByText('¥0.15 – ¥0.45', { exact: false }).length
+    ).toBeGreaterThan(0)
+    expect(
+      screen.queryByText('Special billing expression')
+    ).not.toBeInTheDocument()
+  })
+
   it('shows separate generic and image cache prices including a free image cache', () => {
     render(
       <CachedPriceCell
@@ -103,7 +144,7 @@ describe('model cards', () => {
       '$1.25'
     )
     expect(screen.getByText('Image Cache').parentElement).toHaveTextContent(
-      '$0'
+      '$0.00'
     )
   })
   it('shows fixed prices per request in both token display units', () => {
@@ -130,14 +171,14 @@ describe('model cards', () => {
     })
     render(<ModelCard model={model} onClick={vi.fn()} tokenUnit='M' />)
     expect(screen.getByText('Current period price')).toBeVisible()
-    expect(screen.getByText('$1.5')).toBeVisible()
+    expect(screen.getByText('$1.50')).toBeVisible()
     act(() => vi.advanceTimersByTime(1000))
-    expect(screen.getByText('$3')).toBeVisible()
+    expect(screen.getByText('$3.00')).toBeVisible()
     act(() => {
       vi.setSystemTime(new Date('2026-09-07T12:00:00+08:00'))
       fireEvent(document, new Event('visibilitychange'))
     })
-    expect(screen.getByText('$1.5')).toBeVisible()
+    expect(screen.getByText('$1.50')).toBeVisible()
   })
 
   it('copies the complete long model name without opening details', async () => {
@@ -280,23 +321,23 @@ describe('model cards', () => {
     }
     const { rerender } = render(<ModelCard {...props} tokenUnit='M' />)
     expect(screen.getByText('Input').parentElement).toHaveTextContent(
-      /\$3\s*\/\s*1M/
+      /\$3\.00\s*\/\s*1M/
     )
     expect(screen.getByText('Output').parentElement).toHaveTextContent(
-      /\$9\s*\/\s*1M/
+      /\$9\.00\s*\/\s*1M/
     )
     expect(screen.getByText('Cached').parentElement).toHaveTextContent(
-      /\$0\s*\/\s*1M/
+      /\$0\.00\s*\/\s*1M/
     )
     rerender(<ModelCard {...props} tokenUnit='K' />)
     expect(screen.getByText('Input').parentElement).toHaveTextContent(
       /\$0.003\s*\/\s*1K/
     )
     expect(screen.getByText('Output').parentElement).toHaveTextContent(
-      /\$0.009\s*\/\s*1K/
+      /\$0.01\s*\/\s*1K/
     )
     expect(screen.getByText('Cached').parentElement).toHaveTextContent(
-      /\$0\s*\/\s*1K/
+      /\$0\.00\s*\/\s*1K/
     )
   })
 
@@ -312,7 +353,9 @@ describe('model cards', () => {
         tokenUnit='K'
       />
     )
-    expect(screen.getByText(/\$0.6/)).toHaveTextContent(/\$0.6\s*\/\s*request/)
+    expect(screen.getByText(/\$0\.60/)).toHaveTextContent(
+      /\$0\.60\s*\/\s*request/
+    )
     expect(screen.queryByText(/1K|1M/)).not.toBeInTheDocument()
     expect(screen.getAllByText('Per Request')).toHaveLength(1)
     expect(screen.queryByText('Per-request')).not.toBeInTheDocument()
@@ -334,10 +377,10 @@ describe('model cards', () => {
       />
     )
     expect(screen.getByText('Input').parentElement).toHaveTextContent(
-      /\$0.0045\s*\/\s*1K/
+      /\$0.005\s*\/\s*1K/
     )
     expect(screen.getByText('Output').parentElement).toHaveTextContent(
-      /\$0.0225\s*\/\s*1K/
+      /\$0.023\s*\/\s*1K/
     )
   })
 
@@ -357,7 +400,7 @@ describe('model cards', () => {
         tokenUnit='K'
       />
     )
-    expect(screen.getByText(/0.4.*0.8/)).toHaveTextContent(/0.4 – \$0.8/)
+    expect(screen.getByText(/0.4.*0.8/)).toHaveTextContent(/0\.40 – \$0\.80/)
     expect(screen.getByText(/^\/\s*s$/)).toBeVisible()
     expect(screen.queryByText(/1K|1M/)).not.toBeInTheDocument()
   })
@@ -396,8 +439,8 @@ describe('model cards', () => {
         tokenUnit='K'
       />
     )
-    expect(screen.getByText('$42 – $70').parentElement).toHaveTextContent(
-      '$42 – $70 / 1M token'
+    expect(screen.getByText('$42.00 – $70.00').parentElement).toHaveTextContent(
+      '$42.00 – $70.00 / 1M token'
     )
     expect(screen.getByText(/480p · 5s ≈/)).toBeVisible()
   })
@@ -615,5 +658,127 @@ describe('model cards', () => {
       expect(slot.classList.contains('bg-muted-foreground/15')).toBe(true)
     })
     vi.useRealTimers()
+  })
+
+  it('lists a model sold at a price tier the way OpenRouter does, without groups', async () => {
+    const model = pricingModel({
+      model_name: 'deepseek-v4.1-flash-x0.25',
+      price_multiplier: 0.25,
+      enable_groups: ['default'],
+      group_ratio: { default: 0.25 },
+      billing_mode: 'tiered_expr',
+      billing_expr: 'tier("base", p * 2 + c * 8)',
+    })
+    vi.spyOn(api, 'get').mockImplementation(async (url: string) => {
+      if (url.startsWith('/api/perf-metrics/summary')) {
+        return {
+          data: {
+            success: true,
+            data: {
+              models: [
+                {
+                  model_name: model.model_name,
+                  avg_latency_ms: 1500,
+                  avg_tps: 50,
+                  success_rate: 99,
+                },
+              ],
+            },
+          },
+        }
+      }
+      return {
+        data: {
+          success: true,
+          data: {
+            models: [
+              { model_name: model.model_name, total_tokens: 811_478_879 },
+            ],
+          },
+        },
+      }
+    })
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <PricingTable models={[model]} tokenUnit='M' />
+      </QueryClientProvider>
+    )
+    const row = screen.getByText(model.model_name).closest('tr')
+    expect(row).not.toBeNull()
+    const cells = within(row as HTMLElement)
+    expect(cells.getByText('75% off')).toBeInTheDocument()
+    expect(cells.getByText('$0.50')).toBeInTheDocument()
+    expect(cells.getByText('$2.00')).toBeInTheDocument()
+    expect(await cells.findByText('811.5M')).toBeInTheDocument()
+    expect(await cells.findByText('1.50s')).toBeInTheDocument()
+    expect(cells.getByText('50.0 t/s')).toBeInTheDocument()
+    expect(screen.queryByText('Groups')).not.toBeInTheDocument()
+
+    render(<ModelCard model={model} onClick={vi.fn()} showGroups={false} />)
+    expect(screen.queryByText('Groups')).not.toBeInTheDocument()
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ModelDetailsContent
+          model={model}
+          groupRatio={{ default: 1 }}
+          usableGroup={{ default: { desc: '', ratio: 1 } }}
+          endpointMap={{}}
+          autoGroups={[]}
+          priceRate={1}
+          usdExchangeRate={1}
+          tokenUnit='M'
+        />
+      </QueryClientProvider>
+    )
+    expect(screen.getByText('25% of the official price')).toBeInTheDocument()
+    expect(screen.queryByText('Pricing by Group')).not.toBeInTheDocument()
+  })
+
+  it('draws the modalities a model reads and answers in, each one named', async () => {
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ModelDetailsContent
+          model={pricingModel({
+            input_modalities: ['text', 'image'],
+            output_modalities: ['text'],
+          })}
+          groupRatio={{ default: 1 }}
+          usableGroup={{ default: { desc: '', ratio: 1 } }}
+          endpointMap={{}}
+          autoGroups={[]}
+          priceRate={1}
+          usdExchangeRate={1}
+          tokenUnit='M'
+        />
+      </QueryClientProvider>
+    )
+
+    const modalities = screen
+      .getByText('Modalities')
+      .closest('div') as HTMLElement
+    // Input first, the arrow, then what the model answers in.
+    const tiles = [
+      ...modalities.querySelectorAll<HTMLElement>('[data-modality]'),
+    ]
+    expect(tiles.map((tile) => tile.dataset.modality)).toEqual([
+      'input',
+      'input',
+      'output',
+    ])
+    expect(tiles.map((tile) => tile.textContent)).toEqual([
+      'Text',
+      'Image',
+      'Text',
+    ])
+
+    // The glyph alone would be a guess: the word comes back on focus.
+    act(() => tiles[1].focus())
+    expect(
+      await screen.findByText('Image', {
+        selector: '[data-slot="tooltip-content"]',
+      })
+    ).toBeVisible()
   })
 })

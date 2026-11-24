@@ -1611,6 +1611,116 @@ test('an Ollama channel marks a saved OpenAI-compatible chat setting in Request 
   })
 })
 
+test('the per-user concurrency limit loads from the setting JSON and saves a positive integer', async () => {
+  editingChannel.setting = JSON.stringify({ concurrency_limit: 5 })
+  const put = vi
+    .spyOn(api, 'put')
+    .mockResolvedValue({ data: { success: true } })
+  const user = userEvent.setup()
+  render(<ConfigurationHarness currentRow={editingChannel} />)
+  await screen.findByDisplayValue('Existing channel')
+  await user.click(screen.getByRole('tab', { name: /Other Settings/ }))
+  const limit = screen.getByLabelText('Per-User Concurrency Limit')
+  expect(limit).toHaveValue(5)
+  fireEvent.change(limit, { target: { value: '12' } })
+  await user.click(screen.getByRole('button', { name: 'Update Channel' }))
+  await waitFor(() => expect(put).toHaveBeenCalled())
+  const payload = put.mock.calls[0]?.[1] as { setting: string }
+  expect(JSON.parse(payload.setting)).toMatchObject({ concurrency_limit: 12 })
+})
+
+test('clearing the per-user concurrency limit saves the channel as unlimited', async () => {
+  editingChannel.setting = JSON.stringify({ concurrency_limit: 5 })
+  const put = vi
+    .spyOn(api, 'put')
+    .mockResolvedValue({ data: { success: true } })
+  const user = userEvent.setup()
+  render(<ConfigurationHarness currentRow={editingChannel} />)
+  await screen.findByDisplayValue('Existing channel')
+  await user.click(screen.getByRole('tab', { name: /Other Settings/ }))
+  fireEvent.change(screen.getByLabelText('Per-User Concurrency Limit'), {
+    target: { value: '' },
+  })
+  await user.click(screen.getByRole('button', { name: 'Update Channel' }))
+  await waitFor(() => expect(put).toHaveBeenCalled())
+  const payload = put.mock.calls[0]?.[1] as { setting: string }
+  expect(JSON.parse(payload.setting)).not.toHaveProperty('concurrency_limit')
+})
+
+test('the pool capacity fields load from the setting JSON and save round-trip values', async () => {
+  editingChannel.setting = JSON.stringify({
+    concurrency_total_url: 'http://pool.example.test:8788/health',
+    concurrency_total_per_account: 3,
+  })
+  const put = vi
+    .spyOn(api, 'put')
+    .mockResolvedValue({ data: { success: true } })
+  const user = userEvent.setup()
+  render(<ConfigurationHarness currentRow={editingChannel} />)
+  await screen.findByDisplayValue('Existing channel')
+  await user.click(screen.getByRole('tab', { name: /Other Settings/ }))
+  const poolUrl = screen.getByLabelText('Pool Status URL')
+  const perAccount = screen.getByLabelText('Generations per Pool Account')
+  expect(poolUrl).toHaveValue('http://pool.example.test:8788/health')
+  expect(perAccount).toHaveValue(3)
+  fireEvent.change(poolUrl, { target: { value: 'http://pool:9000/status' } })
+  fireEvent.change(perAccount, { target: { value: '4' } })
+  await user.click(screen.getByRole('button', { name: 'Update Channel' }))
+  await waitFor(() => expect(put).toHaveBeenCalled())
+  const payload = put.mock.calls[0]?.[1] as { setting: string }
+  expect(JSON.parse(payload.setting)).toMatchObject({
+    concurrency_total_url: 'http://pool:9000/status',
+    concurrency_total_per_account: 4,
+  })
+})
+
+test('clearing the pool capacity fields saves the channel without a channel-wide cap', async () => {
+  editingChannel.setting = JSON.stringify({
+    concurrency_total_url: 'http://pool.example.test:8788/health',
+    concurrency_total_per_account: 3,
+  })
+  const put = vi
+    .spyOn(api, 'put')
+    .mockResolvedValue({ data: { success: true } })
+  const user = userEvent.setup()
+  render(<ConfigurationHarness currentRow={editingChannel} />)
+  await screen.findByDisplayValue('Existing channel')
+  await user.click(screen.getByRole('tab', { name: /Other Settings/ }))
+  fireEvent.change(screen.getByLabelText('Pool Status URL'), {
+    target: { value: '' },
+  })
+  fireEvent.change(screen.getByLabelText('Generations per Pool Account'), {
+    target: { value: '' },
+  })
+  await user.click(screen.getByRole('button', { name: 'Update Channel' }))
+  await waitFor(() => expect(put).toHaveBeenCalled())
+  const payload = put.mock.calls[0]?.[1] as { setting: string }
+  expect(JSON.parse(payload.setting)).not.toHaveProperty(
+    'concurrency_total_url'
+  )
+  expect(JSON.parse(payload.setting)).not.toHaveProperty(
+    'concurrency_total_per_account'
+  )
+})
+
+test('a per-user concurrency limit above 10000 keeps the edit open with a field error', async () => {
+  const put = vi
+    .spyOn(api, 'put')
+    .mockResolvedValue({ data: { success: true } })
+  const user = userEvent.setup()
+  render(<ConfigurationHarness currentRow={editingChannel} />)
+  await screen.findByDisplayValue('Existing channel')
+  await user.click(screen.getByRole('tab', { name: /Other Settings/ }))
+  fireEvent.change(screen.getByLabelText('Per-User Concurrency Limit'), {
+    target: { value: '10001' },
+  })
+  await user.click(screen.getByRole('button', { name: 'Update Channel' }))
+  expect(
+    await screen.findByText('Enter an integer from 0 to 10000')
+  ).toBeVisible()
+  expect(put).not.toHaveBeenCalled()
+})
+
 test('an invalid edit switches categories and replaces configured styling with the field error', async () => {
   const user = userEvent.setup()
   render(<ConfigurationHarness currentRow={editingChannel} />)

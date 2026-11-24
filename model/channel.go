@@ -1002,6 +1002,15 @@ func (channel *Channel) ValidateSettings() error {
 	if err := channelParams.ValidateHTTPTransport(); err != nil {
 		return err
 	}
+	if err := channelParams.ValidateConcurrencyLimit(); err != nil {
+		return err
+	}
+	if err := channelParams.ValidateConcurrencyTotal(); err != nil {
+		return err
+	}
+	if err := channelParams.ValidateImageBudgetMB(); err != nil {
+		return err
+	}
 	channelOtherSettings := &dto.ChannelOtherSettings{}
 	if channel.OtherSettings != "" {
 		err := common.UnmarshalJsonStr(channel.OtherSettings, channelOtherSettings)

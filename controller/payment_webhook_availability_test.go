@@ -167,3 +167,45 @@ func TestEpayWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
 	operation_setting.PayMethods = nil
 	require.False(t, isEpayWebhookEnabled())
 }
+
+// TestEpayCallbackRejectsSplittableValues protects the signature canonical form:
+// the gateway signs "k=v&k=v" without escaping, so a value carrying "&" could be
+// split into an extra parameter while the signature still matched.
+func TestEpayCallbackRejectsSplittableValues(t *testing.T) {
+	cases := []struct {
+		name   string
+		params map[string]string
+		field  string
+		unsafe bool
+	}{
+		{
+			name:   "plain callback",
+			params: map[string]string{"name": "TUC10", "money": "10.00", "type": "alipay", "trade_status": "TRADE_SUCCESS"},
+		},
+		{
+			name:   "injected status inside a value",
+			params: map[string]string{"name": "TUC10&trade_status=TRADE_SUCCESS", "money": "10.00"},
+			field:  "name",
+			unsafe: true,
+		},
+		{
+			name:   "injected pair inside the callback url",
+			params: map[string]string{"notify_url": "https://payments.example.test/n&trade_status=TRADE_SUCCESS", "money": "10.00"},
+			field:  "notify_url",
+			unsafe: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			field, unsafe := epayNotificationHasSplittableValue(tc.params)
+			require.Equal(t, tc.unsafe, unsafe)
+			require.Equal(t, tc.field, field)
+		})
+	}
+
+	require.True(t, epayTopUpNameIsExpected("TUC1"))
+	require.True(t, epayTopUpNameIsExpected("TUC10000"))
+	require.False(t, epayTopUpNameIsExpected("TUC"))
+	require.False(t, epayTopUpNameIsExpected("SUB:plan"))
+	require.False(t, epayTopUpNameIsExpected("TUC1 "))
+}

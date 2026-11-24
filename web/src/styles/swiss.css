@@ -1,0 +1,1074 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+/* ── Motion tokens ───────────────────────────────────────────────────────────
+   The single source for durations, easings and displacement in the app. They
+   mirror `web/src/lib/motion.ts` (MOTION_MS / MOTION_EASE / MOTION_SHIFT);
+   change both together. Components read these through `duration-(--motion-*)`
+   and `ease-(--ease-*)`, never through bare milliseconds.
+
+   Note: `--ease-out` / `--ease-in` intentionally shadow Tailwind's defaults so
+   `ease-out` and `ease-in` utilities resolve to the project curves. */
+:root {
+  --motion-instant: 0ms;
+  --motion-fast: 140ms;
+  --motion-base: 220ms;
+  --motion-slow: 320ms;
+  /* One step between two rows of a list that arrives as a group. It is a
+     rhythm, not a duration, so it has no mirror in `lib/motion.ts`. */
+  --motion-stagger: 10ms;
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-morph: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* Displacement scale: micro 4px, control 8px, section 16px, page 24px. */
+  --motion-shift-micro: 4px;
+  --motion-shift-control: 8px;
+  --motion-shift-section: 16px;
+  --motion-shift-page: 24px;
+}
+
+/* Use the same tokens in the route and in overlays portalled to the body. */
+:root:has([data-page-style='swiss']),
+[data-slot='auth-card'] {
+  --background: oklch(0.995 0 0);
+  --foreground: oklch(0.19 0 0);
+  --card: var(--background);
+  --card-foreground: var(--foreground);
+  --popover: var(--background);
+  --popover-foreground: var(--foreground);
+  --primary: var(--foreground);
+  --primary-foreground: var(--background);
+  --secondary: oklch(0.955 0 0);
+  --secondary-foreground: var(--foreground);
+  --muted: var(--secondary);
+  --muted-foreground: oklch(0.46 0 0);
+  --accent: var(--secondary);
+  --accent-foreground: var(--foreground);
+  --border: oklch(0.875 0 0);
+  --input: oklch(0.76 0 0);
+  --ring: oklch(0.5 0 0);
+  --sidebar: var(--background);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-accent: var(--foreground);
+  --sidebar-accent-foreground: var(--background);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-ring: var(--ring);
+  --sidebar-border: var(--border);
+  --radius: 0.125rem;
+  --app-page-gutter: clamp(1rem, 3.33vw, 3rem);
+}
+
+/* `--secondary` also paints the zero-activity heatmap cell and its legend
+   swatch; at 0.26 they sat too close to the 0.18 card to read as a cell. */
+:root.dark:has([data-page-style='swiss']),
+.dark [data-slot='auth-card'] {
+  --background: oklch(0.18 0 0);
+  --foreground: oklch(0.96 0 0);
+  --secondary: oklch(0.3 0 0);
+  --muted-foreground: oklch(0.76 0 0);
+  --border: oklch(0.42 0 0);
+  --input: oklch(0.48 0 0);
+  --ring: oklch(0.72 0 0);
+}
+
+@layer components {
+  [data-page-style='swiss'] [data-slot='table-container'] {
+    border-top: 1px solid var(--foreground);
+  }
+
+  [data-page-style='swiss'] [data-slot='card'] {
+    box-shadow: none;
+  }
+
+  /* A red square opens every block heading, so sections stay separable at a
+     glance without adding frames, rules, or extra spacing. */
+  [data-page-style='swiss'] .section-title {
+    display: flex;
+    align-items: center;
+  }
+
+  [data-page-style='swiss'] .section-title::before {
+    flex: none;
+    width: 0.75rem;
+    height: 0.75rem;
+    margin-inline-end: 0.625rem;
+    background: var(--destructive);
+    content: '';
+  }
+
+  /* `SectionHeading` renders the square as a real element so it can carry a
+     view-transition name (a pseudo-element cannot), so suppress the shared
+     pseudo marker there to avoid drawing it twice. */
+  [data-page-style='swiss']
+    [data-slot='section-heading']
+    .section-title::before {
+    content: none;
+  }
+
+  [data-page-style='swiss'] [data-slot='section-marker'] {
+    flex: none;
+    width: 0.75rem;
+    height: 0.75rem;
+    margin-inline-end: 0.625rem;
+    background: var(--destructive);
+  }
+}
+
+/* Sonner's rich colors flood a toast with a tinted fill. The toast host is
+   portalled to the body, so this is scoped to the palette rather than to a
+   page: every tone resolves to the monochrome surface, and only errors keep
+   the accent color, because that is the one state that must stand out. */
+[data-rich-colors='true'][data-sonner-toast] {
+  --normal-bg: var(--popover);
+  --normal-text: var(--popover-foreground);
+  --normal-border: var(--border);
+  --success-bg: var(--popover);
+  --success-text: var(--popover-foreground);
+  --success-border: var(--border);
+  --info-bg: var(--popover);
+  --info-text: var(--popover-foreground);
+  --info-border: var(--border);
+  --warning-bg: var(--popover);
+  --warning-text: var(--popover-foreground);
+  --warning-border: var(--border);
+  --error-bg: var(--popover);
+  --error-text: var(--destructive);
+  --error-border: var(--destructive);
+}
+
+/* Keep the compact branded header on phones and the two-column form on desktop. */
+:root:has([data-page-style='swiss']) .auth-page-glow {
+  display: none;
+}
+
+[data-slot='auth-card'] {
+  border-radius: var(--radius);
+  box-shadow: none;
+}
+
+[data-slot='auth-card'] .auth-brand {
+  background: oklch(0.19 0 0);
+}
+
+[data-slot='auth-card'] .auth-brand::before,
+[data-slot='auth-card'] .auth-brand::after {
+  display: none;
+}
+
+[data-slot='auth-card'] [data-slot='auth-brand-canvas'] {
+  filter: grayscale(1);
+  opacity: 0.18;
+}
+
+[data-slot='auth-card'] [data-slot='auth-brand-copy'] > :first-child {
+  color: oklch(0.77 0.14 27);
+}
+
+/* The sign-in card is a form, not a poster: field names carry the same red
+   square the block headings use, and inputs are reduced to an underline so the
+   column reads as one sheet. Scoped to the card; the consent label is the one
+   label that names no field, so it stays plain text. */
+[data-slot='auth-card'] [data-slot='form-label'],
+[data-slot='auth-card'] [data-slot='label']:not([for='legal-consent']) {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 400;
+  line-height: 1.4;
+  letter-spacing: 0.04em;
+  color: var(--muted-foreground);
+}
+
+[data-slot='auth-card'] [data-slot='form-label']::before,
+[data-slot='auth-card'] [data-slot='label']:not([for='legal-consent'])::before {
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  background: var(--destructive);
+  content: '';
+}
+
+[data-slot='auth-card'] [data-slot='input'],
+[data-slot='auth-card'] input[data-slot='form-control'],
+[data-slot='auth-card'] [data-slot='input-group'] {
+  height: 2.125rem;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--foreground);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: 0.875rem;
+}
+
+[data-slot='auth-card'] [data-slot='input']:focus-visible,
+[data-slot='auth-card'] input[data-slot='form-control']:focus-visible,
+[data-slot='auth-card'] [data-slot='input-group']:focus-within,
+[data-slot='auth-card'] [data-slot='input'][aria-invalid='true'] {
+  border-bottom-color: var(--destructive);
+  outline: none;
+  box-shadow: none;
+}
+
+/* The group that wraps a password field draws its own box; inside the card the
+   underline is the only frame the column gets. */
+[data-slot='auth-card'] [data-slot='input-group-control'] {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  font-size: 0.875rem;
+}
+
+[data-slot='auth-card'] form button[type='submit'] {
+  height: 2.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+@media (min-width: 80rem) {
+  :root:has([data-page-style='swiss']) {
+    --app-header-height: 4rem;
+  }
+
+  /* One bar on every page, so one brand size: the widest breakpoint promotes
+     the site name instead of a per-page `editorial` flag doing it. */
+  [data-slot='public-header'] [data-slot='site-name'] {
+    font-size: 1.25rem;
+    font-weight: 700;
+  }
+}
+
+/* Utilities win over components in Tailwind v4, so table head styling lives in
+   the utilities layer to actually override per-cell text-foreground. */
+@layer base {
+  /* Heatmap squares: in dark mode the fills step by only a few lightness
+     points, so each cell keeps a hairline boundary instead of dissolving into
+     the card. `outline` is used so the selected cell's ring is untouched. */
+  .dark [data-page-style='swiss'] [data-day] {
+    outline: 1px solid oklch(1 0 0 / 0.16);
+    outline-offset: -1px;
+  }
+}
+
+@layer utilities {
+  [data-page-style='swiss'] [data-slot='table-head'] {
+    color: var(--muted-foreground);
+    font-size: 0.75rem;
+    font-weight: 400;
+  }
+}
+
+/* ── L0: persistent chrome ───────────────────────────────────────────────────
+   Components tag themselves with `data-vt-name`; the transition name is mapped
+   here so no page invents its own. Dynamic names (`section-marker-<key>`,
+   `card-<id>`) are set inline by `@/components/motion/use-shared-name` and the
+   section heading, because CSS cannot derive a name from an attribute value. */
+[data-vt-name='sidebar'],
+[data-vt-name='header'],
+[data-vt-name='page-eyebrow'],
+[data-vt-name='page-title'],
+[data-vt-name='page-actions'] {
+  /* The group only animates geometry (see L1), so the element keeps its
+     identity instead of being swapped for a faded copy. */
+  contain: layout;
+}
+
+[data-vt-name='sidebar'] {
+  view-transition-name: sidebar;
+}
+
+[data-vt-name='header'] {
+  view-transition-name: header;
+}
+
+[data-vt-name='page-eyebrow'] {
+  view-transition-name: page-eyebrow;
+}
+
+[data-vt-name='page-title'] {
+  view-transition-name: page-title;
+}
+
+[data-vt-name='page-actions'] {
+  view-transition-name: page-actions;
+}
+
+/* The page body is the one layer that is *not* shared between two pages: it
+   falls out with the old page and rises in with the new one (§10.2). Anything
+   with an identity of its own lives outside it — named ancestors would be
+   lifted out of the body's snapshot anyway, and a duplicated name makes the
+   browser drop the whole group. */
+[data-vt-name='page-body'] {
+  view-transition-name: page-body;
+}
+
+/* Pages that draw no layer of their own (playground, chat) still fall as a
+   whole: the outlet behind the route carries the same name, and steps aside as
+   soon as the page provides its own. */
+[data-page-outlet] {
+  view-transition-name: page-body;
+}
+
+[data-page-outlet]:has([data-vt-name='page-body']) {
+  view-transition-name: none;
+}
+
+/* ── L1: page handoff ────────────────────────────────────────────────────────
+   Turning a page keeps what both pages have: chrome and shared elements travel
+   as themselves (morph, never a faded copy). What is left over is the page body
+   — the part that is only on one side: it falls 40px down and out with the old
+   page, while the new page's body rises 24px into place. */
+::view-transition-group(*) {
+  /* Shared elements morph rather than jump, and nothing overshoots. */
+  animation-duration: var(--motion-slow);
+  animation-timing-function: var(--ease-morph);
+}
+
+::view-transition-old(*),
+::view-transition-new(*) {
+  animation-duration: var(--motion-fast);
+  animation-timing-function: var(--ease-out);
+}
+
+/* 已下线（2026-11-05）：mei 认为页面切换的落下/升起晃眼，`PAGE_TRANSITIONS_ENABLED`
+   在 `lib/motion.ts` 里为 false，路由不再启动 View Transition，下面的正文交接规则
+   保留供以后恢复参考，当前没有任何路径命中它们。 */
+@keyframes page-body-out {
+  to {
+    opacity: 0;
+    /* `--motion-shift-page` + `--motion-shift-section`: one page step, plus the
+       section step that reads as "falling past" rather than "sliding". */
+    transform: translate3d(
+      0,
+      calc(var(--motion-shift-page) + var(--motion-shift-section)),
+      0
+    );
+  }
+}
+
+@keyframes page-body-in {
+  from {
+    opacity: 0.6;
+    transform: translate3d(0, calc(var(--motion-shift-page) * -1), 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/* The root group holds only what no page names (the page background, the
+   footer, anything left unnamed). It must not move at all: the handoff happens
+   in the `page-body` group below, so root switches instantly instead of
+   sliding the whole page. */
+html::view-transition-group(root) {
+  animation: none;
+}
+
+html::view-transition-old(root) {
+  animation: none;
+  mix-blend-mode: normal;
+  opacity: 0;
+}
+
+html::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+  opacity: 1;
+}
+
+html::view-transition-group(page-body) {
+  animation: none;
+}
+
+/* Leaving body: drops and disappears, and the curve accelerates into it. */
+html::view-transition-old(page-body) {
+  animation: page-body-out var(--motion-base) var(--ease-in) both;
+  mix-blend-mode: normal;
+}
+
+/* Arriving body: comes up from above, settling rather than stopping. */
+html::view-transition-new(page-body) {
+  animation: page-body-in var(--motion-slow) var(--ease-out) both;
+  mix-blend-mode: normal;
+}
+
+/* Chrome groups keep opaque pixels: the browser morphs their box, and the
+   outgoing copy never becomes a translucent ghost of itself. */
+html::view-transition-old(sidebar),
+html::view-transition-new(sidebar),
+html::view-transition-old(header),
+html::view-transition-new(header),
+html::view-transition-old(page-actions),
+html::view-transition-new(page-actions) {
+  animation: none;
+  opacity: 1;
+  mix-blend-mode: normal;
+}
+
+html::view-transition-group(sidebar),
+html::view-transition-group(header),
+html::view-transition-group(page-actions) {
+  animation-duration: var(--motion-slow);
+  animation-timing-function: var(--ease-morph);
+}
+
+/* The title and eyebrow change text, so they wipe instead of cross-fading:
+   the old line is clipped away upward while the new one is revealed. Opacity
+   stays 1 the whole time. */
+@keyframes vt-title-out {
+  from {
+    clip-path: inset(0 0 0 0);
+    transform: translateY(0);
+  }
+
+  to {
+    clip-path: inset(0 0 100% 0);
+    transform: translateY(calc(var(--motion-shift-micro) * -1));
+  }
+}
+
+@keyframes vt-title-in {
+  from {
+    clip-path: inset(100% 0 0 0);
+    transform: translateY(var(--motion-shift-micro));
+  }
+
+  to {
+    clip-path: inset(0 0 0 0);
+    transform: translateY(0);
+  }
+}
+
+html::view-transition-old(page-title),
+html::view-transition-old(page-eyebrow) {
+  animation: vt-title-out var(--motion-base) var(--ease-in) both;
+  opacity: 1;
+  mix-blend-mode: normal;
+}
+
+html::view-transition-new(page-title),
+html::view-transition-new(page-eyebrow) {
+  animation: vt-title-in var(--motion-base) var(--ease-out) both;
+  opacity: 1;
+  mix-blend-mode: normal;
+}
+
+/* ── L1 fallback: no View Transitions ────────────────────────────────────────
+   The same handoff without the platform: the old page is held on top of the new
+   one (`AnimatedOutlet` does it in place, public pages hand over their last
+   frame), falls down and fades; the new page rises in underneath. Both halves
+   reuse the `page-body-*` keyframes of the View Transition path, so the two
+   paths cannot drift apart.
+   已下线（2026-11-05）：随 `PAGE_TRANSITIONS_ENABLED=false` 一起停用，不再抓帧、
+   不再克隆旧页，因此 `.page-handoff` / `.page-body-enter` 不会被挂上任何元素。 */
+.page-handoff {
+  animation: page-body-out var(--motion-base) var(--ease-in) both;
+}
+
+/* The page body that arrives underneath a handoff frame. */
+.page-body-enter {
+  animation: page-body-in var(--motion-slow) var(--ease-out) both;
+}
+
+/* ── Handoffs offline (2026-11-05) ───────────────────────────────────────────
+   `PAGE_TRANSITIONS_ENABLED` is false, and `main.tsx` mirrors it onto
+   `<html data-motion-handoffs='off'>`. The two classes above are then never
+   attached, but `styles/index.css` also runs a legacy per-row stagger
+   (`tableRowEnter`) that replayed on a page turn; that rule was removed
+   outright once page handoffs went offline.
+   Nothing else on a row is touched: hover / selection stay colour transitions
+   on the fast token. */
+html[data-motion-handoffs='off'] .page-handoff,
+html[data-motion-handoffs='off'] .page-body-enter {
+  animation: none !important;
+}
+
+/* ── L3: overlays ───────────────────────────────────────────────────────────
+   Every Base UI popup already exposes `data-starting-style` /
+   `data-ending-style`; the geometry lives here so all panels share one set of
+   timings from the tokens instead of each component carrying its own
+   `duration-150`. Opening is `--motion-base` and `--ease-out`; closing is
+   `--motion-fast` and `--ease-in`, because leaving should feel quicker than
+   arriving. */
+
+/* Backdrops fade; they never move. */
+[data-slot='dialog-overlay'],
+[data-slot='alert-dialog-overlay'],
+[data-slot='sheet-overlay'] {
+  transition: opacity var(--motion-base) var(--ease-out);
+}
+
+[data-slot='dialog-overlay'][data-starting-style],
+[data-slot='dialog-overlay'][data-ending-style],
+[data-slot='alert-dialog-overlay'][data-starting-style],
+[data-slot='alert-dialog-overlay'][data-ending-style],
+[data-slot='sheet-overlay'][data-starting-style],
+[data-slot='sheet-overlay'][data-ending-style] {
+  opacity: 0;
+}
+
+[data-slot='dialog-overlay'][data-ending-style],
+[data-slot='alert-dialog-overlay'][data-ending-style],
+[data-slot='sheet-overlay'][data-ending-style] {
+  transition-duration: var(--motion-fast);
+  transition-timing-function: var(--ease-in);
+}
+
+/* Dialog panel: .98 and 8px up from the resting place. */
+[data-slot='dialog-content'],
+[data-slot='alert-dialog-content'] {
+  transition:
+    opacity var(--motion-base) var(--ease-out),
+    scale var(--motion-base) var(--ease-out),
+    transform var(--motion-base) var(--ease-out);
+}
+
+/* 16px/8px 位移无条件生效：以前这里挂着 `:not([data-shared-morph], :has(...))`
+   守卫，想让「行形变成面板标题」的 morph 独占运动量；但那条链路走 View
+   Transition，`PAGE_TRANSITIONS_ENABLED = false` 之后一律不启动，于是带
+   `data-shared-morph` 的弹窗连淡入都被跳过（既没有位移也没有透明度过渡）。
+   共享元素的 morph 恢复时由 `lib/motion.ts` 的开关重新决定，不在样式层抑制。 */
+[data-slot='dialog-content'][data-starting-style],
+[data-slot='dialog-content'][data-ending-style],
+[data-slot='alert-dialog-content'][data-starting-style],
+[data-slot='alert-dialog-content'][data-ending-style] {
+  opacity: 0;
+  scale: 0.98;
+  transform: translateY(var(--motion-shift-control));
+}
+
+[data-slot='dialog-content'][data-ending-style],
+[data-slot='alert-dialog-content'][data-ending-style] {
+  transition-duration: var(--motion-fast);
+  transition-timing-function: var(--ease-in);
+}
+
+/* Sheet / drawer: 24px in from its own edge. */
+[data-slot='sheet-content'] {
+  transition:
+    opacity var(--motion-base) var(--ease-out),
+    transform var(--motion-base) var(--ease-out);
+}
+
+[data-slot='sheet-content'][data-starting-style],
+[data-slot='sheet-content'][data-ending-style] {
+  opacity: 0;
+}
+
+[data-slot='sheet-content'][data-side='right'][data-starting-style],
+[data-slot='sheet-content'][data-side='right'][data-ending-style] {
+  transform: translateX(var(--motion-shift-page));
+}
+
+[data-slot='sheet-content'][data-side='left'][data-starting-style],
+[data-slot='sheet-content'][data-side='left'][data-ending-style] {
+  transform: translateX(calc(var(--motion-shift-page) * -1));
+}
+
+[data-slot='sheet-content'][data-side='bottom'][data-starting-style],
+[data-slot='sheet-content'][data-side='bottom'][data-ending-style] {
+  transform: translateY(var(--motion-shift-page));
+}
+
+[data-slot='sheet-content'][data-side='top'][data-starting-style],
+[data-slot='sheet-content'][data-side='top'][data-ending-style] {
+  transform: translateY(calc(var(--motion-shift-page) * -1));
+}
+
+[data-slot='sheet-content'][data-ending-style] {
+  transition-duration: var(--motion-fast);
+  transition-timing-function: var(--ease-in);
+}
+
+/* 共享元素交接的那条抑制规则已删除（2026-11-06）：它是给 View Transition 的
+   行→面板标题 morph 让路的（`transform: none`，只留淡入），而 `lib/motion.ts`
+   的 `PAGE_TRANSITIONS_ENABLED = false` 已经让 morph 不再启动，剩下这条规则
+   只负责把弹窗/抽屉自己的 24px 位移压成 0——实测面板 `maxMove = 0`。
+   位移是弹层唯一能被看见的运动，morph 恢复时再按 `data-shared-morph` 另议。 */
+
+/* Popover / menu / tooltip: 4px out of the anchor, 140ms. */
+[data-slot='popover-content'],
+[data-slot='dropdown-menu-content'],
+[data-slot='dropdown-menu-sub-content'],
+[data-slot='tooltip-content'] {
+  transition:
+    opacity var(--motion-fast) var(--ease-out),
+    translate var(--motion-fast) var(--ease-out);
+}
+
+[data-slot='popover-content'][data-starting-style],
+[data-slot='popover-content'][data-ending-style],
+[data-slot='dropdown-menu-content'][data-starting-style],
+[data-slot='dropdown-menu-content'][data-ending-style],
+[data-slot='dropdown-menu-sub-content'][data-starting-style],
+[data-slot='dropdown-menu-sub-content'][data-ending-style],
+[data-slot='tooltip-content'][data-starting-style],
+[data-slot='tooltip-content'][data-ending-style] {
+  opacity: 0;
+}
+
+[data-slot='popover-content'][data-side='bottom'][data-starting-style],
+[data-slot='dropdown-menu-content'][data-side='bottom'][data-starting-style],
+[data-slot='dropdown-menu-sub-content'][data-side='bottom'][data-starting-style],
+[data-slot='tooltip-content'][data-side='bottom'][data-starting-style] {
+  translate: 0 calc(var(--motion-shift-micro) * -1);
+}
+
+[data-slot='popover-content'][data-side='top'][data-starting-style],
+[data-slot='dropdown-menu-content'][data-side='top'][data-starting-style],
+[data-slot='dropdown-menu-sub-content'][data-side='top'][data-starting-style],
+[data-slot='tooltip-content'][data-side='top'][data-starting-style] {
+  translate: 0 var(--motion-shift-micro);
+}
+
+[data-slot='popover-content'][data-side='left'][data-starting-style],
+[data-slot='dropdown-menu-content'][data-side='left'][data-starting-style],
+[data-slot='dropdown-menu-sub-content'][data-side='left'][data-starting-style],
+[data-slot='tooltip-content'][data-side='left'][data-starting-style] {
+  translate: var(--motion-shift-micro) 0;
+}
+
+[data-slot='popover-content'][data-side='right'][data-starting-style],
+[data-slot='dropdown-menu-content'][data-side='right'][data-starting-style],
+[data-slot='dropdown-menu-sub-content'][data-side='right'][data-starting-style],
+[data-slot='tooltip-content'][data-side='right'][data-starting-style] {
+  translate: calc(var(--motion-shift-micro) * -1) 0;
+}
+
+[data-slot='popover-content'][data-side='inline-end'][data-starting-style],
+[data-slot='dropdown-menu-content'][data-side='inline-end'][data-starting-style],
+[data-slot='dropdown-menu-sub-content'][data-side='inline-end'][data-starting-style],
+[data-slot='tooltip-content'][data-side='inline-end'][data-starting-style] {
+  translate: calc(var(--motion-shift-micro) * -1) 0;
+}
+
+[data-slot='popover-content'][data-side='inline-start'][data-starting-style],
+[data-slot='dropdown-menu-content'][data-side='inline-start'][data-starting-style],
+[data-slot='dropdown-menu-sub-content'][data-side='inline-start'][data-starting-style],
+[data-slot='tooltip-content'][data-side='inline-start'][data-starting-style] {
+  translate: var(--motion-shift-micro) 0;
+}
+
+/* Closing a menu retreats the same way it arrived. */
+[data-slot='popover-content'][data-ending-style][data-side='bottom'],
+[data-slot='dropdown-menu-content'][data-ending-style][data-side='bottom'],
+[data-slot='dropdown-menu-sub-content'][data-ending-style][data-side='bottom'],
+[data-slot='tooltip-content'][data-ending-style][data-side='bottom'] {
+  translate: 0 calc(var(--motion-shift-micro) * -1);
+}
+
+[data-slot='popover-content'][data-ending-style][data-side='top'],
+[data-slot='dropdown-menu-content'][data-ending-style][data-side='top'],
+[data-slot='dropdown-menu-sub-content'][data-ending-style][data-side='top'],
+[data-slot='tooltip-content'][data-ending-style][data-side='top'] {
+  translate: 0 var(--motion-shift-micro);
+}
+
+/* ── L3: the anchored popups that name their own slots ──────────────────────
+   Select, combobox, context menu, menubar, navigation menu and hover card use
+   the same Base UI hooks as the popovers above, so they share their geometry
+   instead of shipping their own `animate-in`/`slide-in-from-*` (which hard-code
+   a duration outside the tokens). One rule per state, listed once; each side
+   only decides which way "toward the anchor" points. */
+:is(
+  [data-slot='select-content'],
+  [data-slot='combobox-content'],
+  [data-slot='context-menu-content'],
+  [data-slot='context-menu-sub-content'],
+  [data-slot='menubar-content'],
+  [data-slot='menubar-sub-content'],
+  [data-slot='hover-card-content']
+) {
+  transition:
+    opacity var(--motion-fast) var(--ease-out),
+    translate var(--motion-fast) var(--ease-out);
+}
+
+:is(
+  [data-slot='select-content'],
+  [data-slot='combobox-content'],
+  [data-slot='context-menu-content'],
+  [data-slot='context-menu-sub-content'],
+  [data-slot='menubar-content'],
+  [data-slot='menubar-sub-content'],
+  [data-slot='hover-card-content']
+):is([data-starting-style], [data-ending-style]) {
+  opacity: 0;
+}
+
+:is(
+  [data-slot='select-content'],
+  [data-slot='combobox-content'],
+  [data-slot='context-menu-content'],
+  [data-slot='context-menu-sub-content'],
+  [data-slot='menubar-content'],
+  [data-slot='menubar-sub-content'],
+  [data-slot='hover-card-content']
+):is([data-starting-style], [data-ending-style])[data-side='bottom'] {
+  translate: 0 calc(var(--motion-shift-micro) * -1);
+}
+
+:is(
+  [data-slot='select-content'],
+  [data-slot='combobox-content'],
+  [data-slot='context-menu-content'],
+  [data-slot='context-menu-sub-content'],
+  [data-slot='menubar-content'],
+  [data-slot='menubar-sub-content'],
+  [data-slot='hover-card-content']
+):is([data-starting-style], [data-ending-style])[data-side='top'] {
+  translate: 0 var(--motion-shift-micro);
+}
+
+:is(
+  [data-slot='select-content'],
+  [data-slot='combobox-content'],
+  [data-slot='context-menu-content'],
+  [data-slot='context-menu-sub-content'],
+  [data-slot='menubar-content'],
+  [data-slot='menubar-sub-content'],
+  [data-slot='hover-card-content']
+):is([data-starting-style], [data-ending-style]):is(
+  [data-side='left'],
+  [data-side='inline-start']
+) {
+  translate: var(--motion-shift-micro) 0;
+}
+
+:is(
+  [data-slot='select-content'],
+  [data-slot='combobox-content'],
+  [data-slot='context-menu-content'],
+  [data-slot='context-menu-sub-content'],
+  [data-slot='menubar-content'],
+  [data-slot='menubar-sub-content'],
+  [data-slot='hover-card-content']
+):is([data-starting-style], [data-ending-style]):is(
+  [data-side='right'],
+  [data-side='inline-end']
+) {
+  translate: calc(var(--motion-shift-micro) * -1) 0;
+}
+
+/* `alignItemWithTrigger` pins the select popup over its trigger and tracks its
+   position, so it must not also travel: only the fade stays. */
+[data-slot='select-content'][data-align-trigger='true'],
+[data-slot='select-content'][data-align-trigger='true']:is(
+  [data-starting-style],
+  [data-ending-style]
+) {
+  transition: opacity var(--motion-fast) var(--ease-out);
+  translate: none;
+}
+
+/* ── L3: control marks (checkbox tick, radio dot) ────────────────────────────
+   Both marks are unmounted while unchecked, so mounting *is* the moment they
+   appear: a 140ms scale from .85 reads as the box filling in, and it replays
+   exactly once per check. No overshoot, and the reduced-motion block below
+   ends it instantly. */
+@keyframes control-mark-in {
+  from {
+    opacity: 0.65;
+    scale: 0.85;
+  }
+
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+[data-slot='checkbox-indicator'],
+[data-slot='radio-group-indicator'] {
+  animation: control-mark-in var(--motion-fast) var(--ease-out) both;
+}
+
+/* ── L4: textarea height ──────────────────────────────────────────────────────
+   The textarea grows with `field-sizing: content`; the state colours stay on the
+   fast token while the height uses the base one, which a single `duration-*`
+   utility cannot express, so the whole transition lives here. */
+[data-slot='textarea'] {
+  transition:
+    color var(--motion-fast) var(--ease-out),
+    background-color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out),
+    height var(--motion-base) var(--ease-out);
+}
+
+/* ── L2: tab panel entrance ──────────────────────────────────────────────────
+   Switching inside a page is one arrival, not a cross: the panel now on screen
+   fades in over the base token while it rises a micro step, and the panel that
+   was there simply stops being there. A directional exit (the old 8px slide
+   both ways) needed the outgoing panel kept in the DOM for another 220ms, and
+   both panels painting at once is what read as a flicker.
+   The animation is on the element, not a transition on a starting style, so
+   it also replays for `keepMounted` panels: Base UI hides those with `hidden`,
+   and an element returning from `display: none` starts its animation again. */
+@keyframes tab-panel-in {
+  from {
+    opacity: 0;
+    translate: 0 var(--motion-shift-micro);
+  }
+  to {
+    opacity: 1;
+    translate: none;
+  }
+}
+
+[data-tab-switch-panel] {
+  animation: tab-panel-in var(--motion-base) var(--ease-out) both;
+}
+
+/* The route-level fallback sits where the table will be. It fades in on the
+   same curve and step as a tab panel, so the hand-off from "loading" to
+   "rows" is one arrival replacing another instead of a hard cut. */
+[data-loading-state] {
+  animation: tab-panel-in var(--motion-base) var(--ease-out) both;
+}
+
+/* ── L1: a figure that was replaced ─────────────────────────────────────────
+   Stat figures change when a filter lands. The new figure is a new node (the
+   value is its key), so it fades in on the fast token; the old one is gone in
+   the same frame. Opacity only: a counting number would be slower to read than
+   the answer itself. */
+@keyframes stat-value-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+[data-stat-value] {
+  animation: stat-value-in var(--motion-fast) var(--ease-out) both;
+}
+
+/* ── L3: Toast (sonner) ──────────────────────────────────────────────────────
+   Sonner ships 400ms hardcoded transitions; the host is portalled to <body>,
+   so this is scoped by its own attributes and reads the shared tokens. */
+/* Sonner injects its stylesheet at runtime, after this file, so the host's
+   `.toaster` class is used to win by specificity instead of `!important`. */
+[data-sonner-toaster].toaster {
+  transition: transform var(--motion-base) var(--ease-out);
+}
+
+.toaster [data-sonner-toast] {
+  transition:
+    translate var(--motion-base) var(--ease-out),
+    opacity var(--motion-base) var(--ease-out),
+    /* The stack makes room for a new toast on the fast token, so three
+       arrivals never queue up into one slow shuffle. */
+    transform var(--motion-fast) var(--ease-out),
+    height var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out);
+}
+
+/* Toasts arrive from 4px below their resting place instead of from off-screen:
+   the reader sees the message appear, not a panel fly in. */
+.toaster [data-sonner-toast][data-mounted='false'] {
+  translate: 0 var(--motion-shift-micro);
+}
+
+/* Leaving is quicker than arriving and uses the exit curve. */
+.toaster [data-sonner-toast][data-removed='true'] {
+  transition-duration: var(--motion-fast);
+  transition-timing-function: var(--ease-in);
+}
+
+/* ── L4: copy confirmation ───────────────────────────────────────────────────
+   The tick replaces the copy glyph, so it arrives with a 140ms scale instead
+   of swapping in at full size. */
+@keyframes copy-confirm {
+  from {
+    scale: 0.85;
+    opacity: 0.65;
+  }
+
+  to {
+    scale: 1;
+    opacity: 1;
+  }
+}
+
+/* ── L4: landing live dot ────────────────────────────────────────────────────
+   The hero badge announces itself and then stops. An endless `animate-ping`
+   keeps one compositor animation running on the busiest page of the site, which
+   the contract does not allow: motion is finite, then the dot rests. */
+@keyframes landing-pulse {
+  from {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+
+  to {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+/* `fill: none` plus a resting `opacity: 0` end the ring after three beats with
+   no animation left to run or to keep alive: nothing is added to
+   `document.getAnimations()` once the page is idle. */
+.landing-pulse {
+  opacity: 0;
+  animation: landing-pulse var(--motion-slow) var(--ease-out) 3;
+}
+
+[data-copied] {
+  animation: copy-confirm var(--motion-fast) var(--ease-out) both;
+}
+
+/* ── L4: icon cross-fade ─────────────────────────────────────────────────────
+   Copy → tick, submit → spinner: the glyphs share one grid cell, so the
+   control keeps its width and the change is an opacity swap on the fast token
+   instead of a hard replace. */
+[data-motion-crossfade] > [data-crossfade-state] {
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+
+[data-motion-crossfade] > [data-crossfade-state][data-visible='false'] {
+  opacity: 0;
+}
+
+/* ── L4: feedback panels (command palette, notification list) ───────────────
+   The panel rises 8px and fades in over the base token; closing retreats the
+   same way on the fast token with the exit curve. Its rows follow it in 10ms
+   apart, capped at eight by the caller through `--motion-row-index`, so a long
+   list lands with the panel instead of trailing behind it. */
+[data-motion-panel='feedback'] {
+  transition:
+    opacity var(--motion-base) var(--ease-out),
+    transform var(--motion-base) var(--ease-out);
+}
+
+:is(
+  [data-slot='dialog-content'],
+  [data-slot='popover-content']
+)[data-motion-panel='feedback']:is([data-starting-style], [data-ending-style]) {
+  opacity: 0;
+  /* No zoom: the panel only rises into place, and `translate` stays untouched
+     so a centred dialog keeps its own alignment. */
+  scale: 1;
+  transform: translateY(var(--motion-shift-control));
+}
+
+/* An anchored popup already carries its own 4px `translate`; the panel moves
+   on `transform`, so that offset is cancelled instead of added. */
+[data-slot='popover-content'][data-motion-panel='feedback']:is(
+  [data-starting-style],
+  [data-ending-style]
+) {
+  translate: 0 0;
+}
+
+[data-motion-panel='feedback'][data-ending-style] {
+  transition-duration: var(--motion-fast);
+  transition-timing-function: var(--ease-in);
+}
+
+@keyframes feedback-row-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+[data-motion-panel='feedback'] [data-motion-row] {
+  animation: feedback-row-in var(--motion-base) var(--ease-out) both;
+  animation-delay: calc(var(--motion-row-index, 0) * var(--motion-stagger));
+}
+
+/* ── L4: selected rows and half-selected boxes ──────────────────────────────
+   Selection outranks hover: the row the reader just ticked keeps the muted
+   fill even under the pointer, and reaches it on the fast token (the row's own
+   colour transition carries the timing). The header box's glyph fades the same
+   way, so entering the half-selected state is a step rather than a pop. */
+[data-slot='table-row'][data-state='selected'] {
+  background-color: var(--muted);
+}
+
+[data-slot='checkbox-indicator'] {
+  transition:
+    opacity var(--motion-fast) var(--ease-out),
+    scale var(--motion-fast) var(--ease-out);
+}
+
+[data-slot='checkbox-indicator']:is(
+  [data-starting-style],
+  [data-ending-style]
+) {
+  opacity: 0;
+  scale: 0.8;
+}
+
+/* ── Reduced motion ──────────────────────────────────────────────────────────
+   Everything becomes instant. `startViewTransition` is not called at all (see
+   `pageTransitionsEnabled` / the router config), and these rules make sure a
+   group that somehow exists finishes immediately instead of lingering. */
+/*
+ * Every control moves on the fast token unless it opted into another one.
+ * Tailwind's bare `transition` utility defaults to 150ms, which is not on the
+ * scale; this base rule pulls those up to --motion-fast. Utilities that name a
+ * duration still win, so nothing here overrides an explicit token.
+ */
+@layer base {
+  button,
+  [role='button'],
+  [role='menuitem'],
+  [role='tab'],
+  [role='switch'],
+  [role='checkbox'],
+  input,
+  select,
+  textarea,
+  tbody tr {
+    transition-duration: var(--motion-fast);
+    transition-timing-function: var(--ease-out);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: var(--motion-instant) !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: var(--motion-instant) !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation-duration: var(--motion-instant) !important;
+    animation-delay: 0ms !important;
+  }
+}

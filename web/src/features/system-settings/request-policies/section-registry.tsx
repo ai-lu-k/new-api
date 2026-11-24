@@ -19,10 +19,22 @@ For commercial licensing, please contact support@quantumnous.com
 import { createSectionRegistry } from '../utils/section-registry'
 import { ChannelHealthSection } from './channel-health-section'
 import type { RequestPolicySettings } from './defaults'
+import { ModelDailyTokensSection } from './model-daily-tokens-section'
 import { RequestChecksSection } from './request-checks-section'
 import { RoutingPolicySection } from './routing-section'
 
 const POLICY_SECTIONS = [
+  {
+    id: 'model-daily-tokens',
+    titleKey: 'Model daily token limits',
+    build: (settings: RequestPolicySettings) => (
+      <ModelDailyTokensSection
+        defaultValues={{
+          ModelDailyTokenLimits: settings.ModelDailyTokenLimits,
+        }}
+      />
+    ),
+  },
   {
     id: 'filtering',
     titleKey: 'Request checks',

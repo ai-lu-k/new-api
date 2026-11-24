@@ -25,6 +25,7 @@ import zh from '@/i18n/locales/zh.json'
 import contract from '../../../../../../pkg/billingexpr/testdata/frontend_simulation.json'
 import {
   combineBillingExpr,
+  parseTiersFromExpr,
   splitBillingExprAndRequestRules,
 } from '../billing-expr'
 import { formatBillingCondition } from '../billing-expression/condition-display'
@@ -46,6 +47,98 @@ import {
   evalExprLocally,
   type ExtraTokenValues,
 } from '../tier-expr'
+import { getTimePriceSchedule } from '../time-price-schedule'
+
+const imageResolution =
+  '(param("generationConfig.image_config.imageSize") ?? param("generationConfig.imageConfig.imageSize") ?? param("extra_body.google.image_config.image_size") ?? "1K")'
+const imagePricing = `${imageResolution} in ["4K", "4k"] ? tier("4K", fixed(0.45)) : ${imageResolution} in ["2K", "2k"] ? tier("2K", fixed(0.25)) : tier("1K", fixed(0.15))`
+
+test.each([
+  [{}, '1K', 0.15],
+  [{ generationConfig: { imageConfig: { imageSize: '2K' } } }, '2K', 0.25],
+  [
+    { extra_body: { google: { image_config: { image_size: '4k' } } } },
+    '4K',
+    0.45,
+  ],
+  [
+    {
+      generationConfig: {
+        image_config: { imageSize: '1K' },
+        imageConfig: { imageSize: '4K' },
+      },
+    },
+    '1K',
+    0.15,
+  ],
+])(
+  'evaluates image resolution pricing for %j as %s',
+  (body, matchedTier, fixedPrice) => {
+    expect(
+      evaluateBillingExpression(imagePricing, { request: { body } })
+    ).toMatchObject({
+      status: 'success',
+      matchedTier,
+      fixedPrice,
+      cost: Number(fixedPrice) * 1_000_000,
+    })
+  }
+)
+
+test('shows every fixed image resolution price and preserves unknown-price fallback', () => {
+  expect(parseTiersFromExpr(imagePricing)).toMatchObject([
+    { label: '4K', billingUnit: 'request', fixedPrice: 0.45 },
+    { label: '2K', billingUnit: 'request', fixedPrice: 0.25 },
+    { label: '1K', billingUnit: 'request', fixedPrice: 0.15 },
+  ])
+  expect(
+    parseTiersFromExpr(
+      'param("size") in ["4K"] ? tier("4K", fixed(0.45)) : tier("other", max(p, 100))'
+    )
+  ).toEqual([])
+})
+
+test.each([
+  'param("size") in ["4K"] ? tier("4K", fixed(0.45)) : param("quality") in ["2K"] ? tier("2K", fixed(0.25)) : tier("default", fixed(0.15))',
+  'param("size") in ["4K"] ? tier("4K", fixed(0.45)) : param("size") in ["4K"] ? tier("unreachable", fixed(0.25)) : tier("default", fixed(0.15))',
+])(
+  'retains special-expression fallback for ambiguous enum pricing: %s',
+  (source) => {
+    expect(parseTiersFromExpr(source)).toEqual([])
+  }
+)
+
+test('rejects unsupported membership lists and unparenthesized coalescing like the backend', () => {
+  expect(
+    compileBillingExpression('param("size") in [max(1, 2)] ? 1 : 0').status
+  ).toBe('unsupported')
+  expect(compileBillingExpression('param("zero") ?? 7 + 3').status).toBe(
+    'invalid'
+  )
+})
+
+test('coalescing preserves explicit zero, false and empty strings', () => {
+  expect(
+    evaluateBillingExpression('param("value") ?? 7', {
+      request: { body: { value: 0 } },
+    })
+  ).toMatchObject({ status: 'success', cost: 0 })
+  expect(
+    evaluateBillingExpression(
+      '(param("value") ?? true) ? tier("yes", fixed(1)) : tier("no", fixed(0))',
+      { request: { body: { value: false } } }
+    )
+  ).toMatchObject({ status: 'success', fixedPrice: 0 })
+  expect(
+    evaluateBillingExpression(
+      '(param("value") ?? "fallback") in [""] ? tier("empty", fixed(0)) : tier("other", fixed(1))',
+      { request: { body: { value: '' } } }
+    )
+  ).toMatchObject({ status: 'success', matchedTier: 'empty' })
+  expect(evaluateBillingExpression(imagePricing)).toMatchObject({
+    status: 'missing_context',
+  })
+})
 
 const extras: ExtraTokenValues = {
   cacheReadTokens: 100,
@@ -505,6 +598,48 @@ describe('visual billing document', () => {
     expect(
       parseVisualBillingDocument(
         'hour("UTC") > 9 ? max(p * 2, 1) : tier("off", p * 1)'
+      )
+    ).toBeNull()
+  })
+})
+
+describe('price-calendar projection', () => {
+  test('uses the billing timezone across local midnight and splits overnight windows exactly', () => {
+    const expr =
+      '(hour("Asia/Shanghai") >= 21 || hour("Asia/Shanghai") < 6) ? tier("night", p * 1 + c * 4) : tier("day", p * 2 + c * 8)'
+    const schedule = getTimePriceSchedule(
+      expr,
+      new Date('2026-10-04T18:00:00Z')
+    )
+    expect(schedule?.days[0].date.toISOString()).toBe(
+      '2026-10-05T00:00:00.000Z'
+    )
+    expect(schedule?.days[0].segments).toEqual([
+      { start: 0, end: 6, tier: 0 },
+      { start: 6, end: 21, tier: 1 },
+      { start: 21, end: 24, tier: 0 },
+    ])
+  })
+  test.each([
+    'minute("UTC") < 30 ? tier("a", p * 1) : tier("b", p * 2)',
+    'hour("Local") < 9 ? tier("a", p * 1) : tier("b", p * 2)',
+    'hour("Invalid/Zone") < 9 ? tier("a", p * 1) : tier("b", p * 2)',
+    'hour("UTC") < 9 ? (len < 1000 ? tier("a", p * 1) : tier("b", p * 2)) : tier("c", p * 3)',
+    '(hour("UTC") < 9 ? tier("a", p * 1) : tier("b", p * 2)) * (param("fast") == true ? 2 : 1)',
+    'hour("UTC") < 9 && weekday("Asia/Shanghai") < 6 ? tier("a", p * 1) : tier("b", p * 2)',
+  ])(
+    'retains the rule table for a condition that cannot be projected faithfully: %s',
+    (expr) => {
+      expect(
+        getTimePriceSchedule(expr, new Date('2026-10-09T03:00:00Z'))
+      ).toBeNull()
+    }
+  )
+  test('falls back for a DST week with a skipped clock hour', () => {
+    expect(
+      getTimePriceSchedule(
+        'hour("America/New_York") < 9 ? tier("a", p * 1) : tier("b", p * 2)',
+        new Date('2026-03-08T12:00:00Z')
       )
     ).toBeNull()
   })

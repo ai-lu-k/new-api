@@ -67,12 +67,12 @@ export function ChannelConfigurationStatusIndicator(props: {
   if (props.status === 'ready') {
     label = t('Ready')
     StatusIcon = Check
-    iconColor = 'text-success'
+    iconColor = 'text-muted-foreground'
   }
   if (props.status === 'configured') {
     label = t('Configured')
     StatusIcon = Check
-    iconColor = 'text-success'
+    iconColor = 'text-muted-foreground'
   }
   return (
     <Tooltip>

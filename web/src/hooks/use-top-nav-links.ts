@@ -29,6 +29,8 @@ export type TopNavLink = {
   disabled?: boolean
   requiresAuth?: boolean
   external?: boolean
+  /** Decorative treatment for a link that should stand out, e.g. a live event. */
+  accent?: 'glitch'
 }
 
 /**
@@ -62,29 +64,20 @@ export function useTopNavLinks(): TopNavLink[] {
 
   const links: TopNavLink[] = []
 
-  // Home
+  // The order reads as the way a reader arrives: home, the model list, the
+  // walkthrough, the console, then what the site publishes about itself.
   if (modules?.home !== false) {
     links.push({ title: t('Home'), href: '/' })
   }
 
-  // Console -> /dashboard (new console path)
-  if (modules?.console !== false) {
-    links.push({ title: t('Console'), href: '/dashboard' })
-  }
-
-  // Pricing
   const pricing = modules?.pricing
   if (pricing && typeof pricing === 'object' && pricing.enabled) {
     const requiresAuth = pricing.requireAuth && !isAuthed
-    links.push({ title: t('Model Square'), href: '/pricing', requiresAuth })
+    links.push({ title: t('Model list'), href: '/pricing', requiresAuth })
   }
 
-  // Rankings
-  const rankings = modules?.rankings
-  if (rankings && typeof rankings === 'object' && rankings.enabled) {
-    const requiresAuth = rankings.requireAuth && !isAuthed
-    links.push({ title: t('Rankings'), href: '/rankings', requiresAuth })
-  }
+  // The walkthrough a first-time reader needs before choosing a model.
+  links.push({ title: t('Guides'), href: '/tutorial' })
 
   // Docs (supports external links)
   if (modules?.docs !== false) {
@@ -95,10 +88,24 @@ export function useTopNavLinks(): TopNavLink[] {
     }
   }
 
-  // About
-  if (modules?.about !== false) {
-    links.push({ title: t('About'), href: '/about' })
+  // Console -> /dashboard
+  if (modules?.console !== false) {
+    links.push({ title: t('Workspace'), href: '/dashboard' })
   }
+
+  // Public data: traffic, expenses and the About content on one page.
+  const rankings = modules?.rankings
+  if (rankings && typeof rankings === 'object' && rankings.enabled) {
+    const requiresAuth = rankings.requireAuth && !isAuthed
+    links.push({ title: t('Public data'), href: '/rankings', requiresAuth })
+  }
+
+  // The campaign link exists only while a campaign is published.
+  if (status?.campaign_active === true) {
+    links.push({ title: t('Campaigns'), href: '/campaign', accent: 'glitch' })
+  }
+
+  // About has no link of its own: it is a section of the rankings page.
 
   return links
 }

@@ -55,6 +55,8 @@ interface PlaygroundChatProps {
   onSelectPrompt?: (prompt: string) => void
   isGenerating?: boolean
   isLoadingMessages?: boolean
+  /** Image models (direct or chat-image) hide the text-oriented starter prompts. */
+  isImageModel?: boolean
   editingKey?: string | null
   onSaveEdit?: (newContent: string) => void
   onCancelEdit?: (open: boolean) => void
@@ -71,6 +73,7 @@ export function PlaygroundChat({
   onSelectPrompt,
   isGenerating = false,
   isLoadingMessages = false,
+  isImageModel = false,
   editingKey,
   onSaveEdit,
   onCancelEdit,
@@ -195,7 +198,11 @@ export function PlaygroundChat({
 
   if (visibleMessages.length === 0 && onSelectPrompt) {
     chatContent = [
-      <PlaygroundEmptyState key='empty' onSelectPrompt={onSelectPrompt} />,
+      <PlaygroundEmptyState
+        key='empty'
+        onSelectPrompt={onSelectPrompt}
+        showStarterPrompts={!isImageModel}
+      />,
     ]
   }
 

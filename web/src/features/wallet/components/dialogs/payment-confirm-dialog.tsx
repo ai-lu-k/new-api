@@ -35,6 +35,7 @@ import { formatLocalCurrencyAmount } from '@/lib/currency'
 import { DEFAULT_DISCOUNT_RATE } from '../../constants'
 import { formatCurrency, getPaymentIcon } from '../../lib'
 import type { PaymentMethod } from '../../types'
+import { CampaignBonusPreview } from '../campaign-bonus-preview'
 
 interface PaymentConfirmDialogProps {
   open: boolean
@@ -45,6 +46,7 @@ interface PaymentConfirmDialogProps {
   paymentMethod: PaymentMethod | undefined
   calculating: boolean
   processing: boolean
+  campaignBonusQuota?: number
   discountRate?: number
   usdExchangeRate?: number
 }
@@ -58,6 +60,7 @@ export function PaymentConfirmDialog({
   paymentMethod,
   calculating,
   processing,
+  campaignBonusQuota,
   discountRate = DEFAULT_DISCOUNT_RATE,
   usdExchangeRate = 1,
 }: PaymentConfirmDialogProps) {
@@ -111,6 +114,10 @@ export function PaymentConfirmDialog({
               </div>
             )}
           </div>
+
+          <CampaignBonusPreview
+            bonusQuota={calculating ? undefined : campaignBonusQuota}
+          />
 
           {hasDiscount && !calculating && (
             <div className='bg-muted/50 rounded-lg p-3'>

@@ -26,6 +26,7 @@ import { ConfirmDialog } from '@/components/confirm-dialog'
 import { logout } from '@/features/auth/api'
 import { clearAuthenticatedClientState } from '@/lib/auth-session'
 import { handleServerError } from '@/lib/handle-server-error'
+import { openAuthDialog } from '@/stores/auth-dialog-store'
 
 interface SignOutDialogProps {
   open: boolean
@@ -49,7 +50,12 @@ export function SignOutDialog({ open, onOpenChange }: SignOutDialogProps) {
 
       clearAuthenticatedClientState(queryClient)
       toast.success(t('Signed out'))
-      void navigate({ to: '/sign-in', replace: true })
+      // Stay where the visitor is and offer sign-in as a dialog; leaving them
+      // on a blank public page after signing out is a dead end.
+      if (window.location.pathname.startsWith('/dashboard')) {
+        void navigate({ to: '/', replace: true })
+      }
+      openAuthDialog('sign-in')
     } catch (error: unknown) {
       handleServerError(error, t('Failed to sign out session'))
     } finally {

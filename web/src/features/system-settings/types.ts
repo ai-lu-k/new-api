@@ -141,6 +141,7 @@ export type SystemTaskFilters = {
 }
 
 export type SiteSettings = {
+  'usage_level.thresholds': string
   Notice: string
   SystemName: string
   Logo: string
@@ -152,6 +153,9 @@ export type SiteSettings = {
   'general_setting.docs_link': string
   'legal.user_agreement': string
   'legal.privacy_policy': string
+  'site_page.default_language': string
+  'site_page.home_title': string
+  'site_page.home_description': string
   HeaderNavModules: string
   SidebarModulesAdmin: string
 }
@@ -195,6 +199,8 @@ export type AuthSettings = {
   TurnstileCheckEnabled: boolean
   TurnstileSiteKey: string
   TurnstileSecretKey: string
+  GeeTestCaptchaId: string
+  GeeTestCaptchaKey: string
   'passkey.enabled': boolean
   'passkey.rp_display_name': string
   'passkey.rp_id': string
@@ -266,6 +272,9 @@ export type ModelSettings = {
   MaxTokenAutoGroups: number
   DefaultUseAutoGroup: boolean
   'group_ratio_setting.group_special_usable_group': string
+  'model_naming.price_suffix_enabled': boolean
+  'model_naming.aliases': string
+  'model_level_gate.min_levels': string
   'model_deployment.ionet.api_key': string
   'model_deployment.ionet.enabled': boolean
 }
@@ -355,6 +364,11 @@ export type BillingSettings = {
   'checkin_setting.enabled': boolean
   'checkin_setting.min_quota': number
   'checkin_setting.max_quota': number
+  'ctf_setting.enabled': boolean
+  'ctf_setting.start_date': string
+  'ctf_setting.end_date': string
+  'ctf_setting.claim_deadline': string
+  'ctf_setting.reward_slots': number
 }
 
 export type OperationsSettings = {
