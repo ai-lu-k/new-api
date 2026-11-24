@@ -150,6 +150,33 @@ export function getTextContent(content: string | ContentPart[]): string {
 }
 
 /**
+ * Short stand-in for an inline base64 image. Chat-image models answer with a
+ * markdown image whose `src` is ~1 MB of base64; both the follow-up request and
+ * localStorage keep this placeholder instead.
+ */
+export const INLINE_IMAGE_PLACEHOLDER = '[image]'
+
+const MARKDOWN_INLINE_IMAGE_PATTERN =
+  /!\[[^\]]*\]\(\s*data:image\/[^)\s]*;base64,[^)\s]*\s*\)/gi
+const INLINE_IMAGE_DATA_PATTERN =
+  /data:image\/[^;,\s]+;base64,[A-Za-z0-9+/=]+/gi
+
+/**
+ * Replace inline base64 images with {@link INLINE_IMAGE_PLACEHOLDER}. Remote
+ * image URLs and ordinary text are untouched, so user-uploaded `image_url`
+ * parts keep working.
+ */
+export function redactInlineImageData(text: string): string {
+  if (!text.includes('base64,')) {
+    return text
+  }
+
+  return text
+    .replace(MARKDOWN_INLINE_IMAGE_PATTERN, INLINE_IMAGE_PLACEHOLDER)
+    .replace(INLINE_IMAGE_DATA_PATTERN, INLINE_IMAGE_PLACEHOLDER)
+}
+
+/**
  * Format message for API request
  */
 export function formatMessageForAPI(message: Message): ChatCompletionMessage {

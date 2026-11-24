@@ -113,6 +113,7 @@ function buildSearchSourceKey(values: {
 
 interface CommonLogsFilterBarProps<TData> {
   table: Table<TData>
+  sensitiveToggleInHeader?: boolean
 }
 
 export function CommonLogsFilterBar<TData>(
@@ -216,6 +217,7 @@ export function CommonLogsFilterBar<TData>(
       navigate({
         to: '/usage-logs/$section',
         params: { section: 'common' },
+        viewTransition: false,
         search: {
           ...filterParams,
           type: [logType],
@@ -245,6 +247,7 @@ export function CommonLogsFilterBar<TData>(
     navigate({
       to: '/usage-logs/$section',
       params: { section: 'common' },
+      viewTransition: false,
       search: {
         page: 1,
         ...resetSearch,
@@ -319,7 +322,7 @@ export function CommonLogsFilterBar<TData>(
   )
 
   const dateRangeFilter = (
-    <LogsFilterField wide>
+    <LogsFilterField label={t('Date Range')}>
       <CompactDateTimeRangePicker
         start={filters.startTime}
         end={filters.endTime}
@@ -334,8 +337,9 @@ export function CommonLogsFilterBar<TData>(
     </LogsFilterField>
   )
   const modelFilter = (
-    <LogsFilterField>
+    <LogsFilterField label={t('Model Name')}>
       <LogsFilterInput
+        aria-label={t('Model Name')}
         placeholder={t('Model Name')}
         value={filters.model || ''}
         onChange={(e) => handleChange('model', e.target.value)}
@@ -344,7 +348,7 @@ export function CommonLogsFilterBar<TData>(
     </LogsFilterField>
   )
   const groupFilter = (
-    <LogsFilterField className={sensitiveInputClass}>
+    <LogsFilterField label={t('Group')} className={sensitiveInputClass}>
       <Combobox
         options={groupOptions}
         allowCustomValue
@@ -360,7 +364,7 @@ export function CommonLogsFilterBar<TData>(
     </LogsFilterField>
   )
   const typeFilter = (
-    <LogsFilterField>
+    <LogsFilterField label={t('Type')}>
       <Select
         items={logTypeItems}
         value={logType}
@@ -432,20 +436,52 @@ export function CommonLogsFilterBar<TData>(
       </Select>
     </LogsFilterField>
   )
-  const advancedFilters = (
+  const keyFilter = (
+    <LogsFilterField label={t('Token Name')}>
+      <LogsFilterInput
+        aria-label={t('Token Name')}
+        placeholder={t('Token Name')}
+        className={sensitiveInputClass}
+        value={filters.token || ''}
+        onChange={(e) => handleChange('token', e.target.value)}
+        onKeyDown={handleKeyDown}
+      />
+    </LogsFilterField>
+  )
+  const preciseFilters = (
     <>
-      <LogsFilterField>
+      <LogsFilterField label={t('Request ID')}>
         <LogsFilterInput
-          placeholder={t('Token Name')}
-          className={sensitiveInputClass}
-          value={filters.token || ''}
-          onChange={(e) => handleChange('token', e.target.value)}
+          aria-label={t('Request ID')}
+          placeholder={t('Request ID')}
+          value={filters.requestId || ''}
+          onChange={(e) => handleChange('requestId', e.target.value)}
           onKeyDown={handleKeyDown}
         />
       </LogsFilterField>
+      <LogsFilterField label={t('Upstream Request ID')}>
+        <LogsFilterInput
+          aria-label={t('Upstream Request ID')}
+          placeholder={t('Upstream Request ID')}
+          value={filters.upstreamRequestId || ''}
+          onChange={(e) => handleChange('upstreamRequestId', e.target.value)}
+          onKeyDown={handleKeyDown}
+        />
+      </LogsFilterField>
+      {keyFilter}
+    </>
+  )
+  const showGroup =
+    groupOptions.length > 1 ||
+    groupOptions.some((group) => group.value !== 'default') ||
+    Boolean(searchParams.group)
+  const extraFilters = (
+    <>
+      {showGroup && groupFilter}
       {isAdmin && (
-        <LogsFilterField>
+        <LogsFilterField label={t('Username')}>
           <LogsFilterInput
+            aria-label={t('Username')}
             placeholder={t('Username')}
             className={sensitiveInputClass}
             value={filters.username || ''}
@@ -455,8 +491,9 @@ export function CommonLogsFilterBar<TData>(
         </LogsFilterField>
       )}
       {isAdmin && (
-        <LogsFilterField>
+        <LogsFilterField label={t('Channel ID')}>
           <LogsFilterInput
+            aria-label={t('Channel ID')}
             placeholder={t('Channel ID')}
             value={filters.channel || ''}
             onChange={(e) => handleChange('channel', e.target.value)}
@@ -464,22 +501,6 @@ export function CommonLogsFilterBar<TData>(
           />
         </LogsFilterField>
       )}
-      <LogsFilterField>
-        <LogsFilterInput
-          placeholder={t('Request ID')}
-          value={filters.requestId || ''}
-          onChange={(e) => handleChange('requestId', e.target.value)}
-          onKeyDown={handleKeyDown}
-        />
-      </LogsFilterField>
-      <LogsFilterField>
-        <LogsFilterInput
-          placeholder={t('Upstream Request ID')}
-          value={filters.upstreamRequestId || ''}
-          onChange={(e) => handleChange('upstreamRequestId', e.target.value)}
-          onKeyDown={handleKeyDown}
-        />
-      </LogsFilterField>
     </>
   )
 
@@ -488,31 +509,29 @@ export function CommonLogsFilterBar<TData>(
       table={props.table}
       compactMobile
       stats={statsBar}
-      actionStart={sensitiveToggle}
+      actionStart={props.sensitiveToggleInHeader ? undefined : sensitiveToggle}
       primaryFilters={
         <>
           {dateRangeFilter}
           {modelFilter}
-          {groupFilter}
           {typeFilter}
         </>
       }
-      advancedFilters={advancedFilters}
+      desktopSecondaryFilters={preciseFilters}
+      desktopExtraFilters={extraFilters}
       mobilePinnedFilters={dateRangeFilter}
       mobileFilters={
         <>
           {modelFilter}
-          {groupFilter}
           {typeFilter}
-          {advancedFilters}
+          {preciseFilters}
+          {extraFilters}
         </>
       }
       mobileFilterCount={
         [filters.model, filters.group, hasTypeFilter].filter(Boolean).length +
         expandedFilterCount
       }
-      hasAdvancedActiveFilters={hasExpandedFilters}
-      advancedFilterCount={expandedFilterCount}
       hasActiveFilters={hasAdditionalFilters}
       onSearch={() => handleApply()}
       searchLoading={fetchingLogs > 0}

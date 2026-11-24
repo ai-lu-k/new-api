@@ -69,9 +69,12 @@ interface TimingMetricsCellProps {
 export function TimingMetricsCell(props: TimingMetricsCellProps) {
   const { t } = useTranslation()
   const indicator = props.indicator ?? 'bar'
-  const showFirstToken = props.isStream
   const firstTokenSeconds =
     props.frtMs != null && props.frtMs > 0 ? props.frtMs / 1000 : null
+  // The compact card already prints stream and duration on their own lines;
+  // an "N/A" first-token line there is noise, so it only appears with a value.
+  const showFirstToken =
+    props.isStream && (props.compact ? firstTokenSeconds != null : true)
   const firstTokenVariant: StatusVariant =
     firstTokenSeconds == null
       ? 'neutral'
@@ -80,8 +83,10 @@ export function TimingMetricsCell(props: TimingMetricsCellProps) {
     props.useTimeSec,
     props.completionTokens
   )
+  // A missing first-token time is a dash, not the word "N/A": the row already
+  // reads as label/value pairs and the column is narrow.
   const firstTokenLabel =
-    firstTokenSeconds == null ? t('N/A') : formatUseTime(firstTokenSeconds)
+    firstTokenSeconds == null ? '—' : formatUseTime(firstTokenSeconds)
   const totalTimeLabel = formatUseTime(props.useTimeSec)
 
   const labels = (

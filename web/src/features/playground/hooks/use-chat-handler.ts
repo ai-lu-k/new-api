@@ -21,25 +21,34 @@ import { useTranslation } from 'react-i18next'
 
 import { handleServerError } from '@/lib/handle-server-error'
 
-import { sendChatCompletion } from '../api'
+import { sendChatCompletion, sendImageGeneration } from '../api'
 import { ERROR_MESSAGES } from '../constants'
 import {
+  applyChatCompletionResponse,
+  applyChatImageResponse,
+  applyImageGenerationResponse,
   applyStreamingChunk,
   buildChatCompletionPayload,
-  updateAssistantMessageWithError,
-  updateLastAssistantMessage,
-  parseRequestErrorDetails,
-  applyChatCompletionResponse,
+  buildImageGenerationRequest,
   completeAssistantMessage,
+  getImageGenerationImages,
+  getImageGenerationPrompt,
   hasChatCompletionChoice,
   isAssistantMessageFinal,
   isAssistantMessagePending,
+  parseRequestErrorDetails,
+  updateAssistantMessageWithError,
+  updateLastAssistantMessage,
+  type PlaygroundModelMode,
 } from '../lib'
 import type { Message, PlaygroundConfig, ParameterEnabled } from '../types'
 import { useStreamRequest } from './use-stream-request'
 
+type MessageUpdater = (message: Message) => Message
+
 interface UseChatHandlerOptions {
   config: PlaygroundConfig
+  mode: PlaygroundModelMode
   parameterEnabled: ParameterEnabled
   onMessageUpdate: (updater: (prev: Message[]) => Message[]) => void
 }
@@ -69,6 +78,7 @@ function mergePendingStreamChunk(
  */
 export function useChatHandler({
   config,
+  mode,
   parameterEnabled,
   onMessageUpdate,
 }: UseChatHandlerOptions) {
@@ -253,7 +263,8 @@ export function useChatHandler({
       const payload = buildChatCompletionPayload(
         messages,
         config,
-        parameterEnabled
+        parameterEnabled,
+        mode
       )
       void sendStreamRequest(
         payload,
@@ -264,6 +275,7 @@ export function useChatHandler({
     },
     [
       config,
+      mode,
       parameterEnabled,
       sendStreamRequest,
       discardPendingStreamUpdates,
@@ -273,14 +285,13 @@ export function useChatHandler({
     ]
   )
 
-  // Send non-streaming chat request
-  const sendNonStreamingChat = useCallback(
-    async (messages: Message[]) => {
-      const payload = buildChatCompletionPayload(
-        messages,
-        config,
-        parameterEnabled
-      )
+  // Run one non-streaming request and apply its result to the pending message.
+  // Both chat completions and image generation share this generation counter,
+  // abort controller and error handling.
+  const runNonStreamingRequest = useCallback(
+    async (
+      request: (signal: AbortSignal) => Promise<MessageUpdater | null>
+    ) => {
       const generation = requestGenerationRef.current + 1
       const abortController = new AbortController()
 
@@ -292,10 +303,7 @@ export function useChatHandler({
 
       try {
         setIsRequesting(true)
-        const response = await sendChatCompletion(
-          payload,
-          abortController.signal
-        )
+        const applyResponse = await request(abortController.signal)
         if (
           abortController.signal.aborted ||
           requestGenerationRef.current !== generation
@@ -303,21 +311,14 @@ export function useChatHandler({
           return
         }
 
-        if (!hasChatCompletionChoice(response)) {
+        if (!applyResponse) {
           handleStreamError(generation, ERROR_MESSAGES.API_REQUEST_ERROR)
           return
         }
 
         onMessageUpdate((prev) => {
           if (requestGenerationRef.current !== generation) return prev
-          return updateLastAssistantMessage(prev, (message) => {
-            const updatedMessage = applyChatCompletionResponse(
-              message,
-              response
-            )
-
-            return updatedMessage ?? message
-          })
+          return updateLastAssistantMessage(prev, applyResponse)
         })
       } catch (error: unknown) {
         if (
@@ -337,8 +338,6 @@ export function useChatHandler({
       }
     },
     [
-      config,
-      parameterEnabled,
       stopStream,
       discardPendingStreamUpdates,
       onMessageUpdate,
@@ -346,16 +345,83 @@ export function useChatHandler({
     ]
   )
 
-  // Send chat request (stream or non-stream based on config)
+  // Send non-streaming chat request
+  const sendNonStreamingChat = useCallback(
+    (messages: Message[]) =>
+      runNonStreamingRequest(async (signal) => {
+        const response = await sendChatCompletion(
+          buildChatCompletionPayload(messages, config, parameterEnabled, mode),
+          signal
+        )
+
+        if (!hasChatCompletionChoice(response)) {
+          return null
+        }
+
+        // A chat-image model answers with a markdown image whose source is a
+        // megabyte of base64. Lift those out into the image list so the message
+        // shows a picture instead of raw markdown the renderer refuses to parse.
+        if (mode === 'chat-image') {
+          const content = response.choices[0]?.message?.content ?? ''
+
+          return (message) =>
+            applyChatImageResponse(message, content) ??
+            applyChatCompletionResponse(message, response) ??
+            message
+        }
+
+        return (message) =>
+          applyChatCompletionResponse(message, response) ?? message
+      }),
+    [config, mode, parameterEnabled, runNonStreamingRequest]
+  )
+
+  // Send image generation request. Only the latest user turn is used as the
+  // prompt, and the endpoint never streams.
+  const sendImageGenerationRequest = useCallback(
+    (messages: Message[]) =>
+      runNonStreamingRequest(async (signal) => {
+        const response = await sendImageGeneration(
+          buildImageGenerationRequest(
+            getImageGenerationPrompt(messages),
+            config
+          ),
+          signal
+        )
+        const images = getImageGenerationImages(response)
+
+        if (images.length === 0) {
+          return null
+        }
+
+        return (message) => applyImageGenerationResponse(message, images)
+      }),
+    [config, runNonStreamingRequest]
+  )
+
+  // Send request. Direct image generation bypasses chat completions entirely;
+  // chat-image models keep the chat flow but never stream.
   const sendChat = useCallback(
     (messages: Message[]) => {
-      if (config.stream) {
-        sendStreamingChat(messages)
-      } else {
-        sendNonStreamingChat(messages)
+      if (mode === 'image') {
+        sendImageGenerationRequest(messages)
+        return
       }
+
+      if (mode === 'text' && config.stream) {
+        sendStreamingChat(messages)
+        return
+      }
+
+      sendNonStreamingChat(messages)
     },
-    [config.stream, sendStreamingChat, sendNonStreamingChat]
+    [
+      mode,
+      config.stream,
+      sendImageGenerationRequest,
+      sendStreamingChat,
+      sendNonStreamingChat,
+    ]
   )
 
   // Stop generation

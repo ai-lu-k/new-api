@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -68,6 +68,8 @@ const STEPS = [
     descriptionKey: 'Confirm settings and finish setup',
   },
 ]
+
+const SETUP_FORM_ID = 'setup-wizard-form'
 
 const DEFAULT_FORM_VALUES: SetupFormValues = {
   username: '',
@@ -282,12 +284,22 @@ export function SetupWizard() {
     mutation.mutate(payload)
   }
 
+  // Enter inside any field of the wizard takes the same step the buttons take.
+  const handleFormSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (currentStep === STEPS.length - 1) {
+      void handleSubmit()
+      return
+    }
+    handleNextStep()
+  }
+
   return (
-    <div className='bg-muted/40 relative min-h-svh py-10'>
+    <div className='bg-background relative min-h-svh py-10'>
       <div className='absolute top-4 right-4 sm:top-6 sm:right-6'>
         <LanguageSwitcher />
       </div>
-      <div className='container mx-auto flex max-w-5xl flex-col gap-8 px-4 sm:px-6'>
+      <div className='mx-auto flex w-full max-w-[880px] flex-col gap-8 px-4 sm:px-6'>
         <div className='flex flex-col items-center gap-3'>
           <div className='relative h-12 w-12'>
             {systemConfigLoading ? (
@@ -303,7 +315,7 @@ export function SetupWizard() {
           {systemConfigLoading ? (
             <Skeleton className='h-7 w-40' />
           ) : (
-            <h1 className='text-2xl font-semibold tracking-tight'>
+            <h1 className='text-2xl leading-[1.15] font-bold tracking-tight sm:text-[32px]'>
               {t('Initialize')} {systemName}
             </h1>
           )}
@@ -314,7 +326,7 @@ export function SetupWizard() {
           </p>
         </div>
 
-        <Card className='shadow-lg'>
+        <Card className='rounded-lg shadow-none'>
           <CardHeader className='space-y-2'>
             <CardTitle className='text-xl font-semibold'>
               {t('System setup wizard')}
@@ -332,20 +344,19 @@ export function SetupWizard() {
                 return (
                   <li
                     key={step.titleKey}
-                    className={cn('rounded-xl border p-3', {
-                      'border-primary ring-primary/20 ring-2': isActive,
-                      'border-primary/40 bg-primary/5':
-                        !isActive && isCompleted,
-                      'border-muted bg-card': !isActive && !isCompleted,
+                    className={cn('rounded-lg border p-3', {
+                      'border-foreground': isActive,
+                      'border-border': !isActive && !isCompleted,
+                      'border-border bg-muted/40': !isActive && isCompleted,
                     })}
                   >
                     <div className='flex items-start gap-3'>
                       <span
                         className={cn(
-                          'flex size-6 items-center justify-center rounded-md border text-xs font-semibold',
+                          'flex size-6 items-center justify-center rounded-sm border text-xs font-semibold',
                           isActive || isCompleted
-                            ? 'border-primary bg-primary text-primary-foreground'
-                            : 'border-muted-foreground/40 text-muted-foreground'
+                            ? 'border-foreground bg-foreground text-background'
+                            : 'border-border text-muted-foreground'
                         )}
                       >
                         {index + 1}
@@ -374,8 +385,9 @@ export function SetupWizard() {
             {!isLoading && !isError && (
               <Form {...form}>
                 <form
+                  id={SETUP_FORM_ID}
                   className='space-y-6'
-                  onSubmit={(event) => event.preventDefault()}
+                  onSubmit={handleFormSubmit}
                 >
                   {currentStepComponent}
                 </form>
@@ -388,9 +400,8 @@ export function SetupWizard() {
               <StepNavigation
                 currentStep={currentStep}
                 totalSteps={STEPS.length}
+                formId={SETUP_FORM_ID}
                 onBack={handlePreviousStep}
-                onNext={handleNextStep}
-                onSubmit={handleSubmit}
                 isSubmitting={mutation.isPending}
               />
             </CardFooter>

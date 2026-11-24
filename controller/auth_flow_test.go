@@ -863,7 +863,11 @@ func legacyGitHubOAuthLogin(t *testing.T, provider *legacyGitHubOAuthProvider) *
 	router := gin.New()
 	router.GET("/api/oauth/:provider", HandleOAuth)
 	response := httptest.NewRecorder()
-	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/oauth/"+slug+"?state="+token+"&code=provider-code", nil))
+	request := httptest.NewRequest(http.MethodGet, "/api/oauth/"+slug+"?state="+token+"&code=provider-code", nil)
+	device := base64.RawURLEncoding.EncodeToString(make([]byte, 32))
+	device += "." + common.GenerateHMACWithKey([]byte("reward-device:"+common.CryptoSecret), device)
+	request.AddCookie(&http.Cookie{Name: rewardDeviceCookie, Value: device})
+	router.ServeHTTP(response, request)
 	return response
 }
 

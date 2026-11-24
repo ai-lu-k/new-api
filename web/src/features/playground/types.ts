@@ -49,6 +49,12 @@ export interface Message {
   isContentComplete?: boolean
   status?: MessageStatus
   errorCode?: string | null
+  /**
+   * Image generation results (URL or `data:` URL). Never persisted: the
+   * storage schema omits this field on purpose, so a refresh keeps only the
+   * short summary in `versions[0].content`.
+   */
+  images?: string[]
 }
 
 // API payload types
@@ -115,6 +121,27 @@ export interface ChatCompletionResponse {
   }
 }
 
+// Image generation types
+export interface ImageGenerationRequest {
+  model: string
+  group?: string
+  prompt: string
+  n?: number
+  size?: string
+  quality?: string
+}
+
+export interface ImageGenerationItem {
+  url?: string
+  b64_json?: string
+  revised_prompt?: string
+}
+
+export interface ImageGenerationResponse {
+  created: number
+  data: ImageGenerationItem[]
+}
+
 // Configuration types
 export interface PlaygroundConfig {
   model: string
@@ -126,6 +153,9 @@ export interface PlaygroundConfig {
   presence_penalty: number
   seed: number | null
   stream: boolean
+  image_size: string
+  image_quality: string
+  image_n: number
 }
 
 export interface ParameterEnabled {
@@ -141,6 +171,15 @@ export interface ParameterEnabled {
 export interface ModelOption {
   label: string
   value: string
+  /** Dropdown group heading, derived from the backend image-output list. */
+  category?: string
+  /** True when the backend routes this model through `/pg/images/generations`. */
+  isImageGeneration?: boolean
+  /**
+   * True when the model can return an image, including models that answer with
+   * an inline `data:` image through chat completions.
+   */
+  isImageOutput?: boolean
 }
 
 export interface GroupOption {

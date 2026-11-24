@@ -23,3 +23,16 @@ func lockForUpdate(tx *gorm.DB) *gorm.DB {
 	}
 	return tx.Clauses(clause.Locking{Strength: "UPDATE"})
 }
+
+// lockUserRow serializes per-account accounting across gateway instances.
+// SQLite needs a write before any read to avoid a deferred-transaction upgrade
+// race; other dialects use the shared row-lock helper.
+func lockUserRow(tx *gorm.DB, userID int) error {
+	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
+		if err := tx.Model(&User{}).Where("id = ?", userID).UpdateColumn("id", gorm.Expr("id")).Error; err != nil {
+			return err
+		}
+	}
+	var user User
+	return lockForUpdate(tx).Select("id").First(&user, userID).Error
+}

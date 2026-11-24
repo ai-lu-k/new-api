@@ -5,12 +5,14 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -18,7 +20,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -28,9 +34,11 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/oauth"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/fxamacker/cbor/v2"
 	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/pquerna/otp/totp"
 	"github.com/stretchr/testify/assert"
@@ -53,8 +61,23 @@ func setupSecurityEnrollmentTest(t *testing.T) (*model.User, service.AuthIdentit
 		dialect = "sqlite"
 	}
 	dsn := os.Getenv("TEST_" + strings.ToUpper(dialect) + "_DSN")
-	db, _ := newAuditTestDatabase(t, dialect, dsn)
-	logDB, _ := newAuditTestDatabase(t, dialect, dsn)
+	var db, logDB *gorm.DB
+	if dialect == "sqlite" {
+		openSQLite := func() *gorm.DB {
+			sqliteDSN, err := common.SQLiteDSN(filepath.Join(t.TempDir(), "security.db"))
+			require.NoError(t, err)
+			connection, err := gorm.Open(sqlite.Open(sqliteDSN), &gorm.Config{})
+			require.NoError(t, err)
+			sqlDB, err := connection.DB()
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
+			return connection
+		}
+		db, logDB = openSQLite(), openSQLite()
+	} else {
+		db, _ = newAuditTestDatabase(t, dialect, dsn)
+		logDB, _ = newAuditTestDatabase(t, dialect, dsn)
+	}
 	db.Logger = logger.Default.LogMode(logger.Silent)
 	logDB.Logger = logger.Default.LogMode(logger.Silent)
 	versionQuery := "SELECT VERSION()"
@@ -64,7 +87,7 @@ func setupSecurityEnrollmentTest(t *testing.T) (*model.User, service.AuthIdentit
 	var version string
 	require.NoError(t, db.Raw(versionQuery).Scan(&version).Error)
 	t.Logf("database: %s %s", dialect, version)
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.TwoFA{}, &model.TwoFABackupCode{}, &model.PasskeyCredential{}, &model.AuthFlow{}, &model.UserOAuthBinding{}, &model.Option{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.TwoFA{}, &model.TwoFABackupCode{}, &model.PasskeyCredential{}, &model.AuthFlow{}, &model.UserOAuthBinding{}, &model.Option{}, &model.RegistrationReward{}, &model.RegistrationRewardLock{}))
 	require.NoError(t, logDB.AutoMigrate(&model.AuditLog{}))
 	model.DB, model.LOG_DB = db, logDB
 	dbType := common.DatabaseTypeSQLite
@@ -85,10 +108,6 @@ func setupSecurityEnrollmentTest(t *testing.T) (*model.User, service.AuthIdentit
 		common.RedisEnabled, common.SessionSecret = previousRedis, previousSecret
 		common.PasswordLoginEncryptionEnabled = previousEncryption
 		*system_setting.GetPasskeySettings() = previousSettings
-		connection, err := db.DB()
-		if err == nil {
-			_ = connection.Close()
-		}
 	})
 	password, err := common.Password2Hash("enrollment-password")
 	require.NoError(t, err)
@@ -107,6 +126,10 @@ func securityEnrollmentRequest(method, path, body, proof string, identity servic
 	c, _ := gin.CreateTestContext(response)
 	c.Request = httptest.NewRequest(method, path, strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
+	deviceSeed := sha256.Sum256([]byte(path + body))
+	deviceValue := base64.RawURLEncoding.EncodeToString(deviceSeed[:])
+	deviceValue += "." + common.GenerateHMACWithKey([]byte("reward-device:"+common.CryptoSecret), deviceValue)
+	c.Request.AddCookie(&http.Cookie{Name: rewardDeviceCookie, Value: deviceValue})
 	c.Request.Header.Set("X-Security-Proof", proof)
 	c.Set("id", identity.UserID)
 	c.Set("role", common.RoleCommonUser)
@@ -198,6 +221,7 @@ func TestSecurityEnrollmentAccessTokenMethodPolicy(t *testing.T) {
 				passwordScope = service.VerificationScopePasswordSet
 			}
 			for _, scope := range []string{service.VerificationScopeAccessTokenGenerate, service.VerificationScopeAccessTokenRevoke,
+				service.VerificationScopeTokenPlanKeyRead, service.VerificationScopeTokenPlanKeyRotate,
 				service.VerificationScopeAccountBind, service.VerificationScopeAccountUnbind, passwordScope} {
 				requirements, err := service.GetVerificationRequirements(identity, scope)
 				require.NoError(t, err)
@@ -1638,5 +1662,731 @@ func TestSecurityEnrollmentRejectsChangedFirstFactorPolicy(t *testing.T) {
 				assert.True(t, factor == nil || !factor.IsEnabled)
 			})
 		}
+	}
+}
+
+func TestSecurityEnrollmentTokenPlanKeys(t *testing.T) {
+	t.Setenv("CRYPTO_SECRET", "token-plan-test-encryption-secret-32-bytes")
+	user, identity := setupSecurityEnrollmentTest(t)
+	require.NoError(t, model.DB.AutoMigrate(&model.Token{}, &model.TokenPlanResetCoupon{}, &model.TokenPlanCouponBatch{}, &model.TokenPlanResetOperation{}, &model.TokenPlanAccount{}, &model.TokenPlanWeek{}))
+	account, err := model.EnsureTokenPlanAccount(user.Id)
+	require.NoError(t, err)
+	original, err := model.GetTokenByIds(account.TokenId, user.Id)
+	require.NoError(t, err)
+	// Billing consent requires its own one-use proof and cannot be granted by
+	// a key-read proof, expired proof, another user, or a replay.
+	for _, failure := range []string{"missing", "scope", "session", "user", "expired"} {
+		t.Run("settings/"+failure, func(t *testing.T) {
+			scope := service.VerificationScopeTokenPlanSettings
+			if failure == "scope" {
+				scope = service.VerificationScopeTokenPlanKeyRead
+			}
+			proof := issueSecurityEnrollmentProof(t, identity, service.VerificationOperation{Scope: scope}, "password")
+			requestIdentity := identity
+			if failure == "missing" {
+				proof = ""
+			}
+			if failure == "session" {
+				requestIdentity.SessionID = "another-session"
+			}
+			if failure == "user" {
+				requestIdentity.UserID++
+			}
+			if failure == "expired" {
+				require.NoError(t, model.DB.Model(&model.AuthFlow{}).Where("purpose = ?", model.AuthFlowPurposeSecurityProof).Update("expires_at", time.Now().Add(-time.Minute)).Error)
+			}
+			response := securityEnrollmentRequest("PATCH", "/api/token/plan/settings", `{"wallet_fallback":true}`, proof, requestIdentity, UpdateTokenPlanSettings)
+			assert.Equal(t, http.StatusForbidden, response.Code)
+			status, err := model.GetTokenPlanStatus(user.Id, time.Now())
+			require.NoError(t, err)
+			assert.False(t, status.WalletFallback)
+		})
+	}
+	for _, enabled := range []bool{true, false} {
+		proof, err := service.VerifySecurityInput(identity, service.VerificationInput{Scope: service.VerificationScopeTokenPlanSettings, Method: "password", Password: "enrollment-password"})
+		require.NoError(t, err)
+		payload := fmt.Sprintf(`{"wallet_fallback":%t,"user_id":99999}`, enabled)
+		response := securityEnrollmentRequest("PATCH", "/api/token/plan/settings", payload, proof.ProofToken, identity, UpdateTokenPlanSettings)
+		assert.Equal(t, http.StatusOK, response.Code)
+		status, err := model.GetTokenPlanStatus(user.Id, time.Now())
+		require.NoError(t, err)
+		assert.Equal(t, enabled, status.WalletFallback)
+		response = securityEnrollmentRequest("PATCH", "/api/token/plan/settings", payload, proof.ProofToken, identity, UpdateTokenPlanSettings)
+		assert.Contains(t, response.Body.String(), "SECURITY_PROOF_CONSUMED")
+	}
+	// The two switches are independent: saving one keeps the other, and either
+	// or both may be sent.
+	for _, toggle := range []struct {
+		payload string
+		wallet  bool
+		auto    bool
+	}{
+		{`{"wallet_fallback":true,"auto_reset_coupon":true}`, true, true},
+		{`{"wallet_fallback":false}`, false, true},
+		{`{"auto_reset_coupon":false}`, false, false},
+	} {
+		proof, err := service.VerifySecurityInput(identity, service.VerificationInput{Scope: service.VerificationScopeTokenPlanSettings, Method: "password", Password: "enrollment-password"})
+		require.NoError(t, err)
+		response := securityEnrollmentRequest("PATCH", "/api/token/plan/settings", toggle.payload, proof.ProofToken, identity, UpdateTokenPlanSettings)
+		require.Equal(t, http.StatusOK, response.Code)
+		status, err := model.GetTokenPlanStatus(user.Id, time.Now())
+		require.NoError(t, err)
+		assert.Equal(t, toggle.wallet, status.WalletFallback)
+		assert.Equal(t, toggle.auto, status.AutoResetCoupon)
+	}
+	for _, payload := range []string{`{}`, `{"wallet_fallback":"true"}`, `{"wallet_fallback":null}`, `{"auto_reset_coupon":"true"}`, `{"auto_reset_coupon":null}`, `{"wallet_fallback":true,"auto_reset_coupon":"true"}`} {
+		response := securityEnrollmentRequest("PATCH", "/api/token/plan/settings", payload, "", identity, UpdateTokenPlanSettings)
+		assert.Equal(t, http.StatusBadRequest, response.Code)
+	}
+	for _, endpoint := range []struct {
+		path, scope string
+		handler     gin.HandlerFunc
+	}{
+		{"/api/token/plan/key", service.VerificationScopeTokenPlanKeyRead, ReadTokenPlanKey},
+		{"/api/token/plan/rotate", service.VerificationScopeTokenPlanKeyRotate, ResetTokenPlanKey},
+	} {
+		for _, failure := range []string{"missing", "scope", "session", "user", "expired"} {
+			t.Run(endpoint.scope+"/"+failure, func(t *testing.T) {
+				scope := endpoint.scope
+				if failure == "scope" {
+					scope = service.VerificationScopeAccessTokenGenerate
+				}
+				proof := issueSecurityEnrollmentProof(t, identity, service.VerificationOperation{Scope: scope}, "password")
+				requestIdentity := identity
+				if failure == "missing" {
+					proof = ""
+				}
+				if failure == "session" {
+					requestIdentity.SessionID = "another-session"
+				}
+				if failure == "user" {
+					requestIdentity.UserID++
+				}
+				if failure == "expired" {
+					require.NoError(t, model.DB.Model(&model.AuthFlow{}).Where("purpose = ?", model.AuthFlowPurposeSecurityProof).Update("expires_at", time.Now().Add(-time.Minute)).Error)
+				}
+				response := securityEnrollmentRequest("POST", endpoint.path, "", proof, requestIdentity, endpoint.handler)
+				assert.Equal(t, http.StatusForbidden, response.Code)
+				assert.NotContains(t, response.Body.String(), original.Key)
+				unchanged, err := model.GetTokenByIds(account.TokenId, user.Id)
+				require.NoError(t, err)
+				assert.Equal(t, original.Key, unchanged.Key)
+			})
+		}
+		proof, err := service.VerifySecurityInput(identity, service.VerificationInput{Scope: endpoint.scope, Method: "password", Password: "enrollment-password"})
+		require.NoError(t, err)
+		response := securityEnrollmentRequest("POST", endpoint.path, "", proof.ProofToken, identity, endpoint.handler)
+		assert.Equal(t, http.StatusOK, response.Code)
+		var body securityEnrollmentResponse
+		require.NoError(t, common.Unmarshal(response.Body.Bytes(), &body))
+		require.True(t, body.Success, body.Message)
+		var payload struct {
+			Key string `json:"key"`
+		}
+		require.NoError(t, common.Unmarshal(body.Data, &payload))
+		assert.NotEmpty(t, payload.Key)
+		response = securityEnrollmentRequest("POST", endpoint.path, "", proof.ProofToken, identity, endpoint.handler)
+		assert.Contains(t, response.Body.String(), "SECURITY_PROOF_CONSUMED")
+		var audits []model.AuditLog
+		require.NoError(t, model.LOG_DB.Find(&audits).Error)
+		encoded, err := common.Marshal(audits)
+		require.NoError(t, err)
+		assert.NotContains(t, string(encoded), payload.Key)
+		assert.NotContains(t, string(encoded), proof.ProofToken)
+	}
+	rotated, err := model.GetTokenByIds(account.TokenId, user.Id)
+	require.NoError(t, err)
+	assert.NotEqual(t, original.Key, rotated.Key)
+	// Generic credential endpoints cannot bypass the plan-specific proof scope.
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest("POST", "/api/token/1/key", nil)
+	c.Set("id", user.Id)
+	c.Params = gin.Params{{Key: "id", Value: strconv.Itoa(account.TokenId)}}
+	GetTokenKey(c)
+	assert.NotContains(t, recorder.Body.String(), rotated.Key)
+	// API clients see the same weekly budget as the dashboard, not unlimited token quota.
+	require.NoError(t, model.DB.Model(user).UpdateColumn("used_quota", 1).Error)
+	require.NoError(t, model.DB.Model(user).UpdateColumn("level_quota", 1).Error)
+	_, err = model.ReserveTokenPlanQuota(user.Id, account.TokenId, 13, time.Now())
+	require.NoError(t, err)
+	plan, err := model.GetTokenPlanStatus(user.Id, time.Now())
+	require.NoError(t, err)
+	credential, err := model.ReadTokenPlanCredential(user.Id)
+	require.NoError(t, err)
+	for _, handler := range []gin.HandlerFunc{GetTokenUsage, GetTokenStatus} {
+		recorder = httptest.NewRecorder()
+		c, _ = gin.CreateTestContext(recorder)
+		c.Request = httptest.NewRequest("GET", "/api/usage/token/", nil)
+		c.Request.Header.Set("Authorization", "Bearer sk-"+credential)
+		c.Set("id", user.Id)
+		c.Set("token_id", account.TokenId)
+		handler(c)
+		require.Equal(t, http.StatusOK, recorder.Code)
+		var body map[string]any
+		require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &body))
+		if data, ok := body["data"].(map[string]any); ok {
+			body = data
+			assert.Equal(t, false, body["unlimited_quota"])
+		}
+		assert.EqualValues(t, plan.TotalQuota, body["total_granted"])
+		assert.EqualValues(t, 13, body["total_used"])
+		assert.EqualValues(t, plan.TotalQuota-13, body["total_available"])
+	}
+	require.NoError(t, model.DB.Model(user).UpdateColumn("quota", 1000).Error)
+	require.NoError(t, model.UpdateTokenPlanSettings(user.Id, model.TokenPlanSettings{WalletFallback: common.GetPointer(true)}))
+	for _, handler := range []gin.HandlerFunc{GetTokenUsage, GetTokenStatus} {
+		recorder = httptest.NewRecorder()
+		c, _ = gin.CreateTestContext(recorder)
+		c.Request = httptest.NewRequest("GET", "/api/usage/token/", nil)
+		c.Request.Header.Set("Authorization", "Bearer sk-"+credential)
+		c.Set("id", user.Id)
+		c.Set("token_id", account.TokenId)
+		handler(c)
+		var body map[string]any
+		require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &body))
+		if data, ok := body["data"].(map[string]any); ok {
+			body = data
+		}
+		assert.EqualValues(t, plan.TotalQuota-13+1000, body["total_available"], "opted-in clients must not stop when the free allowance reaches zero")
+	}
+
+}
+
+// TestRegistrationReferralAttribution covers the registration contract for the
+// referral ladder: an unknown code is rejected instead of silently dropped, and
+// a valid code records the relation and issues both vouchers.
+func TestRegistrationReferralAttribution(t *testing.T) {
+	_, _ = setupSecurityEnrollmentTest(t)
+	require.NoError(t, model.DB.AutoMigrate(
+		&model.Token{}, &model.TokenPlanAccount{}, &model.TokenPlanWeek{},
+		&model.TokenPlanCouponBatch{}, &model.TokenPlanResetCoupon{}, &model.ReferralReward{},
+		&model.Voucher{}, &model.VoucherBatch{},
+	))
+	previousRegister, previousPassword, previousVerification := common.RegisterEnabled, common.PasswordRegisterEnabled, common.EmailVerificationEnabled
+	common.RegisterEnabled, common.PasswordRegisterEnabled, common.EmailVerificationEnabled = true, true, false
+	t.Cleanup(func() {
+		common.RegisterEnabled, common.PasswordRegisterEnabled, common.EmailVerificationEnabled = previousRegister, previousPassword, previousVerification
+	})
+
+	inviter := &model.User{Username: "referral-inviter", AffCode: "REFCODE", Role: common.RoleCommonUser, Status: common.UserStatusEnabled}
+	require.NoError(t, model.DB.Create(inviter).Error)
+
+	unknown := securityEnrollmentRequest("POST", "/api/user/register", `{"username":"referral-unknown","password":"referral-test-password","aff_code":"NOSUCH"}`, "", service.AuthIdentity{}, Register)
+	assert.Contains(t, unknown.Body.String(), `"success":false`)
+	var count int64
+	require.NoError(t, model.DB.Model(&model.User{}).Where("username = ?", "referral-unknown").Count(&count).Error)
+	assert.Zero(t, count, "an unknown referral code must not create an account")
+
+	device := base64.RawURLEncoding.EncodeToString(make([]byte, 32))
+	device += "." + common.GenerateHMACWithKey([]byte("reward-device:"+common.CryptoSecret), device)
+	valid := securityEnrollmentRequest("POST", "/api/user/register", fmt.Sprintf(`{"username":"referral-invitee","password":"referral-test-password","aff_code":%q}`, inviter.AffCode), "", service.AuthIdentity{}, func(c *gin.Context) {
+		c.Request.RemoteAddr = "192.0.2.100:1234"
+		c.Request.AddCookie(&http.Cookie{Name: rewardDeviceCookie, Value: device})
+		Register(c)
+	})
+	require.Contains(t, valid.Body.String(), `"success":true`, valid.Body.String())
+	var invitee model.User
+	require.NoError(t, model.DB.Where("username = ?", "referral-invitee").First(&invitee).Error)
+	assert.Equal(t, inviter.Id, invitee.InviterId)
+
+	var reward model.ReferralReward
+	require.NoError(t, model.DB.Where("invitee_id = ?", invitee.Id).First(&reward).Error)
+	assert.Equal(t, model.ReferralRewardIssued, reward.Status)
+	assert.Equal(t, model.ReferralInviteeRewardYuan, reward.InviteeMultiplier)
+	assert.Equal(t, 1, reward.InviterMultiplier, "the first rewarded invitation pays 1 yuan")
+	assert.NotZero(t, reward.InviteeVoucherId)
+	assert.NotZero(t, reward.InviterVoucherId)
+	var vouchers int64
+	require.NoError(t, model.DB.Model(&model.Voucher{}).Where("source = ?", model.VoucherSourceReferral).Count(&vouchers).Error)
+	assert.EqualValues(t, 2, vouchers, "both sides receive exactly one voucher")
+}
+
+// The provider is replaced by a local server that checks the signed request,
+// so the production signing path runs exactly as it does against GeeTest.
+// geeTestProvider stands in for the real service. It validates the signed
+// request, accepts only lot numbers it issued, and can simulate a revoked
+// account or an unreachable host.
+type geeTestProvider struct {
+	issued sync.Map
+	mode   atomic.Value
+	server *httptest.Server
+	proof  func() geeTestProof
+}
+
+func newGeeTestProvider(t *testing.T) *geeTestProvider {
+	t.Helper()
+	previousId, previousKey, previousUrl := common.GeeTestCaptchaId, common.GeeTestCaptchaKey, service.GeeTestValidateURL
+	common.GeeTestCaptchaId, common.GeeTestCaptchaKey = "test-captcha-id", "test-captcha-key"
+	provider := &geeTestProvider{}
+	provider.mode.Store("ready")
+	provider.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, r.ParseForm())
+		switch provider.mode.Load() {
+		case "revoked":
+			_, _ = w.Write([]byte(`{"status":"error","code":"-50102","msg":"illegal captcha_id"}`))
+			return
+		case "down":
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		lotNumber := r.PostForm.Get("lot_number")
+		mac := hmac.New(sha256.New, []byte("test-captcha-key"))
+		mac.Write([]byte(lotNumber))
+		_, known := provider.issued.Load(lotNumber)
+		if known && r.URL.Query().Get("captcha_id") == "test-captcha-id" && hex.EncodeToString(mac.Sum(nil)) == r.PostForm.Get("sign_token") {
+			_, _ = w.Write([]byte(`{"result":"success","status":"success"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"result":"fail","reason":"invalid lot_number","status":"success"}`))
+	}))
+	t.Cleanup(func() {
+		provider.server.Close()
+		common.GeeTestCaptchaId, common.GeeTestCaptchaKey, service.GeeTestValidateURL = previousId, previousKey, previousUrl
+		service.ResetGeeTestHealth()
+	})
+	service.GeeTestValidateURL = provider.server.URL
+	service.ResetGeeTestHealth()
+	var counter atomic.Int64
+	provider.proof = func() geeTestProof {
+		lotNumber := fmt.Sprintf("lot-%d", counter.Add(1))
+		provider.issued.Store(lotNumber, true)
+		return geeTestProof{LotNumber: lotNumber, CaptchaOutput: "output", PassToken: "pass-token", GenTime: strconv.FormatInt(time.Now().Unix(), 10)}
+	}
+	return provider
+}
+
+func (p *geeTestProvider) setMode(mode string) {
+	p.mode.Store(mode)
+	service.ResetGeeTestHealth()
+}
+
+func TestRegistrationHumanProofRejectsForgeryAndDegradesWithoutProvider(t *testing.T) {
+	setupSecurityEnrollmentTest(t)
+	provider := newGeeTestProvider(t)
+	verify := func(proof *geeTestProof) bool {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest("POST", "/registration-verification/code", nil)
+		return verifyGeeTest(c, proof, "registration_human")
+	}
+	for _, incomplete := range []geeTestProof{
+		{},
+		{LotNumber: "lot", CaptchaOutput: "output", PassToken: "pass-token"},
+		{CaptchaOutput: "output", PassToken: "pass-token", GenTime: "not-a-time"},
+		{LotNumber: strings.Repeat("x", 257), CaptchaOutput: "output", PassToken: "pass-token", GenTime: "1"},
+	} {
+		assert.False(t, verify(&incomplete))
+	}
+
+	forged := provider.proof()
+	forged.LotNumber = "forged-lot"
+	assert.False(t, verify(&forged), "the provider rejects a lot number it never issued")
+
+	accepted := provider.proof()
+	assert.True(t, verify(&accepted))
+	assert.False(t, verify(&accepted), "a consumed solution cannot be replayed")
+
+	concurrent := provider.proof()
+	var winners atomic.Int32
+	var workers sync.WaitGroup
+	for range 2 {
+		workers.Go(func() {
+			if verify(&concurrent) {
+				winners.Add(1)
+			}
+		})
+	}
+	workers.Wait()
+	assert.EqualValues(t, 1, winners.Load(), "concurrent replay must have exactly one winner")
+
+	assert.False(t, verify(nil), "a missing solution cannot pass while the provider answers")
+
+	provider.setMode("revoked")
+	assert.True(t, verify(nil), "a revoked captcha id degrades instead of locking every visitor out")
+
+	provider.setMode("down")
+	assert.True(t, verify(nil), "an unreachable provider degrades instead of locking every visitor out")
+
+	provider.setMode("ready")
+	assert.False(t, verify(nil), "recovery requires a solution again")
+}
+func TestCheckinRequiresHumanVerificationWhenConfigured(t *testing.T) {
+	user, _ := setupSecurityEnrollmentTest(t)
+	require.NoError(t, model.DB.AutoMigrate(&model.Checkin{}))
+	setting := operation_setting.GetCheckinSetting()
+	previous := *setting
+	t.Cleanup(func() { *setting = previous })
+	setting.Enabled = true
+
+	checkin := func(body string) (bool, string) {
+		response := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(response)
+		c.Set("id", user.Id)
+		c.Request = httptest.NewRequest("POST", "/api/user/checkin", strings.NewReader(body))
+		DoCheckin(c)
+		var result struct {
+			Success bool   `json:"success"`
+			Message string `json:"message"`
+		}
+		require.NoError(t, common.Unmarshal(response.Body.Bytes(), &result))
+		return result.Success, result.Message
+	}
+
+	// Without a configured provider the endpoint keeps its previous behaviour.
+	success, message := checkin(`{}`)
+	assert.True(t, success, "check-in stays open when no captcha is configured: %s", message)
+	require.NoError(t, model.DB.Where("user_id = ?", user.Id).Delete(&model.Checkin{}).Error)
+
+	provider := newGeeTestProvider(t)
+	success, message = checkin(`{}`)
+	assert.False(t, success, "a script cannot claim the daily award without a solution")
+	assert.Contains(t, message, "Human verification failed")
+
+	data, err := common.Marshal(map[string]any{"captcha": provider.proof()})
+	require.NoError(t, err)
+	success, message = checkin(string(data))
+	assert.True(t, success, message)
+}
+
+func TestRegistrationRiskBlocksEveryAccountCreationEntry(t *testing.T) {
+	setupSecurityEnrollmentTest(t)
+	t.Setenv("REGISTRATION_REWARD_IP_THRESHOLD", "1")
+	oldRegister, oldPassword, oldEmail, oldWechat, oldWechatServer := common.RegisterEnabled, common.PasswordRegisterEnabled, common.EmailVerificationEnabled, common.WeChatAuthEnabled, common.WeChatServerAddress
+	common.RegisterEnabled, common.PasswordRegisterEnabled, common.WeChatAuthEnabled, common.EmailVerificationEnabled = true, true, true, false
+	t.Cleanup(func() {
+		common.RegisterEnabled, common.PasswordRegisterEnabled, common.EmailVerificationEnabled, common.WeChatAuthEnabled, common.WeChatServerAddress = oldRegister, oldPassword, oldEmail, oldWechat, oldWechatServer
+	})
+	response := securityEnrollmentRequest("POST", "/api/user/register", `{"username":"risk-password","password":"risk-test-password"}`, "", service.AuthIdentity{}, Register)
+	assert.Contains(t, response.Body.String(), `"success":false`)
+	for _, provider := range []oauth.Provider{&authFlowTestOAuthProvider{}, oauth.NewGenericOAuthProvider(&model.CustomOAuthProvider{Id: 123, Name: "Risk custom", Slug: "risk-custom", Enabled: true})} {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest("GET", "/callback", nil)
+		user, _, err := findOrCreateOAuthUser(c, provider, &oauth.OAuthUser{ProviderUserID: "risk-oauth", Username: "risk-oauth"}, &oauth.OAuthToken{}, "")
+		require.ErrorIs(t, err, model.ErrRegistrationVerificationRequired)
+		assert.Nil(t, user)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"success":true,"data":"risk-wechat-subject"}`))
+	}))
+	defer server.Close()
+	common.WeChatServerAddress = server.URL
+	response = securityEnrollmentRequest("POST", "/api/oauth/wechat", `{"code":"fixture"}`, "", service.AuthIdentity{}, WeChatAuth)
+	assert.Contains(t, response.Body.String(), `"success":false`)
+	var count int64
+	require.NoError(t, model.DB.Model(&model.User{}).Where("username IN ? OR wechat_id = ?", []string{"risk-password", "risk-oauth"}, "risk-wechat-subject").Count(&count).Error)
+	assert.Zero(t, count, "every path rolls back new accounts without a valid proof")
+}
+
+func TestRegistrationRejectionsPreserveUserIDsAndExcludeSecrets(t *testing.T) {
+	for _, test := range []struct {
+		name, reason, code string
+	}{
+		{"missing_code", "email_verification_required", ""},
+		{"wrong_code", "email_verification_invalid", ""},
+		{"missing_device", "registration_verification_required", "REGISTRATION_VERIFICATION_REQUIRED"},
+		{"missing_proof", "registration_verification_required", "REGISTRATION_VERIFICATION_REQUIRED"},
+		{"expired_proof", "registration_verification_required", "REGISTRATION_VERIFICATION_REQUIRED"},
+		{"replayed_proof", "registration_verification_required", "REGISTRATION_VERIFICATION_REQUIRED"},
+		{"wrong_ip", "registration_verification_required", "REGISTRATION_VERIFICATION_REQUIRED"},
+		{"missing_consent", "legal_consent_required", "LEGAL_CONSENT_REQUIRED"},
+		{"stale_consent", "legal_version_changed", "LEGAL_CONSENT_REQUIRED"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			previous, _ := setupLegalTest(t)
+			version, err := model.PublishLegalVersion(map[string]string{"legal.user_agreement": "Registration terms"}, true, previous.Id, 0)
+			require.NoError(t, err)
+			oldRegister, oldPassword, oldEmail := common.RegisterEnabled, common.PasswordRegisterEnabled, common.EmailVerificationEnabled
+			common.RegisterEnabled, common.PasswordRegisterEnabled, common.EmailVerificationEnabled = true, true, true
+			t.Cleanup(func() {
+				common.RegisterEnabled, common.PasswordRegisterEnabled, common.EmailVerificationEnabled = oldRegister, oldPassword, oldEmail
+			})
+			t.Setenv("REGISTRATION_REWARD_IP_THRESHOLD", "1000000")
+			const email, password, code = "registration-private@example.test", "registration-private-password", "123456"
+			common.RegisterVerificationCodeWithKey(email, code, common.EmailVerificationPurpose)
+			t.Cleanup(func() { common.DeleteKey(email, common.EmailVerificationPurpose) })
+			acceptance := &model.LegalAcceptance{Accepted: true, VersionId: version.Id}
+			if test.name == "missing_consent" {
+				acceptance = nil
+			}
+			if test.name == "stale_consent" {
+				acceptance.VersionId++
+			}
+			input := map[string]any{"username": "private-signup", "password": password, "email": email, "verification_code": code, "legal_consent": acceptance}
+			if test.name == "missing_code" {
+				delete(input, "verification_code")
+			}
+			if test.name == "wrong_code" {
+				input["verification_code"] = "654321"
+			}
+			payload, err := common.Marshal(input)
+			require.NoError(t, err)
+			var output bytes.Buffer
+			common.LogWriterMu.Lock()
+			previousWriter := gin.DefaultErrorWriter
+			gin.DefaultErrorWriter = &output
+			common.LogWriterMu.Unlock()
+			t.Cleanup(func() {
+				common.LogWriterMu.Lock()
+				gin.DefaultErrorWriter = previousWriter
+				common.LogWriterMu.Unlock()
+			})
+			var proof string
+			requestID := "registration-request-" + test.name
+			response := securityEnrollmentRequest("POST", "/api/user/register", string(payload), "", service.AuthIdentity{}, func(c *gin.Context) {
+				c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), common.RequestIdKey, requestID))
+				if test.name == "missing_device" {
+					c.Request.Header.Del("Cookie")
+				}
+				if strings.HasSuffix(test.name, "proof") || test.name == "wrong_ip" {
+					t.Setenv("REGISTRATION_REWARD_IP_THRESHOLD", "1")
+					if test.name != "missing_proof" {
+						risk := registrationRisk(c)
+						if test.name == "wrong_ip" {
+							risk.IPHash = "another-ip-signal"
+						}
+						now := time.Now()
+						if test.name == "expired_proof" {
+							now = now.Add(-11 * time.Minute)
+						}
+						flow, err := model.StartRegistrationVerification(risk, email, code, time.Now())
+						require.NoError(t, err)
+						proof, err = model.CompleteRegistrationVerification(risk, flow, code, now)
+						require.NoError(t, err)
+						if test.name == "replayed_proof" {
+							require.NoError(t, model.ClaimExternalAuthAssertion("registration_reward_proof", proof, now.Add(10*time.Minute)))
+						}
+						c.Request.AddCookie(&http.Cookie{Name: registrationProofCookie, Value: proof})
+					}
+				}
+				Register(c)
+			})
+			var result securityEnrollmentResponse
+			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &result))
+			assert.False(t, result.Success)
+			assert.Equal(t, test.code, result.Code)
+			if test.code == "" {
+				assert.Equal(t, http.StatusOK, response.Code)
+			} else {
+				assert.Equal(t, http.StatusConflict, response.Code)
+			}
+			var count int64
+			require.NoError(t, model.DB.Model(&model.User{}).Where("username = ?", "private-signup").Count(&count).Error)
+			assert.Zero(t, count)
+			next := &model.User{Username: "next-signup", AffCode: "next"}
+			require.NoError(t, model.DB.Create(next).Error)
+			assert.Equal(t, previous.Id+1, next.Id, "predictable rejection must not consume a user ID")
+			assert.Contains(t, output.String(), requestID)
+			assert.Contains(t, output.String(), "reason="+test.reason)
+			for _, secret := range []string{email, password, code, "654321", "private-signup", proof} {
+				if secret != "" {
+					assert.NotContains(t, output.String(), secret)
+				}
+			}
+		})
+	}
+}
+
+// releasedLegalUser44 is the existing v1.0.0-rc.44 schema fixture. Registration
+// risk state is additive: upgrades preserve data and never invent old claims.
+func TestRegistrationUpgradePreservesReleasedAccounts(t *testing.T) {
+	dialect := os.Getenv("TEST_SECURITY_DIALECT")
+	if dialect == "" {
+		dialect = "sqlite"
+	}
+	db, _ := newAuditTestDatabase(t, dialect, os.Getenv("TEST_"+strings.ToUpper(dialect)+"_DSN"))
+	require.NoError(t, db.AutoMigrate(&releasedLegalUser44{}))
+	legacy := releasedLegalUser44{Username: "released-reward-user", Password: "released-hash", Quota: 1234, AffCode: "released-aff", AffQuota: 400, AffHistoryQuota: 700}
+	require.NoError(t, db.Create(&legacy).Error)
+	for range 2 {
+		require.NoError(t, db.AutoMigrate(&model.User{}, &model.RegistrationReward{}, &model.RegistrationRewardLock{}, &model.AuthFlow{}))
+	}
+	var stored releasedLegalUser44
+	require.NoError(t, db.First(&stored, legacy.Id).Error)
+	assert.Equal(t, legacy.Username, stored.Username)
+	assert.Equal(t, legacy.Password, stored.Password)
+	assert.Equal(t, legacy.Quota, stored.Quota)
+	assert.Equal(t, legacy.AffQuota, stored.AffQuota)
+	assert.Equal(t, legacy.AffHistoryQuota, stored.AffHistoryQuota)
+	var count int64
+	require.NoError(t, db.Model(&model.RegistrationReward{}).Count(&count).Error)
+	assert.Zero(t, count)
+	duplicate := releasedLegalUser44{Username: legacy.Username, Password: "other", AffCode: "unique-other"}
+	assert.Error(t, db.Create(&duplicate).Error, "existing username uniqueness survives the upgrade")
+	claim := model.RegistrationReward{UserId: legacy.Id, Reason: "device_reuse", CreatedAt: time.Now().Unix()}
+	require.NoError(t, db.Create(&claim).Error)
+	assert.Error(t, db.Create(&model.RegistrationReward{UserId: legacy.Id}).Error, "one entitlement per account")
+}
+
+func TestRegistrationDeviceCookieIsStableAndTamperingRequiresVerification(t *testing.T) {
+	setupSecurityEnrollmentTest(t)
+	first := securityEnrollmentRequest("GET", "/api/user/registration-device", "", "", service.AuthIdentity{}, func(c *gin.Context) { c.Request.Header.Del("Cookie"); RegistrationRewardDevice(c) })
+	require.Contains(t, first.Body.String(), `"required":false`)
+	cookies := first.Result().Cookies()
+	require.Len(t, cookies, 1)
+	assert.True(t, cookies[0].HttpOnly)
+	assert.Equal(t, http.SameSiteLaxMode, cookies[0].SameSite)
+	again := securityEnrollmentRequest("GET", "/api/user/registration-device", "", "", service.AuthIdentity{}, func(c *gin.Context) {
+		c.Request.Header.Del("Cookie")
+		c.Request.AddCookie(cookies[0])
+		RegistrationRewardDevice(c)
+	})
+	assert.Empty(t, again.Result().Cookies(), "reloads preserve the browser signal")
+	require.Contains(t, again.Body.String(), `"required":false`)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest("POST", "/register", nil)
+	c.Request.AddCookie(&http.Cookie{Name: rewardDeviceCookie, Value: cookies[0].Value + "tampered"})
+	assert.Empty(t, registrationRisk(c).DeviceHash)
+	repaired := securityEnrollmentRequest("GET", "/api/user/registration-device", "", "", service.AuthIdentity{}, func(c *gin.Context) {
+		c.Request.Header.Del("Cookie")
+		c.Request.AddCookie(&http.Cookie{Name: rewardDeviceCookie, Value: "invalid"})
+		RegistrationRewardDevice(c)
+	})
+	assert.Contains(t, repaired.Body.String(), `"required":false`, "the newly issued device is used for the same preflight response")
+}
+
+func TestRegistrationVerifiedProofAllowsAlternativeEntries(t *testing.T) {
+	setupSecurityEnrollmentTest(t)
+	require.NoError(t, model.DB.AutoMigrate(&model.LegalVersion{}, &model.LegalConsent{}))
+	t.Setenv("REGISTRATION_REWARD_IP_THRESHOLD", "1")
+	oldRegister, oldWechat, oldServer := common.RegisterEnabled, common.WeChatAuthEnabled, common.WeChatServerAddress
+	common.RegisterEnabled, common.WeChatAuthEnabled = true, true
+	t.Cleanup(func() {
+		common.RegisterEnabled, common.WeChatAuthEnabled, common.WeChatServerAddress = oldRegister, oldWechat, oldServer
+	})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"success":true,"data":"verified-wechat-subject"}`))
+	}))
+	defer server.Close()
+	common.WeChatServerAddress = server.URL
+	for i, test := range []struct {
+		name     string
+		provider oauth.Provider
+	}{
+		{"builtin", &authFlowTestOAuthProvider{}},
+		{"custom", oauth.NewGenericOAuthProvider(&model.CustomOAuthProvider{Id: 124, Name: "Verified custom", Slug: "verified-custom", Enabled: true})},
+		{"wechat", nil},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest("POST", "/callback", strings.NewReader(`{"code":"fixture"}`))
+			c.Request.RemoteAddr = fmt.Sprintf("192.0.2.%d:1234", i+50)
+			device := base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf("%-32s", test.name)))
+			device += "." + common.GenerateHMACWithKey([]byte("reward-device:"+common.CryptoSecret), device)
+			c.Request.AddCookie(&http.Cookie{Name: rewardDeviceCookie, Value: device})
+			risk := registrationRisk(c)
+			email := "verified-" + test.name + "@example.test"
+			token, err := model.StartRegistrationVerification(risk, email, "123456", time.Now())
+			require.NoError(t, err)
+			proof, err := model.CompleteRegistrationVerification(risk, token, "123456", time.Now())
+			require.NoError(t, err)
+			c.Request.AddCookie(&http.Cookie{Name: registrationProofCookie, Value: proof})
+			var user *model.User
+			if test.provider != nil {
+				user, _, err = findOrCreateOAuthUser(c, test.provider, &oauth.OAuthUser{ProviderUserID: "verified-" + test.name, Username: "verified-" + test.name}, &oauth.OAuthToken{}, "")
+				require.NoError(t, err)
+			} else {
+				WeChatAuth(c)
+				require.Contains(t, recorder.Body.String(), `"success":true`, recorder.Body.String())
+				user = &model.User{}
+				require.NoError(t, model.DB.Where("wechat_id = ?", "verified-wechat-subject").First(user).Error)
+			}
+			assert.Equal(t, email, user.Email)
+			var reward model.RegistrationReward
+			require.NoError(t, model.DB.First(&reward, user.Id).Error)
+			assert.NotZero(t, reward.VerifiedAt)
+			assert.NotZero(t, reward.IssuedAt)
+			risk.ProofToken = proof
+			_, err = model.RegistrationProofWithTx(model.DB, risk, time.Now())
+			assert.Error(t, err, "the registration consumes its proof")
+		})
+	}
+}
+
+func TestRegistrationVerificationAuditsExcludeCredentialsAndSignals(t *testing.T) {
+	setupSecurityEnrollmentTest(t)
+	device := base64.RawURLEncoding.EncodeToString(make([]byte, 32))
+	device += "." + common.GenerateHMACWithKey([]byte("reward-device:"+common.CryptoSecret), device)
+	prepare, _ := gin.CreateTestContext(httptest.NewRecorder())
+	prepare.Request = httptest.NewRequest("POST", "/verify", nil)
+	prepare.Request.AddCookie(&http.Cookie{Name: rewardDeviceCookie, Value: device})
+	risk := registrationRisk(prepare)
+	token, err := model.StartRegistrationVerification(risk, "audit-recipient@example.test", "123456", time.Now())
+	require.NoError(t, err)
+	for _, success := range []bool{true, false} {
+		response := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(response)
+		c.Request = httptest.NewRequest("POST", "/verify", strings.NewReader(fmt.Sprintf(`{"flow_token":%q,"code":"123456"}`, token)))
+		c.Request.AddCookie(&http.Cookie{Name: rewardDeviceCookie, Value: device})
+		VerifyRegistrationReward(c)
+		var result struct {
+			Success bool `json:"success"`
+		}
+		require.NoError(t, common.Unmarshal(response.Body.Bytes(), &result))
+		assert.Equal(t, success, result.Success)
+		if success {
+			require.Len(t, response.Result().Cookies(), 1)
+			assert.True(t, response.Result().Cookies()[0].HttpOnly)
+		}
+	}
+	var audits []model.AuditLog
+	require.NoError(t, model.LOG_DB.Where("action = ?", "registration.verification").Find(&audits).Error)
+	require.Len(t, audits, 2)
+	for _, audit := range audits {
+		assert.Empty(t, audit.Ip)
+		data, err := common.Marshal(audit)
+		require.NoError(t, err)
+		for _, secret := range []string{token, "123456", "human-assertion", "audit-recipient@example.test", risk.IPHash, risk.DeviceHash, device} {
+			assert.NotContains(t, string(data), secret)
+		}
+	}
+}
+
+func TestRegistrationCodeDoesNotExposeEmailEnrollment(t *testing.T) {
+	for _, occupied := range []bool{false, true} {
+		t.Run(fmt.Sprintf("occupied=%v", occupied), func(t *testing.T) {
+			user, _ := setupSecurityEnrollmentTest(t)
+			mailbox := newSecurityMailbox(t)
+			const email = "registration-recipient@example.com"
+			if occupied {
+				require.NoError(t, model.DB.Model(user).Update("email", email).Error)
+			}
+			device := base64.RawURLEncoding.EncodeToString(make([]byte, 32))
+			device += "." + common.GenerateHMACWithKey([]byte("reward-device:"+common.CryptoSecret), device)
+			request := httptest.NewRequest("POST", "/registration-verification/code", nil)
+			request.AddCookie(&http.Cookie{Name: rewardDeviceCookie, Value: device})
+			proof := newGeeTestProvider(t).proof()
+			data, err := common.Marshal(proof)
+			require.NoError(t, err)
+			response := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(response)
+			c.Request = httptest.NewRequest("POST", "/registration-verification/code", strings.NewReader(fmt.Sprintf(`{"email":%q,"captcha":%s}`, email, data)))
+			c.Request.AddCookie(&http.Cookie{Name: rewardDeviceCookie, Value: device})
+			SendRegistrationRewardCode(c)
+			var sent struct {
+				Success bool `json:"success"`
+				Data    struct {
+					FlowToken string `json:"flow_token"`
+				} `json:"data"`
+			}
+			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &sent))
+			require.True(t, sent.Success, "delivery has the same public result for new and existing addresses: %s", response.Body.String())
+			require.NotEmpty(t, sent.Data.FlowToken)
+			code := mailbox.code(t, email)
+			response = httptest.NewRecorder()
+			c, _ = gin.CreateTestContext(response)
+			c.Request = httptest.NewRequest("POST", "/registration-verification/verify", strings.NewReader(fmt.Sprintf(`{"flow_token":%q,"code":%q}`, sent.Data.FlowToken, code)))
+			c.Request.AddCookie(&http.Cookie{Name: rewardDeviceCookie, Value: device})
+			VerifyRegistrationReward(c)
+			var verified struct {
+				Success bool   `json:"success"`
+				Code    string `json:"code"`
+			}
+			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &verified))
+			assert.Equal(t, !occupied, verified.Success, response.Body.String())
+			if occupied {
+				assert.Equal(t, "EMAIL_ALREADY_TAKEN", verified.Code, "availability is disclosed only after proving email ownership")
+			}
+		})
 	}
 }

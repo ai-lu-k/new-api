@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -18,6 +20,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/gin-contrib/gzip"
+	"github.com/gin-contrib/static"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -889,7 +892,7 @@ func performPluginRequest(handler http.Handler, method, path string) *httptest.R
 func TestWebFallbackDoesNotCacheMissingAPIOrAssets(t *testing.T) {
 	outer := gin.New()
 	SetWebRouter(outer, WebAssets{IndexPage: []byte("dashboard")}, func(c *gin.Context) { c.Next() })
-	for _, path := range []string{"/api/user/token/status", "/api/audit/self?p=1", "/v1/missing", "/assets/missing.js"} {
+	for _, path := range []string{"/api/user/token/status", "/api/audit/self?p=1", "/v1/missing", "/assets/missing.js", "/static/js/missing.js"} {
 		t.Run(path, func(t *testing.T) {
 			response := performPluginRequest(outer, http.MethodGet, path)
 			assert.Equal(t, http.StatusNotFound, response.Code)
@@ -902,6 +905,48 @@ func TestWebFallbackDoesNotCacheMissingAPIOrAssets(t *testing.T) {
 	assert.Equal(t, http.StatusOK, page.Code)
 	assert.Equal(t, "dashboard", page.Body.String())
 	assert.Equal(t, "no-cache", page.Header().Get("Cache-Control"))
+}
+
+func TestWebRateLimitDoesNotChargeServedStaticAssets(t *testing.T) {
+	previousEnable, previousNum, previousDuration := common.GlobalWebRateLimitEnable, common.GlobalWebRateLimitNum, common.GlobalWebRateLimitDuration
+	previousRedis := common.RedisEnabled
+	common.RedisEnabled = false
+	common.GlobalWebRateLimitEnable, common.GlobalWebRateLimitNum, common.GlobalWebRateLimitDuration = true, 2, 180
+	defer func() {
+		common.RedisEnabled = previousRedis
+		common.GlobalWebRateLimitEnable, common.GlobalWebRateLimitNum, common.GlobalWebRateLimitDuration = previousEnable, previousNum, previousDuration
+	}()
+
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "static", "js"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "static", "js", "app.js"), []byte("console.log(1)"), 0o644))
+
+	outer := gin.New()
+	setWebRouter(outer, static.LocalFile(root, false), []byte("dashboard"), func(c *gin.Context) { c.Next() })
+
+	send := func(path string) *httptest.ResponseRecorder {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		request.RemoteAddr = "198.51.100.24:4000"
+		outer.ServeHTTP(recorder, request)
+		return recorder
+	}
+
+	// A page load fetches dozens of bundles; none of them uses the budget.
+	for range 5 {
+		asset := send("/static/js/app.js")
+		assert.Equal(t, http.StatusOK, asset.Code)
+		assert.Equal(t, "console.log(1)", asset.Body.String())
+		assert.Equal(t, "max-age=604800", asset.Header().Get("Cache-Control"))
+	}
+	for range 2 {
+		assert.Equal(t, http.StatusOK, send("/keys").Code)
+	}
+	limited := send("/keys")
+	assert.Equal(t, http.StatusTooManyRequests, limited.Code)
+	assert.Equal(t, "no-store", limited.Header().Get("Cache-Control"))
+	assert.NotEmpty(t, limited.Header().Get("Retry-After"))
+	assert.Equal(t, http.StatusOK, send("/static/js/app.js").Code)
 }
 
 func TestSecurityRoutesDisableCachingBeforeAuthentication(t *testing.T) {

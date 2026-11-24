@@ -27,17 +27,15 @@ import {
   DISABLED_ROW_DESKTOP,
   DISABLED_ROW_MOBILE,
   DataTablePage,
+  SECTION_FRAME_CLASSNAME,
+  SECTION_TABLE_HEAD_CLASSNAME,
   useDebouncedColumnFilter,
   useDataTable,
 } from '@/components/data-table'
+import { EmptyState } from '@/components/empty-state'
+import { Reveal } from '@/components/motion/reveal'
+import { SectionHeading } from '@/components/section-heading'
 import { StatusBadge } from '@/components/status-badge'
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from '@/components/ui/empty'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
@@ -53,6 +51,7 @@ import {
 } from '../constants'
 import type { ApiKey } from '../types'
 import { ApiKeyQuotaCell } from './api-key-quota-cell'
+import { ApiKeySharedName } from './api-key-shared-name'
 import { ApiKeyActivityCell } from './api-key-timestamp-cell'
 import {
   ApiKeyCell,
@@ -63,6 +62,7 @@ import { useApiKeysColumns } from './api-keys-columns'
 import { useApiKeys } from './api-keys-provider'
 import { DataTableBulkActions } from './data-table-bulk-actions'
 import { DataTableRowActions } from './data-table-row-actions'
+import { useResultEnter } from './motion/result-enter'
 
 const route = getRouteApi('/_authenticated/keys/')
 const API_KEYS_COLUMN_VISIBILITY_STORAGE_KEY = 'api-keys:column-visibility'
@@ -114,27 +114,21 @@ function ApiKeysMobileList({
 
   if (!rows.length) {
     return (
-      <div className='rounded-lg border p-8'>
-        <Empty className='border-none p-0'>
-          <EmptyHeader>
-            <EmptyMedia variant='icon'>
-              <Database className='size-6' />
-            </EmptyMedia>
-            <EmptyTitle>{t('No API Keys Found')}</EmptyTitle>
-            <EmptyDescription>
-              {t(
-                'No API keys available. Create your first API key to get started.'
-              )}
-            </EmptyDescription>
-          </EmptyHeader>
-        </Empty>
-      </div>
+      <EmptyState
+        icon={Database}
+        bordered
+        title={t('No API Keys Found')}
+        description={t(
+          'No API keys available. Create your first API key to get started.'
+        )}
+        className='min-h-0'
+      />
     )
   }
 
   return (
     <div className='min-w-0 space-y-3'>
-      {rows.map((row) => {
+      {rows.map((row, index) => {
         const apiKey = row.original
         const statusConfig = API_KEY_STATUSES[apiKey.status]
         const groupCell = row
@@ -145,8 +139,9 @@ function ApiKeysMobileList({
           .find((cell) => cell.column.id === 'expired_time')
 
         return (
-          <div
+          <Reveal
             key={row.id}
+            delay={Math.min(index, 3) * 0.04}
             className={cn(
               'border-border/60 bg-card min-w-0 space-y-2 rounded-xl border p-3.5 text-xs leading-4',
               isDisabledApiKeyRow(apiKey) && DISABLED_ROW_MOBILE
@@ -154,9 +149,10 @@ function ApiKeysMobileList({
           >
             <div className='flex items-start justify-between gap-3'>
               <div className='min-w-0'>
-                <div className='text-sm leading-5 font-semibold break-words'>
-                  {apiKey.name}
-                </div>
+                <ApiKeySharedName
+                  apiKey={apiKey}
+                  className='text-sm leading-5 font-semibold break-words'
+                />
               </div>
               {statusConfig && (
                 <StatusBadge
@@ -208,11 +204,17 @@ function ApiKeysMobileList({
                   )}
               </div>
             </div>
-          </div>
+          </Reveal>
         )
       })}
     </div>
   )
+}
+
+const HIDDEN_BY_DEFAULT = {
+  model_limits: false,
+  allow_ips: false,
+  expired_time: false,
 }
 
 export function ApiKeysTable() {
@@ -309,6 +311,9 @@ export function ApiKeysTable() {
     columns,
     enableRowSelection: true,
     columnFilters,
+    // The list shows what tells keys apart at a glance. Limits and expiry
+    // are in the edit form, and can be switched on under View.
+    initialColumnVisibility: HIDDEN_BY_DEFAULT,
     columnVisibilityStorageKey: API_KEYS_COLUMN_VISIBILITY_STORAGE_KEY,
     globalFilter,
     pagination,
@@ -338,46 +343,64 @@ export function ApiKeysTable() {
     }
   }, [columnVisibility, table])
 
+  // Filter, search and page changes all replace the body at once. The key is
+  // the identity of the rows on screen, not the filter state: with `placeholder`
+  // data the state turns over a request early, and the entrance has to belong
+  // to the commit that actually swapped the rows. Opening the drawer or ticking
+  // a row leaves it untouched.
+  const resultRef = useResultEnter(apiKeys.map((apiKey) => apiKey.id).join(','))
+
   return (
-    <DataTablePage
-      table={table}
-      columns={columns}
-      isLoading={isLoading}
-      isFetching={isFetching}
-      emptyTitle={t('No API Keys Found')}
-      emptyDescription={t(
-        'No API keys available. Create your first API key to get started.'
-      )}
-      skeletonKeyPrefix='api-keys-skeleton'
-      applyHeaderSize
-      toolbarProps={{
-        searchPlaceholder: t('Filter by name...'),
-        searchDebounceMs: 500,
-        additionalSearch: (
-          <Input
-            placeholder={t('Filter by API key...')}
-            aria-label={t('Filter by API key...')}
-            value={tokenFilterInput}
-            onChange={(e) => setTokenFilterInput(e.target.value)}
-            className='w-full sm:w-50 lg:w-60'
-          />
-        ),
-        filters: [
-          {
-            columnId: 'status',
-            title: t('Status'),
-            options: API_KEY_STATUS_OPTIONS,
-            singleSelect: true,
-          },
-        ],
-      }}
-      mobile={
-        <ApiKeysMobileList table={table} isLoading={isLoading} now={now} />
-      }
-      getRowClassName={(row) =>
-        isDisabledApiKeyRow(row.original) ? DISABLED_ROW_DESKTOP : undefined
-      }
-      bulkActions={<DataTableBulkActions table={table} />}
-    />
+    <div ref={resultRef} className='contents'>
+      <DataTablePage
+        table={table}
+        columns={columns}
+        isLoading={isLoading}
+        isFetching={isFetching}
+        emptyTitle={t('No API Keys Found')}
+        emptyDescription={t(
+          'No API keys available. Create your first API key to get started.'
+        )}
+        fixedHeight={false}
+        paginationInFooter={false}
+        tableClassName={cn(
+          SECTION_FRAME_CLASSNAME,
+          SECTION_TABLE_HEAD_CLASSNAME,
+          '[&_td]:h-20'
+        )}
+        className='border-border border-t pt-6 lg:[&_[data-slot=toolbar]_button]:h-11 lg:[&_input]:h-11 lg:[&_input]:w-[min(17rem,22vw)]'
+        skeletonKeyPrefix='api-keys-skeleton'
+        applyHeaderSize
+        tableHeading={<SectionHeading as='h2' title={t('Key list')} />}
+        toolbarProps={{
+          searchPlaceholder: t('Filter by name...'),
+          searchDebounceMs: 500,
+          additionalSearch: (
+            <Input
+              placeholder={t('Filter by API key...')}
+              aria-label={t('Filter by API key...')}
+              value={tokenFilterInput}
+              onChange={(e) => setTokenFilterInput(e.target.value)}
+              className='w-full sm:w-50 lg:w-60'
+            />
+          ),
+          filters: [
+            {
+              columnId: 'status',
+              title: t('Status'),
+              options: API_KEY_STATUS_OPTIONS,
+              singleSelect: true,
+            },
+          ],
+        }}
+        mobile={
+          <ApiKeysMobileList table={table} isLoading={isLoading} now={now} />
+        }
+        getRowClassName={(row) =>
+          isDisabledApiKeyRow(row.original) ? DISABLED_ROW_DESKTOP : undefined
+        }
+        bulkActions={<DataTableBulkActions table={table} />}
+      />
+    </div>
   )
 }

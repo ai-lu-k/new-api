@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -197,6 +198,10 @@ func GetTokenKey(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if token.TokenPlan {
+		common.ApiError(c, model.ErrTokenPlanProtected)
+		return
+	}
 	params := tokenAuditParams(c)
 	params["id"], params["name"] = token.Id, token.Name
 	common.SetContextKey(c, constant.ContextKeyTokenAuditSucceeded, true)
@@ -216,6 +221,19 @@ func GetTokenStatus(c *gin.Context) {
 	expiredAt := token.ExpiredTime
 	if expiredAt == -1 {
 		expiredAt = 0
+	}
+	if token.TokenPlan {
+		plan, err := model.GetTokenPlanStatus(userId, time.Now())
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"object": "credit_summary", "total_granted": plan.TotalQuota + plan.WalletQuota,
+			"total_used": plan.UsedQuota, "total_available": plan.RemainingQuota + plan.WalletQuota,
+			"expires_at": plan.ResetsAt * 1000,
+		})
+		return
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"object":          "credit_summary",
@@ -244,9 +262,9 @@ func GetTokenUsage(c *gin.Context) {
 		})
 		return
 	}
-	tokenKey := parts[1]
-
-	token, err := model.GetTokenByKey(strings.TrimPrefix(tokenKey, "sk-"), false)
+	// Read the identity already authenticated by TokenAuthReadOnly, including
+	// plan credentials and optional routing suffixes; never treat a stored hash as a bearer.
+	token, err := model.GetTokenByIds(c.GetInt("token_id"), c.GetInt("id"))
 	if err != nil {
 		common.SysError("failed to get token by key: " + err.Error())
 		common.ApiErrorI18n(c, i18n.MsgTokenGetInfoFailed)
@@ -257,6 +275,17 @@ func GetTokenUsage(c *gin.Context) {
 	if expiredAt == -1 {
 		expiredAt = 0
 	}
+	total, used, available := int64(token.RemainQuota+token.UsedQuota), int64(token.UsedQuota), int64(token.RemainQuota)
+	unlimited := token.UnlimitedQuota
+	if token.TokenPlan {
+		plan, err := model.GetTokenPlanStatus(token.UserId, time.Now())
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		total, used, available = plan.TotalQuota+plan.WalletQuota, plan.UsedQuota, plan.RemainingQuota+plan.WalletQuota
+		expiredAt, unlimited = plan.ResetsAt, false
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    true,
@@ -264,10 +293,10 @@ func GetTokenUsage(c *gin.Context) {
 		"data": gin.H{
 			"object":               "token_usage",
 			"name":                 token.Name,
-			"total_granted":        token.RemainQuota + token.UsedQuota,
-			"total_used":           token.UsedQuota,
-			"total_available":      token.RemainQuota,
-			"unlimited_quota":      token.UnlimitedQuota,
+			"total_granted":        total,
+			"total_used":           used,
+			"total_available":      available,
+			"unlimited_quota":      unlimited,
 			"model_limits":         token.GetModelLimitsMap(),
 			"model_limits_enabled": token.ModelLimitsEnabled,
 			"expires_at":           expiredAt,

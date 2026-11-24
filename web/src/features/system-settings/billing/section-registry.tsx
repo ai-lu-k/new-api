@@ -18,6 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { parseCurrencyDisplayType } from '@/lib/currency'
 
+import { CampaignSettingsSection } from '../general/campaign-settings-section'
+import { CampaignSettlementSection } from '../general/campaign-settlement-section'
 import { CheckinSettingsSection } from '../general/checkin-settings-section'
 import { PricingSection } from '../general/pricing-section'
 import { QuotaSettingsSection } from '../general/quota-settings-section'
@@ -187,6 +189,28 @@ const BILLING_SECTIONS = [
         }}
       />
     ),
+  },
+  {
+    id: 'campaign',
+    titleKey: 'Campaign Event',
+    build: (settings: BillingSettings) => (
+      <CampaignSettingsSection
+        defaultValues={{
+          enabled: settings['ctf_setting.enabled'],
+          startDate: settings['ctf_setting.start_date'],
+          endDate: settings['ctf_setting.end_date'],
+          claimDeadline: settings['ctf_setting.claim_deadline'],
+          rewardSlots: settings['ctf_setting.reward_slots'],
+        }}
+      />
+    ),
+  },
+  {
+    // Ranking prizes are a one-off manual payout, so they get their own section
+    // next to the window settings rather than hiding behind an API call.
+    id: 'campaign-settlement',
+    titleKey: 'Campaign Event Settlement',
+    build: () => <CampaignSettlementSection />,
   },
   {
     id: 'checkin',

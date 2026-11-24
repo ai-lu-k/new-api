@@ -25,11 +25,16 @@ import {
   DISABLED_ROW_DESKTOP,
   DISABLED_ROW_MOBILE,
   DataTablePage,
+  SECTION_FRAME_CLASSNAME,
+  SECTION_TABLE_HEAD_CLASSNAME,
   useDataTable,
 } from '@/components/data-table'
+import { ErrorState } from '@/components/error-state'
+import { SectionHeading } from '@/components/section-heading'
 import { useMediaQuery } from '@/hooks'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
 import { createServerError } from '@/lib/server-error-message'
+import { cn } from '@/lib/utils'
 
 import { getRedemptions, searchRedemptions } from '../api'
 import {
@@ -81,7 +86,7 @@ export function RedemptionsTable() {
   const statusFilterValue = statusFilter[0] ?? ''
 
   // Fetch data with React Query
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, isLoading, isFetching, isError, refetch } = useQuery({
     queryKey: [
       'redemptions',
       pagination.pageIndex + 1,
@@ -157,16 +162,30 @@ export function RedemptionsTable() {
     [t]
   )
 
+  if (isError && !data) {
+    return <ErrorState onRetry={() => void refetch()} />
+  }
+
+  const filtering = Boolean(globalFilter?.trim() || statusFilterValue)
+
   return (
     <DataTablePage
       table={table}
       columns={columns}
       isLoading={isLoading}
       isFetching={isFetching}
-      emptyTitle={t('No Redemption Codes Found')}
-      emptyDescription={t(
-        'No redemption codes available. Create your first redemption code to get started.'
-      )}
+      tableHeading={<SectionHeading as='h2' title={t('Code list')} />}
+      tableClassName={cn(SECTION_FRAME_CLASSNAME, SECTION_TABLE_HEAD_CLASSNAME)}
+      emptyTitle={
+        filtering ? t('No matching results') : t('No Redemption Codes Found')
+      }
+      emptyDescription={
+        filtering
+          ? t('Try adjusting your search')
+          : t(
+              'No redemption codes available. Create your first redemption code to get started.'
+            )
+      }
       skeletonKeyPrefix='redemptions-skeleton'
       applyHeaderSize
       toolbarProps={{

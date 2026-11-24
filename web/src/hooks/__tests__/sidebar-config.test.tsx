@@ -79,11 +79,22 @@ describe('security sidebar visibility', () => {
       { personal: { enabled: true, personal: true, topup: true } },
       { personal: { enabled: true, personal: true } }
     )
+    // Security & Access follows Settings in the account group, whatever else
+    // the group also holds.
+    const accountTitles =
+      result.current
+        .find((group) => group.id === 'account')
+        ?.items.map((item) => item.title) ?? []
+    expect(accountTitles).toContain('Settings')
+    expect(accountTitles[accountTitles.indexOf('Settings') + 1]).toBe(
+      'Security & Access'
+    )
+    // Top-up sits in the finance group and still follows its own switch.
     expect(
       result.current
-        .find((group) => group.id === 'personal')
+        .find((group) => group.id === 'finance')
         ?.items.map((item) => item.title)
-    ).toEqual(['Wallet', 'Profile', 'Security & Access'])
+    ).toContain('Top-up')
     expect(
       result.current
         .flatMap((group) => group.items)
@@ -142,7 +153,7 @@ describe('audit log sidebar entry', () => {
       { console: { enabled: true, log: true } }
     )
     const items =
-      result.current.find((group) => group.id === 'general')?.items ?? []
+      result.current.find((group) => group.id === 'build')?.items ?? []
     const usageIndex = items.findIndex((item) => item.title === 'Usage Logs')
     expect(items[usageIndex + 1]).toMatchObject({
       title: 'Audit Logs',

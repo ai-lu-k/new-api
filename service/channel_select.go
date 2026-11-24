@@ -48,6 +48,9 @@ type RetryParam struct {
 	RequestPath  string
 	Retry        *int
 	resetNextTry bool
+	// SelectFromRemaining ranks the remaining candidates from their highest
+	// priority after a failed channel is excluded, without resetting retries.
+	SelectFromRemaining bool
 }
 
 func (p *RetryParam) GetRetry() int {
@@ -140,6 +143,9 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			// Calculate priorityRetry for current group
 			// 计算当前分组的 priorityRetry
 			priorityRetry := param.GetRetry()
+			if param.SelectFromRemaining {
+				priorityRetry = 0
+			}
 			// If moved to a new group, reset priorityRetry and update startRetryIndex
 			// 如果切换到新分组，重置 priorityRetry 并更新 startRetryIndex
 			if i > startGroupIndex {
@@ -190,10 +196,14 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			break
 		}
 	} else {
+		priorityRetry := param.GetRetry()
+		if param.SelectFromRemaining {
+			priorityRetry = 0
+		}
 		channel, err = model.GetRandomSatisfiedChannel(
 			param.TokenGroup,
 			param.ModelName,
-			param.GetRetry(),
+			priorityRetry,
 			filters,
 		)
 		if err != nil {

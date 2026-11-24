@@ -20,6 +20,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { SSE } from 'sse.js'
 
 import { getFreshAuthHeaders } from '@/lib/api'
+import { requestEnvironmentReload } from '@/lib/environment'
 
 import { API_ENDPOINTS, ERROR_MESSAGES } from '../constants'
 import {
@@ -135,10 +136,15 @@ export function createStreamRequestController(
 
     nextSource.addEventListener('error', (event) => {
       if (!isCurrent() || completed) return
+      const { errorCode, errorMessage } = parseStreamErrorDetails(event.data)
+      if (errorCode === 'ENVIRONMENT_CHANGED') {
+        closeActiveSource(nextSource)
+        requestEnvironmentReload()
+        return
+      }
       if (!isStreamClosedReadyState(nextSource.readyState)) {
         // eslint-disable-next-line no-console
         console.error('SSE Error:', event)
-        const { errorCode, errorMessage } = parseStreamErrorDetails(event.data)
         handleError(errorMessage, errorCode)
       }
     })

@@ -37,6 +37,7 @@ export interface TwoFAPayload {
 }
 
 export interface RegisterPayload {
+  legal_consent?: import('@/features/legal/types').LegalAcceptance
   username: string
   password: string
   email?: string
@@ -88,6 +89,7 @@ export interface ApiResponse<T = unknown> {
 // ============================================================================
 
 export interface SystemStatus {
+  usage_level_thresholds?: number[]
   success?: boolean
   message?: string
   data?: {
@@ -117,6 +119,7 @@ export interface SystemStatus {
     WeChatAccountQRCodeImageURL?: string
     turnstile_check?: boolean
     turnstile_site_key?: string
+    geetest_captcha_id?: string
     email_verification?: boolean
     self_use_mode_enabled?: boolean
     display_in_currency?: boolean
@@ -164,6 +167,7 @@ export interface SystemStatus {
   WeChatAccountQRCodeImageURL?: string
   turnstile_check?: boolean
   turnstile_site_key?: string
+  geetest_captcha_id?: string
   email_verification?: boolean
   self_use_mode_enabled?: boolean
   display_in_currency?: boolean
@@ -213,4 +217,9 @@ export interface CustomOAuthProviderInfo {
 
 export interface AuthFormProps extends React.HTMLAttributes<HTMLFormElement> {
   redirectTo?: string
+  /**
+   * Called instead of navigating after a successful sign-in. The auth dialog
+   * uses it to close itself and leave the visitor on the page they came from.
+   */
+  onAuthenticated?: () => void
 }

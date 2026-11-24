@@ -59,6 +59,16 @@ export function ModelsPrimaryButtons() {
       <Button onClick={handleSync} variant='outline' size='sm'>
         {t('Sync metadata')}
       </Button>
+      <Button
+        onClick={() => {
+          setCurrentRow(null)
+          setOpen('benchmark-mappings')
+        }}
+        variant='outline'
+        size='sm'
+      >
+        {t('Benchmark mappings')}
+      </Button>
       {canPrice && (
         <Button
           onClick={() => setOpen('price-sync')}

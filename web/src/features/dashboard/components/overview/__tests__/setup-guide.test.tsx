@@ -23,8 +23,14 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import {
+  act,
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { api } from '@/lib/api'
@@ -33,9 +39,9 @@ import { useSystemConfigStore } from '@/stores/system-config-store'
 
 import { OverviewDashboard } from '../overview-dashboard'
 
-const storageKey = 'dashboard_overview_setup_guide_expanded'
 let client: QueryClient
 let keyLookupError: Error | null
+let logRequests: string[]
 
 beforeEach(() => {
   window.localStorage.clear()
@@ -52,6 +58,7 @@ beforeEach(() => {
     defaultOptions: { queries: { retry: false } },
   })
   keyLookupError = null
+  logRequests = []
   vi.spyOn(api, 'get').mockImplementation(async (url) => {
     switch (url) {
       case '/api/token/?p=1&size=10':
@@ -61,6 +68,7 @@ beforeEach(() => {
             success: true,
             data: {
               items: [{ id: 1, name: 'App key', key: 'masked', status: 1 }],
+              total: 1,
             },
           },
         }
@@ -75,11 +83,52 @@ beforeEach(() => {
             },
           },
         }
+      case '/api/user/self/model-daily-tokens':
+        return {
+          data: {
+            success: true,
+            data: {
+              models: [],
+              updated_at: 1792300000,
+              resets_at: 1792339200,
+              timezone: 'Asia/Shanghai',
+            },
+          },
+        }
       case '/api/user/models':
         return { data: { success: true, data: ['gpt-4o-mini'] } }
       case '/api/data/self':
         return { data: { success: true, data: [] } }
+      case '/api/data/self/daily':
+        return {
+          data: {
+            success: true,
+            data: [],
+          },
+        }
       default:
+        if (String(url).startsWith('/api/log/self?')) {
+          logRequests.push(String(url))
+          return {
+            data: {
+              success: true,
+              data: {
+                items: [
+                  {
+                    id: 9,
+                    created_at: 1790000000,
+                    type: 2,
+                    model_name: 'glm-5.3-x0.25',
+                    quota: 5000,
+                    prompt_tokens: 1200,
+                    completion_tokens: 300,
+                  },
+                ],
+                total: 1,
+              },
+            },
+          }
+        }
         throw new Error(`Unexpected dashboard request: ${url}`)
     }
   })
@@ -106,109 +155,67 @@ async function renderOverview() {
   )
 }
 
-describe('overview setup guide', () => {
-  it('shows usage first and only a header entry when setup is complete', async () => {
+describe('overview setup banner', () => {
+  it('shows balances and usage once every setup step is done', async () => {
     await renderOverview()
 
-    const toggle = await screen.findByRole('button', { name: 'Setup guide' })
-    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(await screen.findByText('Total consumption')).toBeVisible()
+    await waitFor(() => expect(client.isFetching()).toBe(0))
+    await screen.findByRole('heading', {
+      name: 'Daily activity',
+    })
     expect(
       screen.getAllByRole('heading').map((heading) => heading.textContent)
-    ).toEqual(['Overview', 'Usage at a glance'])
-    expect(screen.queryByText('Setup guide complete')).not.toBeInTheDocument()
-    expect(screen.queryByText('Setup progress: 3/3')).not.toBeInTheDocument()
-    for (const name of ['API Keys', 'Channels', 'Usage Logs', 'Pricing']) {
-      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument()
-    }
-    const panel = document.getElementById(
-      toggle.getAttribute('aria-controls') ?? ''
-    )
-    expect(panel).toBeInTheDocument()
-    expect(panel).not.toBeVisible()
+    ).toEqual(['Overview', 'Daily activity', 'Recent requests', 'API Keys1'])
+    expect(
+      screen.queryByRole('region', { name: 'Get started' })
+    ).not.toBeInTheDocument()
+    expect(screen.queryByText(/Setup progress:/)).not.toBeInTheDocument()
   })
 
-  it('toggles the completed guide with the keyboard and restores focus after hiding it', async () => {
-    const user = userEvent.setup()
+  it('puts the balance ahead of the usage figures', async () => {
     await renderOverview()
-    const toggle = await screen.findByRole('button', { name: 'Setup guide' })
 
-    await user.tab()
-    expect(toggle).toHaveFocus()
-    await user.keyboard('{Enter}')
-    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    const balance = await screen.findByText('Credit remaining')
+    const usage = screen.getByText('Total consumption')
     expect(
-      document.getElementById(toggle.getAttribute('aria-controls') ?? '')
-    ).toBeVisible()
+      balance.compareDocumentPosition(usage) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
     expect(
-      screen.getByRole('heading', {
-        name: 'Build on your API gateway in minutes',
-      })
-    ).toBeVisible()
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /^API Keys/ })).toBeVisible()
-    )
-
-    await user.keyboard(' ')
-    expect(toggle).toHaveAttribute('aria-expanded', 'false')
-    expect(toggle).toHaveFocus()
-    await user.click(toggle)
-    await user.click(screen.getByRole('button', { name: 'Hide setup guide' }))
-    expect(toggle).toHaveAttribute('aria-expanded', 'false')
-    expect(toggle).toHaveFocus()
+      within(
+        screen.getByRole('region', { name: 'Credit remaining' })
+      ).queryByRole('button', { name: 'Top-up' })
+    ).not.toBeInTheDocument()
   })
 
-  it('restores the completed guide preference after remounting', async () => {
-    const user = userEvent.setup()
-    const first = await renderOverview()
-    await user.click(await screen.findByRole('button', { name: 'Setup guide' }))
-    first.unmount()
-
-    const second = await renderOverview()
-    expect(
-      await screen.findByRole('button', { name: 'Setup guide' })
-    ).toHaveAttribute('aria-expanded', 'true')
-    await user.click(screen.getByRole('button', { name: 'Hide setup guide' }))
-    second.unmount()
-
-    await renderOverview()
-    expect(
-      await screen.findByRole('button', { name: 'Setup guide' })
-    ).toHaveAttribute('aria-expanded', 'false')
-    expect(screen.queryByText('Setup guide complete')).not.toBeInTheDocument()
-  })
-
-  it('keeps the existing progress banner when an incomplete guide is manually collapsed', async () => {
-    const user = userEvent.setup()
+  it('lists what a new account still has to do, with a link for each open step', async () => {
     useAuthStore
       .getState()
       .auth.setUser({ id: 1, username: 'new-user', role: 1 })
     await renderOverview()
 
-    await user.click(
-      await screen.findByRole('button', { name: 'Hide setup guide' })
-    )
-    expect(screen.getByText('Setup progress: 1/3')).toBeVisible()
+    const banner = await screen.findByRole('region', { name: 'Get started' })
+    expect(within(banner).getByText('Setup progress: 1/3')).toBeVisible()
     expect(
-      screen.getByText('Setup guide is collapsed. Expand it anytime.')
-    ).toBeVisible()
-    expect(screen.getByRole('button', { name: 'API Keys' })).toBeVisible()
-    expect(
-      screen.queryByRole('button', { name: 'Setup guide' })
-    ).not.toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Show setup guide' }))
-    expect(
-      screen.getByRole('button', { name: 'Hide setup guide' })
-    ).toBeVisible()
+      within(banner)
+        .getAllByRole('link')
+        .map((link) => [link.textContent, link.getAttribute('href')])
+    ).toEqual([
+      ['Add credits', '/wallet'],
+      ['Send a request', '/playground'],
+      ['Quick Start', '/'],
+    ])
+    // The finished step is named, but is no longer a link.
+    expect(within(banner).getByText('Create API Key')).toBeVisible()
   })
 
-  it('removes the collapsed progress banner when the remaining setup step completes', async () => {
+  it('drops the banner when the last step completes', async () => {
     useAuthStore.getState().auth.setUser({
       id: 1,
       username: 'dashboard-user',
       role: 1,
       quota: 1000000,
     })
-    window.localStorage.setItem(storageKey, 'collapsed')
     await renderOverview()
     expect(await screen.findByText('Setup progress: 2/3')).toBeVisible()
 
@@ -221,21 +228,68 @@ describe('overview setup guide', () => {
         request_count: 1,
       })
     })
-    expect(
-      await screen.findByRole('button', { name: 'Setup guide' })
-    ).toHaveAttribute('aria-expanded', 'false')
-    expect(screen.queryByText(/Setup progress:/)).not.toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.queryByText(/Setup progress:/)).not.toBeInTheDocument()
+    )
   })
 
-  it('does not show a completed setup entry when the key lookup fails', async () => {
+  it('still asks for a key when the key lookup fails', async () => {
     keyLookupError = new Error('Key lookup unavailable')
     await renderOverview()
 
+    const banner = await screen.findByRole('region', { name: 'Get started' })
     expect(
-      await screen.findByRole('button', { name: 'Hide setup guide' })
-    ).toBeVisible()
+      within(banner).getByRole('link', { name: 'Create API Key' })
+    ).toHaveAttribute('href', '/keys')
+  })
+
+  it('has no setup cards, sample request or shortcut list', async () => {
+    useAuthStore
+      .getState()
+      .auth.setUser({ id: 1, username: 'new-user', role: 1 })
+    await renderOverview()
+
+    await screen.findByRole('region', { name: 'Get started' })
+    for (const gone of [
+      'Build on your API gateway in minutes',
+      'Keep the platform ready',
+      'First API request',
+      'Recommended actions',
+    ]) {
+      expect(screen.queryByText(gone)).not.toBeInTheDocument()
+    }
+  })
+
+  it('says who is signed in, and lists the latest requests and the keys', async () => {
+    useAuthStore.getState().auth.setUser({
+      id: 42,
+      username: 'ada',
+      display_name: 'Ada L',
+      role: 1,
+      group: 'default',
+      quota: 1000000,
+      used_quota: 1000,
+      request_count: 1,
+    })
+    await renderOverview()
+
+    const account = await screen.findByRole('region', { name: 'Account' })
+    expect(within(account).getByText('Ada L')).toBeVisible()
+    expect(within(account).getByText('User')).toBeVisible()
+    expect(within(account).getByText('@ada')).toBeVisible()
+
+    expect(await screen.findByText('glm-5.3-x0.25')).toBeVisible()
+    // Only requests that were served and billed, and only a handful.
+    expect(logRequests).toHaveLength(1)
+    expect(logRequests[0]).toContain('page_size=5')
+    expect(logRequests[0]).toContain('type=2')
+
+    expect(await screen.findByText('App key')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Quick import' })).toBeEnabled()
     expect(
-      screen.queryByRole('button', { name: 'Setup guide' })
-    ).not.toBeInTheDocument()
+      screen
+        .getAllByRole('link', { name: 'View all' })
+        .map((link) => link.getAttribute('href'))
+    ).toEqual(['/usage-logs/common', '/keys'])
   })
 })

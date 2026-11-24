@@ -25,6 +25,7 @@ import {
 } from './section-registry.tsx'
 
 const defaultSiteSettings: SiteSettings = {
+  'usage_level.thresholds': '[10,50,200,1000,5000]',
   Notice: '',
   SystemName: 'New API',
   Logo: '',
@@ -36,6 +37,9 @@ const defaultSiteSettings: SiteSettings = {
   'general_setting.docs_link': '',
   'legal.user_agreement': '',
   'legal.privacy_policy': '',
+  'site_page.default_language': '',
+  'site_page.home_title': '',
+  'site_page.home_description': '',
   HeaderNavModules: '',
   SidebarModulesAdmin: '',
 }

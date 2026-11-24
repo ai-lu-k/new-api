@@ -16,14 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Database } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import {
   Empty,
   EmptyDescription,
   EmptyHeader,
-  EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
 import { TableRow, TableCell } from '@/components/ui/table'
@@ -44,11 +42,6 @@ interface TableEmptyProps {
    */
   description?: string
   /**
-   * Custom icon component
-   * @default Database icon
-   */
-  icon?: React.ReactNode
-  /**
    * Additional content to display (e.g., buttons)
    */
   children?: React.ReactNode
@@ -62,7 +55,6 @@ export function TableEmpty({
   colSpan,
   title,
   description,
-  icon,
   children,
 }: TableEmptyProps) {
   const { t } = useTranslation()
@@ -71,14 +63,15 @@ export function TableEmpty({
     description ?? t('No records found. Try adjusting your filters.')
   return (
     <TableRow>
-      <TableCell colSpan={colSpan} className='h-[400px] p-0'>
-        <Empty>
+      <TableCell colSpan={colSpan} className='h-32 p-0'>
+        <Empty className='gap-1'>
           <EmptyHeader>
-            <EmptyMedia variant='icon'>
-              {icon || <Database className='size-6' />}
-            </EmptyMedia>
-            <EmptyTitle>{resolvedTitle}</EmptyTitle>
-            <EmptyDescription>{resolvedDescription}</EmptyDescription>
+            <EmptyTitle className='text-muted-foreground text-[13px] font-normal'>
+              {resolvedTitle}
+            </EmptyTitle>
+            <EmptyDescription className='text-muted-foreground text-[13px]'>
+              {resolvedDescription}
+            </EmptyDescription>
           </EmptyHeader>
           {children}
         </Empty>

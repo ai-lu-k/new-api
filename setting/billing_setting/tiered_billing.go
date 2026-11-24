@@ -355,8 +355,10 @@ func usageSmokeCombinationCount(dimensions []usageSmokeDimension, stopAfter int)
 }
 
 func billingExprSmokeRequests() []billingexpr.RequestInput {
+	chars := 120
 	return []billingexpr.RequestInput{
 		{},
+		{Chars: &chars},
 		{
 			Headers: map[string]string{
 				"anthropic-beta": "fast-mode-2026-02-01",

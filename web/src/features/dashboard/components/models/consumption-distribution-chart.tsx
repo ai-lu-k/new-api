@@ -17,18 +17,18 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { VChart } from '@visactor/react-vchart'
-import { AreaChart, BarChart3, WalletCards } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { IconBadge } from '@/components/ui/icon-badge'
+import { SectionPanel } from '@/components/section-panel'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useThemeCustomization } from '@/context/theme-customization-provider'
 import { useTheme } from '@/context/theme-provider'
 import {
   CONSUMPTION_DISTRIBUTION_CHART_OPTIONS,
   DEFAULT_TIME_GRANULARITY,
 } from '@/features/dashboard/constants'
-import { processChartData } from '@/features/dashboard/lib'
+import { joinLabelValue, processChartData } from '@/features/dashboard/lib'
 import type {
   ConsumptionDistributionChartType,
   QuotaDataItem,
@@ -46,14 +46,6 @@ interface ConsumptionDistributionChartProps {
   loading?: boolean
   timeGranularity?: TimeGranularity
   defaultChartType?: ConsumptionDistributionChartType
-}
-
-const CHART_TYPE_ICONS: Record<
-  ConsumptionDistributionChartType,
-  typeof BarChart3
-> = {
-  bar: BarChart3,
-  area: AreaChart,
 }
 
 export function ConsumptionDistributionChart(
@@ -118,43 +110,41 @@ export function ConsumptionDistributionChart(
     resolvedTheme,
     customization.preset,
   ].join('-')
+  let status: 'ready' | 'loading' | 'empty' = 'ready'
+  if (props.loading) status = 'loading'
+  else if (props.data.length === 0) status = 'empty'
 
   return (
-    <div className='overflow-hidden rounded-lg border'>
-      <div className='flex w-full flex-col gap-1.5 border-b px-3 py-2 sm:gap-3 sm:px-5 sm:py-3 lg:flex-row lg:items-center lg:justify-between'>
-        <div className='flex items-center gap-2'>
-          <IconBadge tone='success' size='sm'>
-            <WalletCards />
-          </IconBadge>
-          <div className='text-sm font-semibold'>{t('Quota Distribution')}</div>
-          <span className='text-muted-foreground text-xs'>
-            {t('Total:')} {chartData.totalQuotaDisplay}
-          </span>
-        </div>
-
-        <div className='bg-muted/60 inline-flex h-7 w-full overflow-x-auto rounded-lg border p-0.5 sm:h-8 sm:w-auto'>
-          {CONSUMPTION_DISTRIBUTION_CHART_OPTIONS.map((item) => {
-            const Icon = CHART_TYPE_ICONS[item.value]
-            return (
-              <button
+    <SectionPanel
+      title={t('Quota Distribution')}
+      description={joinLabelValue(t('Total:'), chartData.totalQuotaDisplay)}
+      status={status}
+      emptyMessage={t('No data available')}
+      placeholderClassName='h-96'
+      contentClassName='space-y-3'
+    >
+      <div className='flex min-w-0 justify-end overflow-x-auto'>
+        <Tabs
+          value={chartType}
+          onValueChange={(value) =>
+            setChartType(value as ConsumptionDistributionChartType)
+          }
+        >
+          <TabsList aria-label={t('Quota Distribution')}>
+            {CONSUMPTION_DISTRIBUTION_CHART_OPTIONS.map((item) => (
+              <TabsTrigger
                 key={item.value}
-                type='button'
-                onClick={() => setChartType(item.value)}
-                className={`inline-flex shrink-0 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors ${
-                  chartType === item.value
-                    ? 'bg-background text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
+                value={item.value}
+                className='px-2.5 text-xs'
               >
-                <Icon className='size-3.5' />
                 {t(item.labelKey)}
-              </button>
-            )
-          })}
-        </div>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
       </div>
 
-      <div className='h-[300px] p-1.5 sm:h-96 sm:p-2'>
+      <div className='h-[300px] sm:h-96'>
         {themeReady && spec && (
           <VChart
             key={chartKey}
@@ -167,6 +157,6 @@ export function ConsumptionDistributionChart(
           />
         )}
       </div>
-    </div>
+    </SectionPanel>
   )
 }

@@ -21,26 +21,33 @@ import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
-  SideDrawerSection,
   SideDrawerSectionHeader,
+  sideDrawerSectionClassName,
 } from '@/components/drawer-layout'
+import { Reveal } from '@/components/motion/reveal'
 
 type ChannelBasicSectionProps = {
   children: ReactNode
+  /** Entrance delay in seconds; the drawer sequences its form groups. */
+  delay?: number
 }
 
 export function ChannelBasicSection(props: ChannelBasicSectionProps) {
   const { t } = useTranslation()
 
   return (
-    <SideDrawerSection>
+    <Reveal
+      as='section'
+      delay={props.delay}
+      className={sideDrawerSectionClassName()}
+    >
       <SideDrawerSectionHeader
         title={t('Basic Information')}
         description={t('Name, provider type, and availability.')}
         icon={<Server className='h-4 w-4' aria-hidden='true' />}
-        iconTone='info'
+        iconTone='neutral'
       />
       {props.children}
-    </SideDrawerSection>
+    </Reveal>
   )
 }

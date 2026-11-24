@@ -88,8 +88,14 @@ export function AuditLogs() {
     }
   }, [queryClient, userId])
   return (
-    <SectionPageLayout fixedContent>
+    <SectionPageLayout
+      fixedContent
+      pageIndex={<>{t('Personal workspace')} / 05</>}
+    >
       <SectionPageLayout.Title>{t('Audit Logs')}</SectionPageLayout.Title>
+      <SectionPageLayout.Description>
+        {t('Login, security and access records')}
+      </SectionPageLayout.Description>
       <SectionPageLayout.Actions>
         {canReadAll && !accessRevoked && (
           <Tabs

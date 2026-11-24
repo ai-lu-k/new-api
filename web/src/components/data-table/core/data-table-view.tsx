@@ -29,6 +29,7 @@ import {
 import { DataTableColgroup } from './data-table-colgroup'
 import { DataTableHeader } from './data-table-header'
 import { DataTableRow } from './data-table-row'
+import { getListEntranceSignature, getRowDiffKey } from './list-signature'
 import { TableEmpty } from './table-empty'
 import { getTableSizeStyle } from './table-sizing'
 import { TableSkeleton } from './table-skeleton'
@@ -37,6 +38,8 @@ import type {
   DataTablePinnedColumn,
   DataTableViewProps,
 } from './types'
+import { useRowHandoff } from './use-row-handoff'
+import { useSettledTableHeight } from './use-settled-table-height'
 
 export type {
   DataTableColumnClassName,
@@ -58,9 +61,20 @@ export function DataTableView<TData>(props: DataTableViewProps<TData>) {
     props.getColumnClassName,
     props.pinnedColumns
   )
+  const containerRef = React.useRef<HTMLDivElement>(null)
+  const listSignature = React.useMemo(
+    () => getListEntranceSignature(rows, props.table.getState()),
+    // The rows array identity is what changes when the result set changes.
+    [props.table, rows]
+  )
+  // Rows and skeleton rows carry `data-diff-key`; this is what turns a page /
+  // sort / filter change — and the hand-off from skeleton to content — into a
+  // readable change instead of a cut (motion contract §10.1).
+  useRowHandoff(containerRef, listSignature)
 
   return (
     <div
+      ref={containerRef}
       className={cn(
         'overflow-hidden rounded-lg border',
         props.containerClassName
@@ -98,9 +112,18 @@ function UnifiedTableView<TData>({
   getColumnClassName: DataTableColumnClassName
 }) {
   const tableSizing = getTableSizing(props)
+  // A content-sized table keeps a settled `min-height` so switching page or
+  // page size slides the frame instead of snapping it (contract §5).
+  const heightRef = useSettledTableHeight(true)
 
   return (
-    <div className={props.tableContainerClassName}>
+    <div
+      ref={heightRef}
+      className={cn(
+        'transition-[min-height] duration-(--motion-base) ease-(--ease-out)',
+        props.tableContainerClassName
+      )}
+    >
       <Table className={props.tableClassName} style={tableSizing.style}>
         {tableSizing.colgroup}
         <DataTableHeader
@@ -276,12 +299,19 @@ function renderTableBodyContent<TData>(
   }
 
   return rows.map((row) =>
-    props.renderRow
-      ? props.renderRow(row, {
+    props.renderRow ? (
+      // Keyed by identity, not by position: a page of server-side rows arrives
+      // with fresh ids, and a recycled DOM node would carry the previous page's
+      // content into the exit ghost of this one.
+      <React.Fragment key={getRowDiffKey(row)}>
+        {props.renderRow(row, {
           getCellClassName: (columnId, className) =>
             cn(getColumnClassName(columnId, 'cell'), className),
-        })
-      : renderDefaultRow(props, row, getColumnClassName)
+        })}
+      </React.Fragment>
+    ) : (
+      renderDefaultRow(props, row, getColumnClassName)
+    )
   )
 }
 
@@ -304,7 +334,6 @@ function renderEmptyState<TData>(
       colSpan={colSpan}
       title={props.emptyTitle}
       description={props.emptyDescription}
-      icon={props.emptyIcon}
     >
       {props.emptyAction}
     </TableEmpty>
@@ -318,7 +347,7 @@ function renderDefaultRow<TData>(
 ) {
   return (
     <DataTableRow
-      key={row.id}
+      key={getRowDiffKey(row)}
       row={row}
       className={cn(props.tableBodyRowClassName, props.getRowClassName?.(row))}
       getColumnClassName={getColumnClassName}

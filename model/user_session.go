@@ -802,7 +802,7 @@ func DeleteOldRevokedUserSessions(now int64) error {
 	}
 	issuanceCutoff := now - common.UserSessionIssuanceWindowSeconds
 	revokedBefore := now - int64(common.UserSessionRevokedRetentionDays)*24*60*60
-	return deleteRevokedUserSessionsBefore(revokedBefore, issuanceCutoff)
+	return deleteRevokedUserSessionsBefore(now, revokedBefore, issuanceCutoff)
 }
 
 func deleteExpiredUserSessionsBefore(expiredBefore, issuanceCutoff, revokedBefore int64) error {
@@ -839,7 +839,7 @@ func deleteExpiredUserSessionsBefore(expiredBefore, issuanceCutoff, revokedBefor
 	}
 }
 
-func deleteRevokedUserSessionsBefore(revokedBefore, issuanceCutoff int64) error {
+func deleteRevokedUserSessionsBefore(now, revokedBefore, issuanceCutoff int64) error {
 	for {
 		var sids []string
 		if err := DB.Model(&UserSession{}).
@@ -849,6 +849,7 @@ func deleteRevokedUserSessionsBefore(revokedBefore, issuanceCutoff int64) error 
 				revokedBefore,
 				issuanceCutoff,
 			).
+			Where("login_method <> ? OR expires_at <= ?", EnvironmentBridgeLoginMethod, now).
 			Order("revoked_at").Limit(userSessionCleanupScanLimit).Pluck("sid", &sids).Error; err != nil {
 			return err
 		}
@@ -864,6 +865,7 @@ func deleteRevokedUserSessionsBefore(revokedBefore, issuanceCutoff int64) error 
 					revokedBefore,
 					issuanceCutoff,
 				).
+				Where("login_method <> ? OR expires_at <= ?", EnvironmentBridgeLoginMethod, now).
 				Delete(&UserSession{}).Error; err != nil {
 				return err
 			}

@@ -17,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 )
 
 func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, forceFormat bool, thinkToContent bool) error {
@@ -25,6 +26,11 @@ func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, fo
 	}
 
 	if !forceFormat && !thinkToContent {
+		return helper.StringData(c, data)
+	}
+	if value := gjson.Get(data, "error"); value.Exists() && value.Type != gjson.Null || gjson.Get(data, "type").Str == "error" {
+		// A Chat DTO has no error envelope field. Reformatting it would erase
+		// the failure and send an empty completion to the caller.
 		return helper.StringData(c, data)
 	}
 
@@ -117,61 +123,43 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	var toolCount int
 	var usage = &dto.Usage{}
 	var lastStreamData string
-	var secondLastStreamData string // 保留倒数第二个stream data；部分兼容网关把完整usage放在倒数第二个事件
 	seenStreamToolCalls := make(map[string]struct{})
 	var streamFunctionCallNames []string
 
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 		if lastStreamData != "" {
 			if err := HandleStreamFormat(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent); err != nil {
-				common.SysLog("error handling stream format: " + err.Error())
-				sr.Error(err)
+				common.SysLog("invalid upstream chat stream format")
+				sr.Error(fmt.Errorf("invalid upstream chat stream format"))
 			}
 		}
 		if len(data) > 0 {
-			if lastStreamData != "" {
-				secondLastStreamData = lastStreamData
-			}
-
 			lastStreamData = data
-			observeStreamChoices(info, data, seenStreamToolCalls, &streamFunctionCallNames)
+			if reportedUsage := observeStreamChoices(info, data, seenStreamToolCalls, &streamFunctionCallNames); service.ValidUsage(reportedUsage) {
+				// Usage is a cumulative snapshot, not a per-event increment. Keep it
+				// even when later metadata or error frames carry no usage.
+				usage = dto.MergeUsageNonZero(usage, reportedUsage)
+				applyUsagePostProcessing(info, usage, common.StringToByteSlice(data))
+				containStreamUsage = true
+			}
 			if err := processTokenData(info, data, &responseTextBuilder, &toolCount); err != nil {
-				logger.LogError(c, "error processing stream token data: "+err.Error())
-				sr.Error(err)
+				logger.LogError(c, "invalid upstream chat stream token data")
+				sr.Error(fmt.Errorf("invalid upstream chat stream token data"))
 			}
 		}
 	})
 
 	info.StreamStatus.RequireTerminal()
+	if info.StreamStatus.ResponseOutcome() == "" {
+		info.StreamStatus.MarkIncomplete("missing_finish_reason")
+		info.StreamStatus.RecordError("Stream ended without a finish reason")
+	}
 
 	// 处理最后的响应
 	shouldSendLastResp := true
 	if err := handleLastResponse(lastStreamData, &responseId, &createAt, &systemFingerprint, &model, &usage,
 		&containStreamUsage, info, &shouldSendLastResp); err != nil {
-		logger.LogError(c, fmt.Sprintf("error handling last response: %s, lastStreamData: [%s]", err.Error(), lastStreamData))
-	}
-
-	// 部分兼容网关把完整的累计usage附在倒数第二个事件上，随后发送一个空的最后事件。
-	// 仅当最后一个事件没有有效usage时，回退到倒数第二个事件的完整快照。
-	usageFrame := lastStreamData
-	if !containStreamUsage && secondLastStreamData != "" {
-		var streamResp struct {
-			Usage *dto.Usage `json:"usage"`
-		}
-		err := common.Unmarshal([]byte(secondLastStreamData), &streamResp)
-		if err == nil && streamResp.Usage != nil &&
-			streamResp.Usage.PromptTokens > 0 &&
-			(streamResp.Usage.CompletionTokens > 0 || streamResp.Usage.TotalTokens > 0) {
-			usage = dto.MergeUsageNonZero(usage, streamResp.Usage)
-			containStreamUsage = true
-			usageFrame = secondLastStreamData
-
-			if common.DebugEnabled {
-				logger.LogDebug(c, "usage extracted from second last SSE: PromptTokens=%d, CompletionTokens=%d, TotalTokens=%d, InputTokens=%d, OutputTokens=%d",
-					usage.PromptTokens, usage.CompletionTokens, usage.TotalTokens,
-					usage.InputTokens, usage.OutputTokens)
-			}
-		}
+		logger.LogError(c, "invalid final chat stream event")
 	}
 
 	if info.RelayFormat == types.RelayFormatOpenAI {
@@ -181,11 +169,19 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	}
 
 	if !containStreamUsage {
-		usage = service.ResponseText2Usage(c, responseTextBuilder.String(), info.UpstreamModelName, info.GetEstimatePromptTokens())
+		promptTokens := info.GetEstimatePromptTokens()
+		// A role placeholder, heartbeat or error is not evidence that the whole
+		// prompt was processed. Retain estimation for actual generated output
+		// and successful completions; trust reported usage even on failures.
+		if responseTextBuilder.Len() == 0 && toolCount == 0 && !info.StreamStatus.IsSuccessfulResponse() {
+			promptTokens = 0
+		}
+		usage = service.ResponseText2Usage(c, responseTextBuilder.String(), info.UpstreamModelName, promptTokens)
 		usage.CompletionTokens += toolCount * 7
+		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 	}
 
-	applyUsagePostProcessing(info, usage, common.StringToByteSlice(usageFrame))
+	applyUsagePostProcessing(info, usage, common.StringToByteSlice(lastStreamData))
 
 	for _, name := range streamFunctionCallNames {
 		info.CountBillableToolCall(dto.BuildInCallFunctionCall, name)
@@ -198,17 +194,33 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 
 // observeStreamChoices collects billable function call names and records the
 // finish reason facts used by health sampling from one parsed chunk.
-func observeStreamChoices(info *relaycommon.RelayInfo, data string, seen map[string]struct{}, names *[]string) {
+func observeStreamChoices(info *relaycommon.RelayInfo, data string, seen map[string]struct{}, names *[]string) *dto.Usage {
 	var streamResponse dto.ChatCompletionsStreamResponse
 	if err := common.UnmarshalJsonStr(data, &streamResponse); err != nil {
-		return
+		info.StreamStatus.MarkFailed("invalid_stream_event", "upstream_error", 0)
+		info.StreamStatus.RecordError("Invalid upstream stream event")
+		return nil
+	}
+	if value := gjson.Get(data, "error"); value.Exists() && value.Type != gjson.Null || gjson.Get(data, "type").Str == "error" {
+		info.StreamStatus.MarkFailed("upstream_stream_error", "upstream_error", 0)
+		info.StreamStatus.RecordError("Upstream stream error")
 	}
 	for _, choice := range streamResponse.Choices {
 		if choice.FinishReason != nil && *choice.FinishReason != "" {
-			if *choice.FinishReason == constant.FinishReasonContentFilter {
+			switch *choice.FinishReason {
+			case constant.FinishReasonContentFilter:
 				info.PerformanceBusinessRejection = true
+				info.StreamStatus.MarkCompleted()
+			case constant.FinishReasonStop, constant.FinishReasonLength, constant.FinishReasonToolCalls, constant.FinishReasonFunctionCall:
+				info.StreamStatus.MarkCompleted()
+			case "error":
+				info.StreamStatus.MarkFailed("upstream_finish_reason_error", "upstream_error", 0)
+				info.StreamStatus.RecordError("Upstream finish_reason: error")
+			default:
+				// Do not persist arbitrary provider strings as diagnostic codes.
+				info.StreamStatus.MarkFailed("unsupported_finish_reason", "upstream_error", 0)
+				info.StreamStatus.RecordError("Unsupported upstream finish_reason")
 			}
-			info.StreamStatus.MarkCompleted()
 		}
 		for i, tc := range choice.Delta.ToolCalls {
 			name := strings.TrimSpace(tc.Function.Name)
@@ -246,6 +258,7 @@ func observeStreamChoices(info *relaycommon.RelayInfo, data string, seen map[str
 			*names = append(*names, name)
 		}
 	}
+	return streamResponse.Usage
 }
 
 func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {

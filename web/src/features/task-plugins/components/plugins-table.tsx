@@ -24,7 +24,14 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
-import { DataTablePage, useDataTable } from '@/components/data-table'
+import {
+  DataTablePage,
+  SECTION_FRAME_CLASSNAME,
+  SECTION_TABLE_HEAD_CLASSNAME,
+  useDataTable,
+} from '@/components/data-table'
+import { ErrorState } from '@/components/error-state'
+import { SectionHeading } from '@/components/section-heading'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -37,6 +44,7 @@ import { Switch } from '@/components/ui/switch'
 import { getChannelTypeLabel } from '@/features/channels/lib'
 import { handleServerError } from '@/lib/handle-server-error'
 import { resolveLocalizedText } from '@/lib/localized-text'
+import { cn } from '@/lib/utils'
 
 import {
   deleteTaskPluginVersion,
@@ -359,6 +367,19 @@ export function PluginsTable(props: PluginsTableProps) {
   ) : (
     ''
   )
+  if (pluginsQuery.isError && !pluginsQuery.data) {
+    const description =
+      pluginsQuery.error instanceof Error
+        ? pluginsQuery.error.message
+        : undefined
+    return (
+      <ErrorState
+        description={description}
+        onRetry={() => void pluginsQuery.refetch()}
+      />
+    )
+  }
+
   return (
     <>
       <DataTablePage
@@ -366,13 +387,24 @@ export function PluginsTable(props: PluginsTableProps) {
         columns={columns}
         isLoading={pluginsQuery.isLoading}
         isFetching={pluginsQuery.isFetching}
+        tableHeading={<SectionHeading as='h2' title={t('Plugins')} />}
+        tableClassName={cn(
+          SECTION_FRAME_CLASSNAME,
+          SECTION_TABLE_HEAD_CLASSNAME
+        )}
         emptyTitle={t('No task plugins found')}
         emptyDescription={t('Upload a task plugin to add a platform.')}
+        showPagination={(pluginsQuery.data?.length ?? 0) > 0}
         skeletonKeyPrefix='task-plugin'
         applyHeaderSize
         enableCardView
         viewModeStorageKey={VIEW_MODE_STORAGE_KEY}
         renderCard={(row) => <PluginCard row={row} />}
+        // Card view only: the grid card deepens its border on hover over the
+        // fast token. Table rows keep their own hover treatment.
+        getRowClassName={() =>
+          'data-[slot=data-table-card]:hover:border-foreground/25'
+        }
         cardGridClassName='grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-3'
         toolbarProps={{ searchPlaceholder: t('Filter plugins...') }}
       />

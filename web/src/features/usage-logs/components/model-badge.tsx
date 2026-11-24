@@ -31,6 +31,7 @@ import { getLobeIcon } from '@/lib/lobe-icon'
 import { resolveModelProvider } from '@/lib/model-provider'
 import { cn } from '@/lib/utils'
 
+import { truncateMiddle } from '../lib/format'
 import { isResponseModelMismatch } from '../lib/response-model'
 import type { LogOtherData } from '../types'
 import { DetailRow } from './dialogs/log-detail-layout'
@@ -40,34 +41,47 @@ interface ModelBadgeProps {
   actualModel?: string
   responseModel?: LogOtherData['response_model']
   className?: string
+  /** Wrap the name onto a second line instead of cutting it. */
   wrapText?: boolean
+  /** Cut a long name with an ellipsis; the full name stays in the tooltip. */
+  truncate?: boolean
+  /** Drop the provider mark when the column is narrow and the id matters more. */
+  hideIcon?: boolean
   onInspect?: () => void
 }
 
 function ModelBadgeContent(props: ModelBadgeProps & { copyable: boolean }) {
   const provider = resolveModelProvider(props.modelName)
+  // The untruncated id stays in the title and the clipboard value.
+  const shownName =
+    props.truncate && !props.wrapText
+      ? truncateMiddle(props.modelName, 22, 5)
+      : props.modelName
 
   return (
     <StatusBadge
       copyText={props.modelName}
       copyable={props.copyable}
       size='sm'
-      showDot={!provider?.icon}
-      autoColor={provider?.icon ? undefined : props.modelName}
+      showDot={!provider?.icon || props.hideIcon}
+      autoColor={
+        provider?.icon && !props.hideIcon ? undefined : props.modelName
+      }
       className={cn(
         'border-border/60 bg-muted/30 h-6 max-w-none gap-1.5 rounded-md border px-2 [font-family:var(--font-body)]',
         provider?.icon && 'text-foreground',
         props.wrapText && 'h-auto min-h-6 max-w-full py-px whitespace-normal',
+        props.truncate && 'max-w-full overflow-hidden',
         props.className
       )}
     >
       <span
         className={cn(
           'flex items-center gap-1.5',
-          props.wrapText ? 'max-w-full min-w-0' : 'max-w-none'
+          props.wrapText || props.truncate ? 'max-w-full min-w-0' : 'max-w-none'
         )}
       >
-        {provider?.icon && (
+        {provider?.icon && !props.hideIcon && (
           <span
             className='flex h-[18px] w-[18px] shrink-0 items-center justify-center'
             title={provider.label ?? provider.name}
@@ -77,13 +91,15 @@ function ModelBadgeContent(props: ModelBadgeProps & { copyable: boolean }) {
           </span>
         )}
         <span
-          className={
+          className={cn(
             props.wrapText
               ? 'line-clamp-2 leading-5 [overflow-wrap:anywhere]'
-              : 'whitespace-nowrap'
-          }
+              : 'whitespace-nowrap',
+            props.truncate && 'truncate'
+          )}
+          title={props.truncate ? props.modelName : undefined}
         >
-          {props.modelName}
+          {shownName}
         </span>
       </span>
     </StatusBadge>

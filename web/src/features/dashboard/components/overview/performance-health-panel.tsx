@@ -61,19 +61,19 @@ export function PerformanceHealthPanel() {
   const hasData = models.length > 0
 
   return (
-    <section className='bg-card h-full overflow-hidden rounded-2xl border shadow-xs'>
+    <section className='bg-card overflow-hidden rounded-lg border'>
       <div className='flex items-center gap-2 border-b px-4 py-3 sm:px-5'>
         <IconBadge tone='success' size='sm'>
           <HeartPulse />
         </IconBadge>
         <h3 className='text-sm font-semibold'>{t('Performance health')}</h3>
-        <span className='text-muted-foreground ml-auto text-xs'>
-          {t('Performance metrics for the last 24 hours')}
-        </span>
       </div>
 
-      <div className='space-y-3 p-4 sm:p-5'>
-        <div className='grid grid-cols-3 gap-2'>
+      <div className='flex flex-col gap-3 p-4'>
+        <div
+          className='flex flex-col gap-2'
+          title={t('Performance metrics for the last 24 hours')}
+        >
           <MetricCell
             icon={HeartPulse}
             label={t('Success rate')}
@@ -112,7 +112,7 @@ export function PerformanceHealthPanel() {
               <span className='text-muted-foreground mb-1 block text-[11px] font-medium'>
                 {t('Top models by traffic')}
               </span>
-              <div className='grid grid-cols-1 gap-x-4 sm:grid-cols-2'>
+              <div className='flex flex-col'>
                 {topModels.map((model) => (
                   <div
                     key={model.model_name}
@@ -159,7 +159,7 @@ function MetricCell(props: {
 }) {
   const Icon = props.icon
   return (
-    <div className='bg-muted/40 rounded-xl px-3 py-2.5'>
+    <div className='bg-muted/40 flex items-center justify-between gap-2 rounded-lg px-3 py-2.5'>
       <div className='text-muted-foreground flex items-center gap-1.5 text-[11px] font-medium'>
         <IconBadge tone={props.tone} size='xs'>
           <Icon />
@@ -167,11 +167,11 @@ function MetricCell(props: {
         <span className='truncate'>{props.label}</span>
       </div>
       {props.loading ? (
-        <Skeleton className='mt-1.5 h-5 w-16' />
+        <Skeleton className='h-5 w-16' />
       ) : (
         <div
           className={cn(
-            'mt-1.5 font-mono text-sm font-semibold tabular-nums',
+            'shrink-0 font-mono text-sm font-semibold tabular-nums',
             props.valueClassName
           )}
         >

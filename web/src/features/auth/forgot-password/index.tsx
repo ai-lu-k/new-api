@@ -19,36 +19,38 @@ For commercial licensing, please contact support@quantumnous.com
 import { Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
+import { cn } from '@/lib/utils'
+
 import { AuthLayout } from '../auth-layout'
+
+const BOTTOM_LINK_CLASS =
+  'decoration-border hover:decoration-foreground text-foreground cursor-pointer underline decoration-1 underline-offset-[3px]'
 import { ForgotPasswordForm } from './components/forgot-password-form'
 
 export function ForgotPassword() {
   const { t } = useTranslation()
   return (
-    <AuthLayout>
-      <div className='w-full space-y-8'>
-        <div className='space-y-3'>
-          <h2 className='text-center text-2xl font-semibold tracking-tight sm:text-left'>
-            {t('Forgot password')}
-          </h2>
-          <p className='text-muted-foreground text-left text-sm sm:text-base'>
-            {t(
-              'Enter your registered email and we will send you a link to reset your password.'
-            )}
-          </p>
-          <p className='text-muted-foreground text-left text-sm sm:text-base'>
-            {t("Don't have an account?")}{' '}
-            <Link
-              to='/sign-up'
-              className='hover:text-primary font-medium underline underline-offset-4'
-            >
-              {t('Sign up')}
-            </Link>
-            .
-          </p>
+    <AuthLayout eyebrow={t('Forgot password')}>
+      <div className='w-full'>
+        <h2 className='mt-3 text-xl leading-[1.2] font-bold tracking-[-0.01em]'>
+          {t('Forgot password')}
+        </h2>
+
+        <div className='mt-7'>
+          <ForgotPasswordForm className='space-y-0' />
         </div>
 
-        <ForgotPasswordForm className='space-y-0' />
+        <div className='mt-3.5 flex items-baseline justify-between gap-4'>
+          <p className='text-muted-foreground text-xs leading-[1.6]'>
+            {t("Don't have an account?")}{' '}
+            <Link to='/sign-up' className={BOTTOM_LINK_CLASS}>
+              {t('Sign up')}
+            </Link>
+          </p>
+          <Link to='/sign-in' className={cn(BOTTOM_LINK_CLASS, 'flex-none')}>
+            {t('Back to login')}
+          </Link>
+        </div>
       </div>
     </AuthLayout>
   )

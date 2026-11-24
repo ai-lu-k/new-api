@@ -16,18 +16,19 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Crown, RefreshCw, Sparkles, Check } from 'lucide-react'
+import { RefreshCw, Sparkles, Check } from 'lucide-react'
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { SectionPanel } from '@/components/section-panel'
 import {
   StatusBadge,
   dotColorMap,
   textColorMap,
 } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import {
   Select,
@@ -38,8 +39,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
-import { Skeleton } from '@/components/ui/skeleton'
-import { TitledCard } from '@/components/ui/titled-card'
 import {
   Tooltip,
   TooltipContent,
@@ -238,19 +237,12 @@ export function SubscriptionPlansCard({
 
   if (loading) {
     return (
-      <Card data-card-hover='false' className='gap-0 overflow-hidden py-0'>
-        <CardHeader className='border-b p-3 !pb-3 sm:p-5 sm:!pb-5'>
-          <Skeleton className='h-6 w-32' />
-        </CardHeader>
-        <CardContent className='space-y-4 p-3 sm:p-5'>
-          <Skeleton className='h-20 w-full' />
-          <div className='grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3'>
-            {['first', 'second', 'third'].map((key) => (
-              <Skeleton key={key} className='h-48 w-full' />
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+      <SectionPanel
+        title={t('Subscription Plans')}
+        description={t('Subscribe to a plan for model access')}
+        status='loading'
+        placeholderClassName='h-64'
+      />
     )
   }
 
@@ -260,13 +252,10 @@ export function SubscriptionPlansCard({
 
   return (
     <>
-      <TitledCard
+      <SectionPanel
         title={t('Subscription Plans')}
         description={t('Subscribe to a plan for model access')}
-        icon={<Crown className='h-4 w-4' />}
-        iconTone='warning'
-        disableHoverEffect
-        contentClassName='space-y-4 sm:space-y-5'
+        contentClassName='space-y-4 pt-1 sm:space-y-5'
       >
         {/* My subscriptions & billing preference */}
         <div className='rounded-xl border p-3 sm:p-4'>
@@ -632,7 +621,7 @@ export function SubscriptionPlansCard({
             {t('No plans available')}
           </p>
         )}
-      </TitledCard>
+      </SectionPanel>
 
       <SubscriptionPurchaseDialog
         open={purchaseOpen}

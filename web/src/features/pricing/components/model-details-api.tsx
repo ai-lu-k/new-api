@@ -46,7 +46,7 @@ import {
   formatRateLimit,
   type SupportedParameter,
 } from '../lib/mock-stats'
-import { replaceModelInPath } from '../lib/model-helpers'
+import { isNanoBanana21, replaceModelInPath } from '../lib/model-helpers'
 import type { PricingModel } from '../types'
 
 // ---------------------------------------------------------------------------
@@ -109,7 +109,7 @@ function buildChatSample(lang: Lang, ctx: SampleContext): string {
       `curl ${url} \\`,
       `  -H "Authorization: Bearer $${ctx.apiKeyEnv}" \\`,
       `  -H "Content-Type: application/json" \\`,
-      `  -d '${bodyJson.replace(/\n/g, '\n     ')}'`,
+      `  -d '${bodyJson.replaceAll('\n', '\n     ')}'`,
     ].join('\n')
   }
 
@@ -177,7 +177,7 @@ function buildAnthropicSample(lang: Lang, ctx: SampleContext): string {
       `  -H "x-api-key: $${ctx.apiKeyEnv}" \\`,
       `  -H "anthropic-version: 2023-06-01" \\`,
       `  -H "Content-Type: application/json" \\`,
-      `  -d '${body.replace(/\n/g, '\n     ')}'`,
+      `  -d '${body.replaceAll('\n', '\n     ')}'`,
     ].join('\n')
   }
   if (lang === 'python') {
@@ -249,7 +249,7 @@ function buildGeminiSample(lang: Lang, ctx: SampleContext): string {
     return [
       `curl '${url}' \\`,
       `  -H 'Content-Type: application/json' \\`,
-      `  -d '${body.replace(/\n/g, '\n     ')}'`,
+      `  -d '${body.replaceAll('\n', '\n     ')}'`,
     ].join('\n')
   }
   if (lang === 'python') {
@@ -299,7 +299,7 @@ function buildEmbeddingSample(lang: Lang, ctx: SampleContext): string {
       `curl ${url} \\`,
       `  -H "Authorization: Bearer $${ctx.apiKeyEnv}" \\`,
       `  -H "Content-Type: application/json" \\`,
-      `  -d '${body.replace(/\n/g, '\n     ')}'`,
+      `  -d '${body.replaceAll('\n', '\n     ')}'`,
     ].join('\n')
   }
   if (lang === 'python') {
@@ -365,7 +365,7 @@ function buildImageSample(lang: Lang, ctx: SampleContext): string {
       `curl ${url} \\`,
       `  -H "Authorization: Bearer $${ctx.apiKeyEnv}" \\`,
       `  -H "Content-Type: application/json" \\`,
-      `  -d '${body.replace(/\n/g, '\n     ')}'`,
+      `  -d '${body.replaceAll('\n', '\n     ')}'`,
     ].join('\n')
   }
   if (lang === 'python') {
@@ -428,12 +428,78 @@ function buildSample(
   endpointType: string,
   ctx: SampleContext
 ): string {
+  if (
+    isNanoBanana21(ctx.modelName) &&
+    (endpointType === 'gemini' || endpointType === 'openai')
+  ) {
+    return buildNanoBananaSample(lang, ctx)
+  }
   if (endpointType === 'anthropic') return buildAnthropicSample(lang, ctx)
   if (endpointType === 'gemini') return buildGeminiSample(lang, ctx)
-  if (endpointType === 'embeddings' || endpointType === 'jina-rerank')
+  if (endpointType === 'embeddings' || endpointType === 'jina-rerank') {
     return buildEmbeddingSample(lang, ctx)
+  }
   if (endpointType === 'image-generation') return buildImageSample(lang, ctx)
   return buildChatSample(lang, ctx)
+}
+
+function buildNanoBananaSample(lang: Lang, ctx: SampleContext): string {
+  const gemini = ctx.endpointType === 'gemini'
+  const url = `${ctx.baseUrl}${ctx.endpointPath}`
+  const prompt = 'Generate an image of a green ceramic teacup on a white table.'
+  const body = gemini
+    ? {
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseModalities: ['TEXT', 'IMAGE'],
+          imageConfig: { imageSize: '1K', aspectRatio: '1:1' },
+        },
+      }
+    : {
+        model: ctx.modelName,
+        messages: [{ role: 'user', content: prompt }],
+        extra_body: {
+          google: { image_config: { image_size: '1K', aspect_ratio: '1:1' } },
+        },
+      }
+  const json = JSON.stringify(body, null, 2)
+
+  if (lang === 'curl') {
+    return [
+      `curl --max-time 180 '${url}' \\`,
+      `  -H "Authorization: Bearer $${ctx.apiKeyEnv}" \\`,
+      `  -H 'Content-Type: application/json' \\`,
+      `  -d '${json}'`,
+    ].join('\n')
+  }
+  if (lang === 'python') {
+    return [
+      'import os',
+      'import requests',
+      '',
+      `response = requests.post(`,
+      `    "${url}",`,
+      `    headers={"Authorization": f"Bearer {os.environ['${ctx.apiKeyEnv}']}"},`,
+      `    json=${json},`,
+      '    timeout=180,',
+      ')',
+      'response.raise_for_status()',
+      'print(response.json())',
+    ].join('\n')
+  }
+  return [
+    `const response = await fetch('${url}', {`,
+    `  method: 'POST',`,
+    `  headers: {`,
+    `    Authorization: \`Bearer \${process.env.${ctx.apiKeyEnv}}\`,`,
+    `    'Content-Type': 'application/json',`,
+    `  },`,
+    `  body: JSON.stringify(${json}),`,
+    `  signal: AbortSignal.timeout(180_000),`,
+    `})`,
+    `if (!response.ok) throw new Error(await response.text())`,
+    `console.log(await response.json())`,
+  ].join('\n')
 }
 
 // ---------------------------------------------------------------------------
@@ -443,6 +509,8 @@ function buildSample(
 function CodeSamplesSection(props: {
   model: PricingModel
   endpointMap: Record<string, { path?: string; method?: string }>
+  endpointType: string
+  onEndpointTypeChange: (value: string) => void
 }) {
   const { t } = useTranslation()
   const { status } = useStatus()
@@ -474,14 +542,11 @@ function CodeSamplesSection(props: {
       .filter((e) => Boolean(e.path))
   }, [props.model, props.endpointMap])
 
-  const [endpointType, setEndpointType] = useState<string>(
-    endpoints[0]?.type ?? ''
-  )
   const [lang, setLang] = useState<Lang>('curl')
 
   const activeEndpoint = useMemo(() => {
-    return endpoints.find((e) => e.type === endpointType) ?? endpoints[0]
-  }, [endpointType, endpoints])
+    return endpoints.find((e) => e.type === props.endpointType) ?? endpoints[0]
+  }, [props.endpointType, endpoints])
 
   if (endpoints.length === 0 || !activeEndpoint) {
     return null
@@ -501,7 +566,10 @@ function CodeSamplesSection(props: {
 
       <div className='flex flex-wrap items-center gap-2'>
         {endpoints.length > 1 && (
-          <Tabs value={endpointType} onValueChange={setEndpointType}>
+          <Tabs
+            value={activeEndpoint.type}
+            onValueChange={props.onEndpointTypeChange}
+          >
             <TabsList className='bg-muted/40 h-8 p-0.5'>
               {endpoints.map((ep) => (
                 <TabsTrigger
@@ -552,11 +620,14 @@ function CodeSamplesSection(props: {
 // Supported parameters table
 // ---------------------------------------------------------------------------
 
-function SupportedParametersSection(props: { model: PricingModel }) {
+function SupportedParametersSection(props: {
+  model: PricingModel
+  endpointType: string
+}) {
   const { t } = useTranslation()
   const params = useMemo(
-    () => buildSupportedParameters(props.model),
-    [props.model]
+    () => buildSupportedParameters(props.model, props.endpointType),
+    [props.model, props.endpointType]
   )
 
   if (params.length === 0) return null
@@ -578,7 +649,9 @@ function SupportedParametersSection(props: { model: PricingModel }) {
             cellClassName: tableStyles.topCell,
             cell: (p) => (
               <div className='flex items-center gap-1.5'>
-                <code className='font-mono text-sm font-medium'>{p.name}</code>
+                <code className='font-mono text-sm font-medium break-all'>
+                  {p.name}
+                </code>
                 {p.required && (
                   <Badge
                     variant='outline'
@@ -762,11 +835,26 @@ export function ModelDetailsApi(props: {
   model: PricingModel
   endpointMap: Record<string, { path?: string; method?: string }>
 }) {
+  const [selectedEndpoint, setSelectedEndpoint] = useState('')
+  const endpoints = (props.model.supported_endpoint_types ?? []).filter(
+    (type) => Boolean(props.endpointMap[type]?.path)
+  )
+  const endpointType = endpoints.includes(selectedEndpoint)
+    ? selectedEndpoint
+    : (endpoints[0] ?? '')
   return (
     <div className='space-y-6'>
-      <CodeSamplesSection model={props.model} endpointMap={props.endpointMap} />
+      <CodeSamplesSection
+        model={props.model}
+        endpointMap={props.endpointMap}
+        endpointType={endpointType}
+        onEndpointTypeChange={setSelectedEndpoint}
+      />
       <AuthSection />
-      <SupportedParametersSection model={props.model} />
+      <SupportedParametersSection
+        model={props.model}
+        endpointType={endpointType}
+      />
       <RateLimitsSection model={props.model} />
     </div>
   )

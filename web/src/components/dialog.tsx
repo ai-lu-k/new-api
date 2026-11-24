@@ -36,13 +36,15 @@ type DialogProps = React.ComponentProps<typeof DialogRoot> & {
   trigger?: React.ReactElement
   footer?: React.ReactNode
   contentHeight?: React.CSSProperties['height']
+  overlayClassName?: string
   contentClassName?: string
   headerClassName?: string
   titleClassName?: string
   descriptionClassName?: string
   bodyClassName?: string
+  bodyViewportClassName?: string
   footerClassName?: string
-  initialFocus?: boolean
+  initialFocus?: React.ComponentProps<typeof DialogContent>['initialFocus']
   showCloseButton?: boolean
 }
 
@@ -56,11 +58,13 @@ export function Dialog({
   trigger,
   footer,
   contentHeight = 'auto',
+  overlayClassName,
   contentClassName,
   headerClassName,
   titleClassName,
   descriptionClassName,
   bodyClassName,
+  bodyViewportClassName,
   footerClassName,
   initialFocus,
   showCloseButton,
@@ -75,6 +79,7 @@ export function Dialog({
           contentClassName,
           dialogContentMotionClassName
         )}
+        overlayClassName={overlayClassName}
         initialFocus={initialFocus}
         showCloseButton={showCloseButton}
         style={
@@ -97,7 +102,8 @@ export function Dialog({
         <div
           className={cn(
             '-mx-1 min-h-0 overflow-x-hidden overflow-y-auto overscroll-contain',
-            'h-[var(--dialog-content-height)]'
+            'h-[var(--dialog-content-height)]',
+            bodyViewportClassName
           )}
         >
           <div

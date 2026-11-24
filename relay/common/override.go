@@ -183,7 +183,40 @@ func buildLegacyParamOverride(paramOverride map[string]any) map[string]any {
 	return legacy
 }
 
-func ApplyParamOverrideWithRelayInfo(jsonData []byte, info *RelayInfo) ([]byte, error) {
+func ApplyParamOverrideWithRelayInfo(jsonData []byte, info *RelayInfo) (out []byte, resultErr error) {
+	defer func() {
+		if resultErr != nil || info == nil || !info.TokenPlan || info.TokenPlanOutputLimit == 0 {
+			return
+		}
+		found := false
+		for _, path := range []string{"max_tokens", "max_completion_tokens", "max_output_tokens", "generationConfig.maxOutputTokens", "generation_config.max_output_tokens"} {
+			value := gjson.GetBytes(out, path)
+			if !value.Exists() {
+				continue
+			}
+			found = true
+			if value.Type != gjson.Number || value.Float() < 0 {
+				resultErr = errors.New("invalid Token Plan output limit")
+				return
+			}
+			if value.Uint() == 0 || value.Uint() > uint64(info.TokenPlanOutputLimit) {
+				out, resultErr = sjson.SetBytes(out, path, info.TokenPlanOutputLimit)
+				if resultErr != nil {
+					return
+				}
+			}
+		}
+		if !found {
+			resultErr = errors.New("Token Plan output limit must be preserved upstream")
+			return
+		}
+		for _, path := range []string{"n", "generationConfig.candidateCount", "generation_config.candidate_count"} {
+			if gjson.GetBytes(out, path).Float() > 1 {
+				resultErr = errors.New("Token Plan supports one generation per request")
+				return
+			}
+		}
+	}()
 	paramOverride := getParamOverrideMap(info)
 	if len(paramOverride) == 0 {
 		return jsonData, nil

@@ -295,7 +295,14 @@ func fulfillOrder(ctx context.Context, event stripe.Event, referenceId string, c
 		return
 	}
 
-	err := model.Recharge(referenceId, customerId, callerIp)
+	paidAmount := ""
+	if cents, err := strconv.ParseInt(event.GetObjectValue("amount_total"), 10, 64); err == nil {
+		paidAmount = decimal.NewFromInt(cents).Div(decimal.NewFromInt(100)).String()
+	}
+	err := model.Recharge(referenceId, customerId, callerIp, model.TopUpPayment{
+		Currency: event.GetObjectValue("currency"),
+		Amount:   paidAmount,
+	})
 	if err != nil {
 		logger.LogError(ctx, fmt.Sprintf("Stripe 充值处理失败 trade_no=%s event_type=%s client_ip=%s error=%q", referenceId, string(event.Type), callerIp, err.Error()))
 		return

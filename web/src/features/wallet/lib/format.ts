@@ -16,6 +16,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import i18next from 'i18next'
+
+import { toIntlLocale } from '@/i18n/languages'
+import { getCurrencyDisplay } from '@/lib/currency'
+
 import { DEFAULT_DISCOUNT_RATE } from '../constants'
 
 // ============================================================================
@@ -49,16 +54,23 @@ export function formatQuotaShort(quota: number): string {
 /**
  * Format currency amount that is already in local currency.
  * This is used for payment amounts that have been calculated via priceRatio.
+ * Amounts that sit next to each other in one block keep two decimals, so that
+ * `$1.00` and `$0.20` line up instead of `$1` and `$0.2`.
  */
 export function formatCurrency(amount: number | string): string {
   const numeric =
     typeof amount === 'number' ? amount : Number.parseFloat(String(amount))
   if (!Number.isFinite(numeric)) return '-'
 
-  return new Intl.NumberFormat(undefined, {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: Math.abs(numeric) >= 1 ? 2 : 4,
+  const { meta } = getCurrencyDisplay()
+  const locale = toIntlLocale(i18next.resolvedLanguage || i18next.language)
+  const decimal = new Intl.NumberFormat(locale, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(numeric)
+  // Token-only sites show a bare number; currency sites keep the same symbol
+  // position as the balance figures on the page.
+  return meta.kind === 'tokens' ? decimal : `${meta.symbol}${decimal}`
 }
 
 /**

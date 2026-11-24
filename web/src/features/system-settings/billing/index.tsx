@@ -107,6 +107,11 @@ const defaultBillingSettings: BillingSettings = {
   'checkin_setting.enabled': false,
   'checkin_setting.min_quota': 1000,
   'checkin_setting.max_quota': 10000,
+  'ctf_setting.enabled': false,
+  'ctf_setting.start_date': '',
+  'ctf_setting.end_date': '',
+  'ctf_setting.claim_deadline': '',
+  'ctf_setting.reward_slots': 100,
 }
 
 export function BillingSettings() {

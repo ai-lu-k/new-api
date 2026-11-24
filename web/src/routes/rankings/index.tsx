@@ -28,6 +28,11 @@ const rankingsSearchSchema = z.object({
     .enum(['today', 'week', 'month', 'year'])
     .optional()
     .catch(undefined),
+  // Which model board is open: text models (counted in tokens), image models
+  // (counted in calls), or decision models (counted in tokens). Anything else
+  // falls back to the text board.
+  kind: z.enum(['text', 'image', 'decision']).optional().catch(undefined),
+  section: z.enum(['expenses', 'about']).optional().catch(undefined),
 })
 
 export const Route = createFileRoute('/rankings/')({

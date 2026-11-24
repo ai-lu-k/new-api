@@ -186,7 +186,11 @@ function selectComboboxOption(
   fireEvent.click(trigger)
   const option = [
     ...document.querySelectorAll<HTMLElement>('[data-slot="command-item"]'),
-  ].find((candidate) => candidate.textContent?.includes(optionDescription))
+  ]
+    // A popup that is closing stays mounted until its exit animation ends, so
+    // one of its items would still answer the text match and swallow the click.
+    .filter((candidate) => !candidate.closest('[data-closed]'))
+    .find((candidate) => candidate.textContent?.includes(optionDescription))
   if (!option) {
     throw new Error(`Expected option containing "${optionDescription}"`)
   }

@@ -16,6 +16,7 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/setting/naming_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/gin-gonic/gin"
@@ -430,6 +431,13 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 			}
 		}
 	}
+	if relayInfo.RelayMode == relayconstant.RelayModeChatCompletions && relayInfo.IsStream && !relayInfo.StreamStatus.IsSuccessfulResponse() && summary.FixedPriceBilling {
+		// A fixed request price pays for a successful response. Keep separately
+		// observed tool usage, but do not charge the fixed base for a failed SSE.
+		quota, clamp := common.QuotaFromDecimalChecked(summary.ToolCallSurchargeQuota)
+		summary.Quota = quota
+		noteQuotaClamp(relayInfo, clamp)
+	}
 
 	for _, item := range summary.ToolSurchargeItems {
 		q := decimal.NewFromFloat(item.Price).
@@ -453,7 +461,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		extraContent = append(extraContent, "上游没有返回计费信息，无法扣费（可能是上游超时）")
 		logger.LogError(ctx, fmt.Sprintf("total tokens is 0, cannot consume quota, userId %d, channelId %d, tokenId %d, model %s， pre-consumed quota %d", relayInfo.UserId, relayInfo.ChannelId, relayInfo.TokenId, summary.ModelName, relayInfo.FinalPreConsumedQuota))
 	} else {
-		model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, summary.Quota)
+		RecordUserConsumption(relayInfo, summary.Quota)
 		model.UpdateChannelUsedQuota(relayInfo.ChannelId, summary.Quota)
 	}
 
@@ -461,7 +469,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		logger.LogError(ctx, "error settling billing: "+err.Error())
 	}
 
-	logModel := summary.ModelName
+	logModel := naming_setting.WithTier(summary.ModelName, relayInfo.OriginModelName)
 	if strings.HasPrefix(logModel, "gpt-4-gizmo") {
 		logModel = "gpt-4-gizmo-*"
 		extraContent = append(extraContent, fmt.Sprintf("模型 %s", summary.ModelName))
@@ -533,7 +541,12 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 
 	attachQuotaSaturation(ctx, relayInfo, other)
 
+	dailyTokens := ModelDailyTextTokenCount(relayInfo, originUsage)
+	if billingUsage == nil {
+		dailyTokens = int64(max(summary.TotalTokens, 0))
+	}
 	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{
+		DailyTokenCount:  &dailyTokens,
 		ChannelId:        relayInfo.ChannelId,
 		PromptTokens:     summary.PromptTokens,
 		CompletionTokens: summary.CompletionTokens,

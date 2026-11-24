@@ -232,7 +232,7 @@ test('successful batch creation opens export with returned codes and the configu
     ).not.toBeInTheDocument()
   )
   expect(await readDownload(downloads[0])).toBe(
-    'batch\tcreatedA\t¥2,000\nbatch\tcreatedB\t¥2,000\n'
+    'batch\tcreatedA\t¥2,000.00\nbatch\tcreatedB\t¥2,000.00\n'
   )
 })
 

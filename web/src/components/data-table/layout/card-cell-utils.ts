@@ -30,6 +30,9 @@ export function getCellLabel<TData>(cell: Cell<TData, unknown>): string | null {
   if (typeof header === 'string') {
     return header
   }
+  if (meta?.mobileLabel) {
+    return meta.mobileLabel
+  }
   if (meta?.label) {
     return meta.label
   }

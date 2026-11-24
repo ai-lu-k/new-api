@@ -32,9 +32,13 @@ import {
   DISABLED_ROW_DESKTOP,
   DISABLED_ROW_MOBILE,
   DataTablePage,
+  SECTION_FRAME_CLASSNAME,
+  SECTION_TABLE_HEAD_CLASSNAME,
   useDebouncedColumnFilter,
   useDataTable,
 } from '@/components/data-table'
+import { ErrorState } from '@/components/error-state'
+import { SectionHeading } from '@/components/section-heading'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -45,8 +49,9 @@ import {
 import { useMediaQuery } from '@/hooks'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
 import { requireServerSuccess } from '@/lib/server-error-message'
+import { cn } from '@/lib/utils'
 
-import { getChannels, searchChannels, getGroups } from '../api'
+import { getChannels, searchChannels } from '../api'
 import {
   DEFAULT_PAGE_SIZE,
   CHANNEL_STATUS,
@@ -67,7 +72,7 @@ import { useChannels } from './channels-provider'
 import { DataTableBulkActions } from './data-table-bulk-actions'
 
 const route = getRouteApi('/_authenticated/channels/')
-const CHANNELS_COLUMN_VISIBILITY_STORAGE_KEY = 'channels:column-visibility'
+const CHANNELS_COLUMN_VISIBILITY_STORAGE_KEY = 'channels:column-visibility:v2'
 const CHANNELS_COLUMN_SIZING_STORAGE_KEY = 'channels:column-sizing'
 const CHANNELS_VIEW_MODE_STORAGE_KEY = 'channels:view-mode'
 const CHANNELS_STATUS_FILTER_STORAGE_KEY = 'channel-status-filter'
@@ -132,7 +137,6 @@ export function ChannelsTable() {
         },
       },
       { columnId: 'type', searchKey: 'type', type: 'array' },
-      { columnId: 'group', searchKey: 'group', type: 'array' },
       { columnId: 'model', searchKey: 'model', type: 'string' },
     ],
   })
@@ -160,8 +164,6 @@ export function ChannelsTable() {
     () => (columnFilters.find((f) => f.id === 'type')?.value as string[]) || [],
     [columnFilters]
   )
-  const groupFilter =
-    (columnFilters.find((f) => f.id === 'group')?.value as string[]) || []
   const {
     value: modelFilter,
     inputValue: modelFilterInput,
@@ -203,31 +205,12 @@ export function ChannelsTable() {
     })
   }
 
-  // Fetch groups for filter
-  const { data: groupsData } = useQuery({
-    queryKey: ['groups'],
-    queryFn: async () => requireServerSuccess(await getGroups()),
-  })
-
-  const groupOptions = useMemo(
-    () =>
-      (groupsData?.data || []).map((g) => ({
-        label: g,
-        value: g,
-      })),
-    [groupsData]
-  )
-
   // Fetch channels data
   // eslint-disable-next-line @tanstack/query/exhaustive-deps
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, isLoading, isFetching, isError, refetch } = useQuery({
     queryKey: channelsQueryKeys.list({
       keyword: globalFilter,
       model: modelFilter,
-      group:
-        groupFilter.length > 0 && !groupFilter.includes('all')
-          ? groupFilter[0]
-          : undefined,
       status:
         statusFilter.length > 0 && !statusFilter.includes('all')
           ? statusFilter[0]
@@ -248,10 +231,6 @@ export function ChannelsTable() {
           await searchChannels({
             keyword: globalFilter,
             model: modelFilter,
-            group:
-              groupFilter.length > 0 && !groupFilter.includes('all')
-                ? groupFilter[0]
-                : undefined,
             status:
               statusFilter.length > 0 && !statusFilter.includes('all')
                 ? statusFilter[0]
@@ -270,10 +249,6 @@ export function ChannelsTable() {
       } else {
         return requireServerSuccess(
           await getChannels({
-            group:
-              groupFilter.length > 0 && !groupFilter.includes('all')
-                ? groupFilter[0]
-                : undefined,
             status:
               statusFilter.length > 0 && !statusFilter.includes('all')
                 ? statusFilter[0]
@@ -317,9 +292,14 @@ export function ChannelsTable() {
     columns,
     totalCount,
     sorting,
+    // Only the columns needed to identify a channel and judge whether it is
+    // healthy stay on by default; everything else is one click away in the
+    // column menu instead of pushing the table past its container.
     initialColumnVisibility: {
       models: false,
       tag: false,
+      priority: false,
+      weight: false,
     },
     columnVisibilityStorageKey: CHANNELS_COLUMN_VISIBILITY_STORAGE_KEY,
     columnSizingStorageKey: isMobile
@@ -402,13 +382,18 @@ export function ChannelsTable() {
     ]
   }, [t, typeCounts, typeFilter])
 
-  const groupFilterOptions = [
-    { label: t('All Groups'), value: 'all' },
-    ...groupOptions.map((option) => ({
-      ...option,
-      label: sensitiveVisible ? option.label : '••••',
-    })),
-  ]
+  if (isError && !data) {
+    return <ErrorState onRetry={() => void refetch()} />
+  }
+
+  let emptyTitle = t('No Channels Found')
+  let emptyDescription = t(
+    'No channels available. Create your first channel to get started.'
+  )
+  if (shouldSearch) {
+    emptyTitle = t('No matching results')
+    emptyDescription = t('Try adjusting your search')
+  }
 
   return (
     <DataTablePage
@@ -416,11 +401,12 @@ export function ChannelsTable() {
       columns={columns}
       isLoading={isLoading}
       isFetching={isFetching}
-      emptyTitle={t('No Channels Found')}
-      emptyDescription={t(
-        'No channels available. Create your first channel to get started.'
-      )}
+      emptyTitle={emptyTitle}
+      emptyDescription={emptyDescription}
+      tableHeading={<SectionHeading as='h2' title={t('Channel list')} />}
+      tableClassName={cn(SECTION_FRAME_CLASSNAME, SECTION_TABLE_HEAD_CLASSNAME)}
       skeletonKeyPrefix='channel-skeleton'
+      showPagination={channels.length > 0}
       enableCardView
       viewModeStorageKey={CHANNELS_VIEW_MODE_STORAGE_KEY}
       renderCard={(row, { isSelected }) => (
@@ -456,12 +442,6 @@ export function ChannelsTable() {
             columnId: 'type',
             title: t('Type'),
             options: typeFilterOptions,
-            singleSelect: true,
-          },
-          {
-            columnId: 'group',
-            title: t('Group'),
-            options: groupFilterOptions,
             singleSelect: true,
           },
         ],

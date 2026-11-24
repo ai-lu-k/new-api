@@ -65,3 +65,13 @@ it('keeps page size selection available in the default layout', () => {
   render(<Fixture />)
   expect(screen.getByRole('combobox')).toBeVisible()
 })
+
+it('marks the open page for assistive tech in the default layout', async () => {
+  const user = userEvent.setup()
+  const { container } = render(<Fixture />)
+  const marked = () => container.querySelector('button[aria-current="page"]')
+
+  expect(marked()).toHaveTextContent('1')
+  await user.click(screen.getByRole('button', { name: /Go to page 2/ }))
+  expect(marked()).toHaveTextContent('2')
+})

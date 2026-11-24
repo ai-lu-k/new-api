@@ -23,14 +23,16 @@ import (
 const oauthAuthFlowTTL = 10 * time.Minute
 
 type oauthStateRequest struct {
-	Provider string          `json:"provider"`
-	Intent   string          `json:"intent"`
-	Aff      string          `json:"aff,omitempty"`
-	Scope    string          `json:"scope,omitempty"`
-	Context  json.RawMessage `json:"context,omitempty"`
+	LegalConsent *model.LegalAcceptance `json:"legal_consent,omitempty"`
+	Provider     string                 `json:"provider"`
+	Intent       string                 `json:"intent"`
+	Aff          string                 `json:"aff,omitempty"`
+	Scope        string                 `json:"scope,omitempty"`
+	Context      json.RawMessage        `json:"context,omitempty"`
 }
 
 type oauthFlowPayload struct {
+	LegalConsent    *model.LegalAcceptance         `json:"legal_consent,omitempty"`
 	AffiliateCode   string                         `json:"affiliate_code,omitempty"`
 	Verification    *service.OAuthVerificationFlow `json:"verification,omitempty"`
 	Telegram        *oauth.TelegramOAuthFlow       `json:"telegram,omitempty"`
@@ -63,7 +65,7 @@ func GenerateOAuthCode(c *gin.Context) {
 	}
 	userID := 0
 	sessionID := ""
-	flowPayload := oauthFlowPayload{AffiliateCode: request.Aff}
+	flowPayload := oauthFlowPayload{AffiliateCode: request.Aff, LegalConsent: request.LegalConsent}
 	bindingStarted := false
 	if request.Provider == "telegram" {
 		telegramFlow, err := oauth.NewTelegramOAuthFlow()
@@ -322,8 +324,13 @@ func handleOAuthLogin(c *gin.Context, provider oauth.Provider, oauthUser *oauth.
 		writeSecurityOperationError(c, err)
 		return
 	}
+	c.Set("legal_acceptance", payload.LegalConsent)
 	user, migration, err := findOrCreateOAuthUser(c, provider, oauthUser, token, payload.AffiliateCode)
 	if err != nil {
+		if errors.Is(err, model.ErrLegalConsentRequired) || errors.Is(err, model.ErrLegalVersionChanged) {
+			writeLegalError(c, err)
+			return
+		}
 		if errors.Is(err, model.ErrEmailAlreadyTaken) {
 			common.ApiErrorI18n(c, i18n.MsgUserEmailAlreadyTaken)
 			return
@@ -524,8 +531,15 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	// Handle affiliate code
 	inviterId := 0
 	if affiliateCode != "" {
-		inviterId, _ = model.GetUserIdByAffCode(affiliateCode)
+		if inviter, err := model.GetUserByAffCode(affiliateCode); err == nil {
+			inviterId = inviter.Id
+		}
 	}
+	user.RegistrationRisk = registrationRisk(c)
+	now := time.Now()
+
+	acceptanceValue, _ := c.Get("legal_acceptance")
+	legalAcceptance, _ := acceptanceValue.(*model.LegalAcceptance)
 
 	// Use transaction to ensure user creation and OAuth binding are atomic
 	if genericProvider, ok := provider.(*oauth.GenericOAuthProvider); ok {
@@ -533,6 +547,12 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 		err := model.DB.Transaction(func(tx *gorm.DB) error {
 			// Create user
 			if err := user.InsertWithTx(tx, inviterId); err != nil {
+				return err
+			}
+			if err := model.CreateReferralReward(tx, inviterId, user.Id, now); err != nil {
+				return err
+			}
+			if err := model.RecordLegalConsentWithTx(tx, user.Id, legalAcceptance); err != nil {
 				return err
 			}
 
@@ -561,6 +581,12 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 			if err := user.InsertWithTx(tx, inviterId); err != nil {
 				return err
 			}
+			if err := model.CreateReferralReward(tx, inviterId, user.Id, now); err != nil {
+				return err
+			}
+			if err := model.RecordLegalConsentWithTx(tx, user.Id, legalAcceptance); err != nil {
+				return err
+			}
 
 			// Set the provider user ID on the user model and update
 			provider.SetProviderUserID(user, oauthUser.ProviderUserID)
@@ -583,6 +609,13 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 
 		// Perform post-transaction tasks
 		user.FinalizeOAuthUserCreation(inviterId)
+	}
+
+	clearRegistrationProof(c)
+	if inviterId != 0 {
+		if _, err := model.IssueReferralReward(user.Id, now); err != nil && !errors.Is(err, model.ErrReferralRewardNotFound) {
+			common.SysError(fmt.Sprintf("failed to issue the referral reward for invitee %d: %v", user.Id, err))
+		}
 	}
 
 	return user, nil, nil

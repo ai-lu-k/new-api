@@ -44,6 +44,22 @@ export const userSchema = z.object({
   email: z.string().optional(),
   quota: z.number(),
   used_quota: z.number(),
+  usage_level: z
+    .object({
+      level: z.number().int().min(0).max(6),
+      next_level_quota: z.number().nullable(),
+      remaining_quota: z.number(),
+      progress: z.number().min(0).max(100),
+    })
+    .optional(),
+  usage_source: z
+    .object({
+      gift_used: z.number(),
+      token_plan_used: z.number(),
+      gift_plan_used: z.number(),
+      gift_known: z.boolean(),
+    })
+    .optional(),
   request_count: z.number(),
   group: z.string(),
   aff_code: z.string().optional(),
@@ -58,6 +74,11 @@ export const userSchema = z.object({
   updated_at: z.number().optional(),
   last_login_at: z.number().optional(),
   DeletedAt: z.any().nullable().optional(),
+  model_daily_token_limits: z
+    .record(z.string(), z.number())
+    .nullable()
+    .optional(),
+  model_daily_token_defaults: z.record(z.string(), z.number()).optional(),
   remark: z.string().optional(),
   admin_permissions: z
     .record(z.string(), z.record(z.string(), z.boolean()))
@@ -85,6 +106,11 @@ export type UserSortBy =
   | 'group'
   | 'created_at'
   | 'last_login_at'
+  | 'used_quota'
+  | 'usage_level'
+  | 'gift_used'
+  | 'token_plan_used'
+  | 'gift_plan_used'
 
 export type UserSortOrder = 'asc' | 'desc'
 
@@ -125,6 +151,7 @@ export interface UserFormData {
   quota?: number // Only used when updating user
   group?: string // Only used when updating user
   remark?: string // Only used when updating user
+  model_daily_token_limits?: Record<string, number>
   admin_permissions?: AdminPermissionMatrix
 }
 
@@ -138,11 +165,27 @@ export type ManageUserAction =
 
 export type QuotaAdjustMode = 'add' | 'subtract' | 'override'
 
+/**
+ * Why quota is added by hand. A paid reason means money was received outside
+ * the checkout, so the addition counts as a top-up; the others are gifts.
+ */
+export type QuotaAddReason =
+  | 'offline_payment'
+  | 'gift'
+  | 'compensation'
+  | 'test'
+  | 'other'
+
 export interface ManageUserQuotaPayload {
   id: number
   action: 'add_quota'
   mode: QuotaAdjustMode
   value: number
+  /** Required when adding. */
+  reason?: QuotaAddReason
+  reason_note?: string
+  /** Money received, for a paid reason. */
+  paid_amount?: number
 }
 
 // ============================================================================

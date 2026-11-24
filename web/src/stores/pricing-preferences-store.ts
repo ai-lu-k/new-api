@@ -24,6 +24,9 @@ export type PricingCurrencyPreference = 'USD' | 'site'
 type PricingPreferences = {
   currency: PricingCurrencyPreference
   setCurrency: (currency: PricingCurrencyPreference) => void
+  /** Keep the list price beside a discounted one, for comparison. */
+  showListPrice: boolean
+  setShowListPrice: (showListPrice: boolean) => void
 }
 
 export const usePricingPreferencesStore = create<PricingPreferences>()(
@@ -31,10 +34,15 @@ export const usePricingPreferencesStore = create<PricingPreferences>()(
     (set) => ({
       currency: 'USD',
       setCurrency: (currency) => set({ currency }),
+      showListPrice: false,
+      setShowListPrice: (showListPrice) => set({ showListPrice }),
     }),
     {
       name: 'model-pricing-preferences',
-      partialize: (state) => ({ currency: state.currency }),
+      partialize: (state) => ({
+        currency: state.currency,
+        showListPrice: state.showListPrice,
+      }),
     }
   )
 )

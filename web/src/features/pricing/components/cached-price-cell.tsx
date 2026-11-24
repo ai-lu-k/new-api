@@ -29,7 +29,7 @@ import {
   isUnconfiguredTaskUsageModel,
 } from '../lib/dynamic-price'
 import { isTokenBasedModel } from '../lib/model-helpers'
-import { formatPrice, stripTrailingZeros } from '../lib/price'
+import { formatPrice } from '../lib/price'
 import type { PricingModel } from '../types'
 import type { ModelPriceCellOptions } from './model-price-cell'
 
@@ -107,7 +107,7 @@ export function CachedPriceCell(props: {
               </span>
             )}
             <span className='font-mono text-sm tabular-nums'>
-              {stripTrailingZeros(entry.formatted)}
+              {entry.formatted}
             </span>
           </div>
         ))}
@@ -128,16 +128,14 @@ export function CachedPriceCell(props: {
     return <span className='text-muted-foreground/30 text-xs'>—</span>
   }
 
-  const cachedPrice = stripTrailingZeros(
-    formatPrice(
-      model,
-      'cache',
-      tokenUnit,
-      showRechargePrice,
-      priceRate,
-      usdExchangeRate,
-      selectedGroup
-    )
+  const cachedPrice = formatPrice(
+    model,
+    'cache',
+    tokenUnit,
+    showRechargePrice,
+    priceRate,
+    usdExchangeRate,
+    selectedGroup
   )
 
   return (

@@ -29,6 +29,10 @@ import {
   type TimeFunction,
 } from './types'
 
+/** Display quantity for per-character speech pricing: 10k characters. */
+const DEFAULT_CHARACTER_QUANTITY = 10000
+const MAX_CHARACTER_QUANTITY = 100000
+
 type RuntimeValue = { value: unknown; integer?: boolean }
 
 /** The supported, deterministic subset of GJSON paths (not JavaScript property access). */
@@ -248,6 +252,21 @@ class BillingRuntime {
       return { value: node.value, integer: node.integer }
     }
     if (node.kind === 'variable') {
+      if (node.name === 'chars') {
+        const value = this.context.charCount ?? DEFAULT_CHARACTER_QUANTITY
+        if (
+          !Number.isInteger(value) ||
+          value < 0 ||
+          value > MAX_CHARACTER_QUANTITY
+        ) {
+          throw new BillingExpressionError({
+            code: 'number',
+            detail: `chars must be between 0 and ${MAX_CHARACTER_QUANTITY}`,
+            position: node.start,
+          })
+        }
+        return { value }
+      }
       if (node.name === 'image_count') {
         const value = this.context.imageCount ?? 1
         if (!Number.isInteger(value) || value < 1 || value > 128) {
@@ -344,9 +363,29 @@ class BillingRuntime {
       return { value: this.boolean(node.left) || this.boolean(node.right) }
     }
     const left = this.evaluate(node.left)
+    if (node.operator === '??') {
+      return left.value === null ? this.evaluate(node.right) : left
+    }
     const right = this.evaluate(node.right)
     const a = left.value
     const b = right.value
+    if (node.operator === 'in') {
+      if (!Array.isArray(b) || !b.every((item) => typeof item === 'string')) {
+        throw new BillingExpressionError({
+          code: 'unsupported',
+          detail: 'string membership list',
+          position: node.start,
+        })
+      }
+      if (a !== null && typeof a !== 'string') {
+        throw new BillingExpressionError({
+          code: 'unsupported',
+          detail: 'string membership operand',
+          position: node.start,
+        })
+      }
+      return { value: a !== null && b.includes(a) }
+    }
     if (node.operator === '==' || node.operator === '!=') {
       if (
         a !== null &&
@@ -561,6 +600,7 @@ export function evaluateBillingExpression(
       ...(compiled.variables.has('image_count')
         ? { imageCount: context.imageCount ?? 1 }
         : {}),
+      ...(compiled.variables.has('chars') ? { chars: true } : {}),
       ...(runtime.fixedPrice !== undefined
         ? { fixedPrice: runtime.fixedPrice }
         : {}),

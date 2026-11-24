@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --font-sans: 'Public Sans', sans-serif;
+  --font-sans: 'Public Sans Variable', sans-serif;
   /* Editorial serif token — the body face used by the `serif` font axis
    * and by presets that opt in (currently Anthropic). Lora carries only
    * Latin glyphs, so the stack walks through CJK serifs (Noto / Source Han
@@ -39,6 +39,11 @@ For commercial licensing, please contact support@quantumnous.com
   --font-manrope:
     -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu',
     'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+
+  /* Bare `transition-*` utilities inherit the motion scale instead of
+   * Tailwind's 150ms default, so a control cannot drift off the contract. */
+  --default-transition-duration: var(--motion-fast);
+  --default-transition-timing-function: var(--ease-out);
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -94,8 +99,8 @@ For commercial licensing, please contact support@quantumnous.com
 }
 
 :root {
-  --radius: 1rem;
-  --app-header-height: 3rem;
+  --radius: 0.375rem;
+  --app-header-height: 3.5rem;
   /* Static build-channel fallback consumed when JS hasn't booted yet. */
   --app-rev: '2k6e8r7p';
   /* Currently active body font. The font axis swaps this between
@@ -103,18 +108,21 @@ For commercial licensing, please contact support@quantumnous.com
    * in theme-presets.css. Default mirrors `--font-sans` so behavior is
    * identical when no font preference is set. */
   --font-body: var(--font-sans);
-  --background: oklch(1 0 0);
+  --background: oklch(0.9927 0.0041 301.4);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.692 0.141 243.716);
+  /* The brand colour is #8AB4F9 (see .dark). On a light page it is too pale
+   * to read as text or to carry white text, so the light palette uses the same
+   * hue at a lower lightness. */
+  --primary: oklch(0.55 0.17 260.1);
   --primary-foreground: oklch(1 0 0);
   --secondary: oklch(0.95 0 0);
-  --secondary-foreground: oklch(0.42 0.16 250);
+  --secondary-foreground: oklch(0.2103 0.0059 285.9);
   --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.49 0 0);
+  --muted-foreground: oklch(0.551 0.0234 264.4);
   --accent: color-mix(in oklch, var(--primary) 12%, var(--background));
   --accent-foreground: oklch(0.145 0 0);
   --destructive: oklch(0.577 0.245 27.325);
@@ -127,52 +135,52 @@ For commercial licensing, please contact support@quantumnous.com
   --info-foreground: oklch(0.985 0 0);
   --neutral: oklch(0.708 0 0);
   --neutral-foreground: oklch(0.145 0 0);
-  --border: oklch(0.93 0 0);
-  --input: oklch(0.93 0 0);
-  --ring: oklch(0.708 0.16 249.003);
-  --chart-1: oklch(0.72 0.18 250);
+  --border: oklch(0.9321 0.0054 286.3);
+  --input: oklch(0.9321 0.0054 286.3);
+  --ring: oklch(0.55 0.17 260.1);
+  --chart-1: oklch(0.55 0.17 260.1);
   --chart-2: oklch(0.65 0.15 200);
   --chart-3: oklch(0.7 0.12 280);
   --chart-4: oklch(0.68 0.19 325);
   --chart-5: oklch(0.68 0.16 155);
-  --overview-accent-1: oklch(0.72 0.18 250);
+  --overview-accent-1: oklch(0.55 0.17 260.1);
   --overview-accent-2: oklch(0.65 0.15 200);
   --overview-accent-3: oklch(0.7 0.12 280);
-  --sidebar: color-mix(in oklch, var(--foreground) 0.5%, var(--background));
+  --sidebar: oklch(1 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.64 0.197 253.892);
+  --sidebar-primary: oklch(0.55 0.17 260.1);
   --sidebar-primary-foreground: oklch(1 0 0);
   --sidebar-accent: color-mix(in oklch, var(--primary) 12%, var(--background));
-  --sidebar-accent-foreground: oklch(0.579 0.196 255.909);
-  --sidebar-border: oklch(0.93 0 0);
-  --sidebar-ring: oklch(0.58 0.2 250);
+  --sidebar-accent-foreground: oklch(0.45 0.16 260.1);
+  --sidebar-border: oklch(0.9321 0.0054 286.3);
+  --sidebar-ring: oklch(0.55 0.17 260.1);
   --skeleton-base: oklch(0.97 0 0);
   --skeleton-highlight: oklch(0.985 0 0);
   --table-row: var(--background);
   --table-header: color-mix(
-    in oklch,
+    in oklab,
     var(--foreground) 1.5%,
     var(--background)
   );
   --table-header-hover: color-mix(
-    in oklch,
+    in oklab,
     var(--foreground) 3%,
     var(--background)
   );
   /* Disabled rows: kept subtle so they read as "quiet", not as a colored
      alert state. */
   --table-disabled: color-mix(
-    in oklch,
+    in oklab,
     var(--foreground) 3%,
     var(--background)
   );
   --table-disabled-hover: color-mix(
-    in oklch,
+    in oklab,
     var(--foreground) 4.5%,
     var(--background)
   );
   --table-disabled-border: color-mix(
-    in oklch,
+    in oklab,
     var(--foreground) 16%,
     var(--background)
   );
@@ -180,16 +188,17 @@ For commercial licensing, please contact support@quantumnous.com
 
 .dark {
   /* OpenAI-like dark mode with a crisp charcoal canvas. */
-  --background: oklch(0.235 0 0);
+  --background: oklch(0.1457 0.0043 285.9);
   --foreground: oklch(0.965 0 0);
-  --card: oklch(0.285 0 0);
+  --card: oklch(0.1931 0.008 285.6);
   --card-foreground: oklch(0.965 0 0);
-  --popover: oklch(0.305 0 0);
+  --popover: oklch(0.2205 0.0116 285.4);
   --popover-foreground: oklch(0.965 0 0);
-  --primary: oklch(0.54 0.142 248.516);
-  --primary-foreground: oklch(1 0 0);
+  /* #8AB4F9. White text on it has a contrast of 2.1, so what sits on it is dark. */
+  --primary: oklch(0.7665 0.1096 260.1);
+  --primary-foreground: oklch(0.2 0.03 260.1);
   --secondary: oklch(0.335 0 0);
-  --secondary-foreground: oklch(0.9 0.05 250);
+  --secondary-foreground: oklch(0.9197 0.004 286.3);
   --muted: oklch(0.305 0 0);
   --muted-foreground: oklch(0.78 0 0);
   --accent: color-mix(in oklch, var(--primary) 20%, var(--background));
@@ -206,41 +215,41 @@ For commercial licensing, please contact support@quantumnous.com
   --neutral-foreground: oklch(0.155 0 0);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 17%);
-  --ring: oklch(0.554 0.148 250.726);
-  --chart-1: oklch(0.76 0.14 250);
+  --ring: oklch(0.7665 0.1096 260.1);
+  --chart-1: oklch(0.7665 0.1096 260.1);
   --chart-2: oklch(0.76 0.13 200);
   --chart-3: oklch(0.76 0.13 285);
   --chart-4: oklch(0.75 0.16 325);
   --chart-5: oklch(0.76 0.14 155);
-  --sidebar: oklch(0.225 0 0);
+  --sidebar: oklch(0.1657 0.0083 285.5);
   --sidebar-foreground: oklch(0.95 0 0);
-  --sidebar-primary: oklch(0.588 0.123 246.488);
-  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-primary: oklch(0.7665 0.1096 260.1);
+  --sidebar-primary-foreground: oklch(0.2 0.03 260.1);
   --sidebar-accent: color-mix(in oklch, var(--primary) 20%, var(--background));
-  --sidebar-accent-foreground: oklch(0.9 0.05 250);
+  --sidebar-accent-foreground: oklch(0.9197 0.004 286.3);
   --sidebar-border: oklch(1 0 0 / 11%);
-  --sidebar-ring: oklch(0.7 0.17 250);
+  --sidebar-ring: oklch(0.7665 0.1096 260.1);
   --skeleton-base: oklch(0.335 0 0);
   --skeleton-highlight: oklch(0.44 0 0);
   --table-row: var(--background);
-  --table-header: color-mix(in oklch, var(--foreground) 6%, var(--background));
+  --table-header: color-mix(in oklab, var(--foreground) 6%, var(--background));
   --table-header-hover: color-mix(
-    in oklch,
+    in oklab,
     var(--foreground) 9%,
     var(--background)
   );
   --table-disabled: color-mix(
-    in oklch,
+    in oklab,
     var(--foreground) 7%,
     var(--background)
   );
   --table-disabled-hover: color-mix(
-    in oklch,
+    in oklab,
     var(--foreground) 9.5%,
     var(--background)
   );
   --table-disabled-border: color-mix(
-    in oklch,
+    in oklab,
     var(--foreground) 24%,
     var(--background)
   );

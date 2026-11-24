@@ -51,6 +51,7 @@ export function LoadingState(props: LoadingStateProps) {
 
   return (
     <div
+      data-loading-state=''
       className={cn(
         'flex min-h-[200px] flex-col items-center justify-center gap-3',
         props.className

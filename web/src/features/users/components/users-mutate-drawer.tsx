@@ -25,15 +25,19 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import {
-  SideDrawerSection,
   sideDrawerContentClassName,
   sideDrawerFooterClassName,
   sideDrawerFormClassName,
   sideDrawerHeaderClassName,
+  sideDrawerSectionClassName,
 } from '@/components/drawer-layout'
+import { Reveal } from '@/components/motion/reveal'
+import {
+  sharedElementName,
+  useSharedName,
+} from '@/components/motion/use-shared-name'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Combobox } from '@/components/ui/combobox'
 import {
   Form,
   FormControl,
@@ -63,6 +67,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
+import { UserModelDailyLimitsEditor } from '@/features/model-daily-tokens/components/user-limits-editor'
 import {
   ADMIN_PERMISSION_ACTIONS,
   ADMIN_PERMISSION_RESOURCES,
@@ -78,13 +83,7 @@ import { ROLE } from '@/lib/roles'
 import { requireServerSuccess } from '@/lib/server-error-message'
 import { useAuthStore } from '@/stores/auth-store'
 
-import {
-  createUser,
-  updateUser,
-  getUser,
-  getGroups,
-  getPermissionCatalog,
-} from '../api'
+import { createUser, updateUser, getUser, getPermissionCatalog } from '../api'
 import { BINDING_FIELDS, ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
 import {
   userFormSchema,
@@ -110,19 +109,20 @@ export function UsersMutateDrawer({
 }: UsersMutateDrawerProps) {
   const { t } = useTranslation()
   const isUpdate = !!currentRow
+  // Same object as the row's account name: while this drawer is open the row
+  // stops claiming it and the title takes over, so the name travels instead of
+  // fading (contract §9.2).
+  const titleName = useSharedName(
+    open && currentRow ? sharedElementName('user', currentRow.id) : undefined
+  )
   const { triggerRefresh } = useUsers()
   const currentUser = useAuthStore((s) => s.auth.user)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [loadedUserId, setLoadedUserId] = useState<number>()
+  const [dailyTokenDefaults, setDailyTokenDefaults] = useState<
+    Record<string, number>
+  >({})
   const [quotaDialogOpen, setQuotaDialogOpen] = useState(false)
-
-  // Fetch groups
-  const { data: groupsData } = useQuery({
-    queryKey: ['groups'],
-    queryFn: async () => requireServerSuccess(await getGroups()),
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const groups = groupsData?.data || []
 
   // Permission catalog is owned by the backend; fetched once and reused.
   const { data: permissionCatalog = EMPTY_PERMISSION_CATALOG } = useQuery({
@@ -138,20 +138,31 @@ export function UsersMutateDrawer({
 
   // Load existing data when updating
   useEffect(() => {
+    let active = true
+    setLoadedUserId(undefined)
+    setDailyTokenDefaults({})
     if (open && isUpdate && currentRow) {
       // For update, fetch fresh data
       getUser(currentRow.id)
         .then((result) => {
+          if (!active) return
           if (result.success && result.data) {
+            setDailyTokenDefaults(result.data.model_daily_token_defaults ?? {})
             form.reset(transformUserToFormDefaults(result.data))
+            setLoadedUserId(currentRow.id)
           } else {
             handleServerError(result, t('Failed to load'))
           }
         })
-        .catch((error) => handleServerError(error, t('Failed to load')))
+        .catch((error) => {
+          if (active) handleServerError(error, t('Failed to load'))
+        })
     } else if (open && !isUpdate) {
       // For create, reset to defaults
       form.reset(USER_FORM_DEFAULT_VALUES)
+    }
+    return () => {
+      active = false
     }
   }, [open, isUpdate, currentRow, form, t])
 
@@ -163,8 +174,10 @@ export function UsersMutateDrawer({
   const selectedRole = form.watch('role')
   const canEditAdminPermissions = currentUser?.role === ROLE.SUPER_ADMIN
   const targetIsAdmin = (selectedRole ?? currentRow?.role ?? 0) >= ROLE.ADMIN
+  const userDataReady = !isUpdate || loadedUserId === currentRow?.id
 
   const onSubmit = async (data: UserFormValues) => {
+    if (!userDataReady) return
     if (!isUpdate || data.password) {
       if (!accountPasswordSchema.safeParse(data.password ?? '').success) {
         form.setError('password', {
@@ -232,8 +245,10 @@ export function UsersMutateDrawer({
           className={sideDrawerContentClassName('sm:max-w-[600px]')}
         >
           <SheetHeader className={sideDrawerHeaderClassName()}>
-            <SheetTitle>
-              {isUpdate ? t('Update') : t('Create')} {t('User')}
+            <SheetTitle {...titleName} data-shared-morph>
+              {isUpdate
+                ? (currentRow?.username ?? t('User'))
+                : `${t('Create')} ${t('User')}`}
             </SheetTitle>
             <SheetDescription>
               {isUpdate
@@ -248,7 +263,7 @@ export function UsersMutateDrawer({
               className={sideDrawerFormClassName()}
             >
               {/* Basic Information */}
-              <SideDrawerSection>
+              <Reveal as='section' className={sideDrawerSectionClassName()}>
                 <h3 className='text-sm font-medium'>
                   {t('Basic Information')}
                 </h3>
@@ -353,35 +368,16 @@ export function UsersMutateDrawer({
                     </FormItem>
                   )}
                 />
-              </SideDrawerSection>
+              </Reveal>
 
-              {/* Group & Quota Settings (Update only) */}
+              {/* Quota and account settings (Update only) */}
               {isUpdate && (
-                <SideDrawerSection>
-                  <h3 className='text-sm font-medium'>{t('Group & Quota')}</h3>
-
-                  <FormField
-                    control={form.control}
-                    name='group'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('Group')}</FormLabel>
-                        <FormControl>
-                          <Combobox
-                            options={groups.map((group) => ({
-                              value: group,
-                              label: group,
-                            }))}
-                            onValueChange={field.onChange}
-                            value={field.value}
-                            className='w-full'
-                            placeholder={t('Select a group')}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                <Reveal
+                  as='section'
+                  delay={0.04}
+                  className={sideDrawerSectionClassName()}
+                >
+                  <h3 className='text-sm font-medium'>{t('Quota')}</h3>
 
                   <FormField
                     control={form.control}
@@ -424,6 +420,28 @@ export function UsersMutateDrawer({
 
                   <FormField
                     control={form.control}
+                    name='model_daily_token_limits'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Model daily token limits')}</FormLabel>
+                        <UserModelDailyLimitsEditor
+                          defaults={dailyTokenDefaults}
+                          value={field.value ?? {}}
+                          onChange={field.onChange}
+                          disabled={isSubmitting || !userDataReady}
+                        />
+                        <FormDescription>
+                          {t(
+                            'Each model can inherit the global limit, use a custom daily limit, or be unlimited. Zero blocks new requests.'
+                          )}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
                     name='remark'
                     render={({ field }) => (
                       <FormItem>
@@ -441,13 +459,17 @@ export function UsersMutateDrawer({
                       </FormItem>
                     )}
                   />
-                </SideDrawerSection>
+                </Reveal>
               )}
 
               {canEditAdminPermissions &&
                 targetIsAdmin &&
                 permissionCatalog.resources.length > 0 && (
-                  <SideDrawerSection>
+                  <Reveal
+                    as='section'
+                    delay={0.08}
+                    className={sideDrawerSectionClassName()}
+                  >
                     <h3 className='text-sm font-medium'>
                       {t('Admin Permissions')}
                     </h3>
@@ -532,12 +554,16 @@ export function UsersMutateDrawer({
                             )}
                       </p>
                     )}
-                  </SideDrawerSection>
+                  </Reveal>
                 )}
 
               {/* Binding Information (Read-only) */}
               {isUpdate && (
-                <SideDrawerSection>
+                <Reveal
+                  as='section'
+                  delay={0.12}
+                  className={sideDrawerSectionClassName()}
+                >
                   <h3 className='text-sm font-medium'>
                     {t('Binding Information')}
                   </h3>
@@ -563,7 +589,7 @@ export function UsersMutateDrawer({
                       </div>
                     ))}
                   </div>
-                </SideDrawerSection>
+                </Reveal>
               )}
             </form>
           </Form>
@@ -571,7 +597,11 @@ export function UsersMutateDrawer({
             <SheetClose render={<Button variant='outline' />}>
               {t('Close')}
             </SheetClose>
-            <Button form='user-form' type='submit' disabled={isSubmitting}>
+            <Button
+              form='user-form'
+              type='submit'
+              disabled={isSubmitting || !userDataReady}
+            >
               {isSubmitting ? t('Saving...') : t('Save changes')}
             </Button>
           </SheetFooter>

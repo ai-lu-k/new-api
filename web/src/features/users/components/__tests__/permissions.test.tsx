@@ -43,11 +43,17 @@ const label = "View other accounts' audit logs"
 const description =
   'View audit records from user and admin roles. Root records are always excluded.'
 
-function renderPermissions(viewerRole: number, allowed?: boolean) {
+function renderPermissions(
+  viewerRole: number,
+  allowed?: boolean,
+  dailyLimits?: Record<string, number>,
+  pendingUser?: Promise<{ data: { success: boolean; data: User } }>
+) {
   useAuthStore
     .getState()
     .auth.setUser({ id: 1, username: 'operator', role: viewerRole })
   vi.spyOn(api, 'get').mockImplementation(async (url) => {
+    if (pendingUser && url === '/api/user/2') return pendingUser
     if (url === '/api/authz/catalog') {
       return {
         data: {
@@ -79,6 +85,8 @@ function renderPermissions(viewerRole: number, allowed?: boolean) {
         success: true,
         data: {
           ...target,
+          model_daily_token_defaults: { 'deepseek-v4.1-flash-x0.1': 200000000 },
+          model_daily_token_limits: dailyLimits,
           admin_permissions:
             allowed === undefined ? {} : { audit: { read: allowed } },
         },
@@ -142,4 +150,73 @@ it('admin cannot edit the audit permission even when the catalog is available', 
   expect(
     screen.queryByRole('checkbox', { name: new RegExp(label) })
   ).not.toBeInTheDocument()
+})
+
+it.each(['inherit', 'custom', 'unlimited'])(
+  'the user editor saves the selected daily token mode: %s',
+  async (mode) => {
+    const put = vi
+      .spyOn(api, 'put')
+      .mockResolvedValue({ data: { success: true } })
+    renderPermissions(100, undefined, {
+      'deepseek-v4.1-flash-x0.1': 50000000,
+    })
+    await screen.findByDisplayValue('Managed admin')
+    const selector = screen.getByRole('combobox', {
+      name: 'Daily token limit mode for deepseek-v4.1-flash-x0.1',
+    })
+    await userEvent.click(selector)
+    const labels = {
+      inherit: 'Inherit global limit',
+      custom: 'Custom daily limit',
+      unlimited: 'Unlimited',
+    }
+    await userEvent.click(
+      screen.getByRole('option', { name: labels[mode as keyof typeof labels] })
+    )
+    let expected: Record<string, number> = {}
+    if (mode === 'custom') {
+      const input = screen.getByRole('spinbutton', {
+        name: 'deepseek-v4.1-flash-x0.1',
+      })
+      await userEvent.clear(input)
+      await userEvent.type(input, '100000000')
+      expected = { 'deepseek-v4.1-flash-x0.1': 100000000 }
+    }
+    if (mode === 'unlimited') expected = { 'deepseek-v4.1-flash-x0.1': -1 }
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    await waitFor(() =>
+      expect(put).toHaveBeenCalledWith(
+        '/api/user/',
+        expect.objectContaining({ id: 2, model_daily_token_limits: expected })
+      )
+    )
+  }
+)
+
+it('keeps saving disabled until the account and its fresh daily limits have loaded', async () => {
+  type Response = { data: { success: boolean; data: User } }
+  let resolveUser: (value: Response) => void = vi.fn()
+  const pendingUser = new Promise<Response>((resolve) => {
+    resolveUser = resolve
+  })
+  renderPermissions(100, undefined, undefined, pendingUser)
+  expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
+  resolveUser({
+    data: {
+      success: true,
+      data: {
+        ...target,
+        model_daily_token_defaults: { 'deepseek-v4.1-flash-x0.1': 200000000 },
+        model_daily_token_limits: { 'deepseek-v4.1-flash-x0.1': 50000000 },
+      },
+    },
+  })
+  await screen.findByDisplayValue('Managed admin')
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled()
+  )
+  expect(
+    screen.getByRole('spinbutton', { name: 'deepseek-v4.1-flash-x0.1' })
+  ).toHaveValue(50000000)
 })

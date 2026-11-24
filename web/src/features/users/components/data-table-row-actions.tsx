@@ -48,6 +48,7 @@ import {
 } from '@/components/ui/tooltip'
 import { UserSubscriptionsDialog } from '@/features/subscriptions/components/dialogs/user-subscriptions-dialog'
 import { handleServerError } from '@/lib/handle-server-error'
+import { withViewTransition } from '@/lib/view-transition'
 
 import { manageUser, resetUserPasskey, resetUserTwoFA } from '../api'
 import {
@@ -65,6 +66,9 @@ interface DataTableRowActionsProps {
   row: Row<User>
 }
 
+/** Menu actions that change an account's privileges or access. */
+type GuardableAction = 'promote' | 'demote' | 'disable' | 'enable'
+
 export function DataTableRowActions({ row }: DataTableRowActionsProps) {
   const { t } = useTranslation()
   const user = row.original
@@ -73,10 +77,20 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
   const [resetTwoFAOpen, setResetTwoFAOpen] = useState(false)
   const [bindingDialogOpen, setBindingDialogOpen] = useState(false)
   const [subscriptionsDialogOpen, setSubscriptionsDialogOpen] = useState(false)
+  // Privilege and access changes run through a confirmation step: promoting,
+  // demoting or disabling an account is a one-click action in the menu but not
+  // a one-click decision, and a disable cuts the user's in-flight requests.
+  const [pendingAction, setPendingAction] = useState<GuardableAction | null>(
+    null
+  )
 
+  // The account name travels from this row to the drawer title, so the state
+  // change has to happen inside a view transition (contract §9.2).
   const handleEdit = () => {
-    setCurrentRow(user)
-    setOpen('update')
+    withViewTransition(() => {
+      setCurrentRow(user)
+      setOpen('update')
+    })
   }
 
   const handleDelete = () => {
@@ -85,6 +99,7 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
   }
 
   const handleManage = async (action: Exclude<ManageUserAction, 'delete'>) => {
+    setPendingAction(null)
     try {
       const result = await manageUser(user.id, action)
       if (result.success) {
@@ -134,6 +149,27 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
   const isAdmin = user.role >= USER_ROLE.ADMIN
   const isRoot = user.role === USER_ROLE.ROOT
 
+  let confirmTitle = ''
+  let confirmLabel = ''
+  let confirmTransition = ''
+  if (pendingAction === 'promote') {
+    confirmTitle = t('Promote')
+    confirmLabel = t('Promote')
+    confirmTransition = `${t('Role')}: ${t('User')} → ${t('Administrator')}`
+  } else if (pendingAction === 'demote') {
+    confirmTitle = t('Demote')
+    confirmLabel = t('Demote')
+    confirmTransition = `${t('Role')}: ${t('Administrator')} → ${t('User')}`
+  } else if (pendingAction === 'disable') {
+    confirmTitle = t('Confirm disable')
+    confirmLabel = t('Disable')
+    confirmTransition = `${t('Status')}: ${t('Enabled')} → ${t('Disabled')}`
+  } else if (pendingAction === 'enable') {
+    confirmTitle = t('Confirm enable')
+    confirmLabel = t('Enable')
+    confirmTransition = `${t('Status')}: ${t('Disabled')} → ${t('Enabled')}`
+  }
+
   if (isUserDeleted(user)) {
     return null
   }
@@ -161,7 +197,12 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
         contentClassName='w-48'
       >
         {isDisabled ? (
-          <DropdownMenuItem onClick={() => handleManage('enable')}>
+          <DropdownMenuItem
+            onSelect={(event) => {
+              event.preventDefault()
+              setPendingAction('enable')
+            }}
+          >
             {t('Enable')}
             <DropdownMenuShortcut>
               <Power size={16} />
@@ -169,7 +210,10 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
           </DropdownMenuItem>
         ) : (
           <DropdownMenuItem
-            onClick={() => handleManage('disable')}
+            onSelect={(event) => {
+              event.preventDefault()
+              setPendingAction('disable')
+            }}
             disabled={isRoot}
           >
             {t('Disable')}
@@ -180,7 +224,12 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
         )}
 
         {isAdmin && !isRoot && (
-          <DropdownMenuItem onClick={() => handleManage('demote')}>
+          <DropdownMenuItem
+            onSelect={(event) => {
+              event.preventDefault()
+              setPendingAction('demote')
+            }}
+          >
             {t('Demote')}
             <DropdownMenuShortcut>
               <ArrowDown size={16} />
@@ -189,7 +238,12 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
         )}
 
         {!isAdmin && (
-          <DropdownMenuItem onClick={() => handleManage('promote')}>
+          <DropdownMenuItem
+            onSelect={(event) => {
+              event.preventDefault()
+              setPendingAction('promote')
+            }}
+          >
             {t('Promote')}
             <DropdownMenuShortcut>
               <ArrowUp size={16} />
@@ -262,6 +316,25 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
           </DropdownMenuShortcut>
         </DropdownMenuItem>
       </DataTableRowActionMenu>
+
+      <ConfirmDialog
+        open={pendingAction !== null}
+        onOpenChange={(next) => {
+          if (!next) setPendingAction(null)
+        }}
+        title={confirmTitle}
+        desc={
+          <div className='space-y-2'>
+            <p className='text-foreground font-medium'>{user.username}</p>
+            <p>{confirmTransition}</p>
+          </div>
+        }
+        confirmText={confirmLabel}
+        destructive={pendingAction === 'disable' || pendingAction === 'demote'}
+        handleConfirm={() => {
+          if (pendingAction) void handleManage(pendingAction)
+        }}
+      />
 
       <ConfirmDialog
         open={resetPasskeyOpen}

@@ -20,9 +20,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, render, screen, cleanup, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import i18next from 'i18next'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 import { api } from '@/lib/api'
+import { usePricingPreferencesStore } from '@/stores/pricing-preferences-store'
 import {
   DEFAULT_CURRENCY_CONFIG,
   useSystemConfigStore,
@@ -44,6 +45,49 @@ import type { PricingModel, BillingUsageSchema } from '../types'
 
 vi.mock('@visactor/react-vchart', () => ({ VChart: () => null }))
 
+const originalGetAnimations = Object.getOwnPropertyDescriptor(
+  HTMLElement.prototype,
+  'getAnimations'
+)
+
+beforeEach(() => {
+  // jsdom has no Web Animations API; the shared scroll viewport checks it.
+  Object.defineProperty(HTMLElement.prototype, 'getAnimations', {
+    configurable: true,
+    value: () => [],
+  })
+})
+
+// Group prices are only shown where visitors can choose between groups; the
+// model itself is offered in the default group only.
+const TWO_GROUPS = {
+  default: { desc: '', ratio: 2 },
+  other: { desc: '', ratio: 1 },
+}
+
+it('shows a per-10k-character price instead of a special billing expression for speech models', async () => {
+  render(
+    <ModelPriceCell
+      model={{
+        id: 99,
+        model_name: 'heygen-voice-1',
+        quota_type: 0,
+        model_ratio: 37.5,
+        completion_ratio: 1,
+        enable_groups: ['default'],
+        billing_mode: 'tiered_expr',
+        billing_expr: 'tier("char", fixed(0.0002)) * chars',
+      }}
+    />
+  )
+
+  expect(await screen.findByText(/2\.00/)).toBeVisible()
+  expect(screen.getAllByText(/10k character/).length).toBeGreaterThan(0)
+  expect(
+    screen.queryByText('Special billing expression')
+  ).not.toBeInTheDocument()
+})
+
 it('shows an explicit free request price alongside token prices with distinct units', () => {
   render(
     <DynamicPricingBreakdown
@@ -51,9 +95,29 @@ it('shows an explicit free request price alongside token prices with distinct un
       matchedTierLabel='free'
     />
   )
-  expect(screen.getAllByText('$0/request').length).toBeGreaterThan(0)
+  expect(screen.getAllByText('$0.00/request').length).toBeGreaterThan(0)
   expect(screen.getAllByText('Input / 1M token').length).toBeGreaterThan(0)
   expect(screen.getAllByText('Price per request').length).toBeGreaterThan(0)
+})
+
+it('prints one free line instead of a table with no price column', () => {
+  render(<DynamicPricingBreakdown billingExpr='tier("free", p * 0 + c * 0)' />)
+
+  expect(screen.getByText('Free')).toBeVisible()
+  expect(screen.queryByRole('table')).toBeNull()
+})
+
+it('draws a single tier as price rows, not a table of one row', () => {
+  render(
+    <DynamicPricingBreakdown billingExpr='tier("standard", p * 2 + c * 8)' />
+  )
+
+  expect(screen.queryByRole('table')).toBeNull()
+  expect(screen.getByText('Input')).toBeVisible()
+  expect(screen.getByText('Output')).toBeVisible()
+  expect(screen.getByText('$2.0000')).toBeVisible()
+  // One tier means one price; naming it would only add a header to every row.
+  expect(screen.queryByText('standard')).not.toBeInTheDocument()
 })
 
 it('renders weekday and hour conditions as time windows instead of expression source', () => {
@@ -122,7 +186,7 @@ it('shows nested task conditions and prices in detail and group tables without a
       <ModelDetailsContent
         model={nestedModel}
         groupRatio={{ default: 2 }}
-        usableGroup={{ default: { desc: '', ratio: 2 } }}
+        usableGroup={TWO_GROUPS}
         endpointMap={{}}
         autoGroups={[]}
         priceRate={1}
@@ -147,7 +211,7 @@ it('shows nested task conditions and prices in detail and group tables without a
   expect(
     screen.getAllByText(/resolution: 768P · Outside these times:/).length
   ).toBeGreaterThan(0)
-  expect(screen.getByText('$0.072 – $0.15')).toBeVisible()
+  expect(screen.getByText('$0.07 – $0.15')).toBeVisible()
   expect(screen.getAllByText('$0.24').length).toBeGreaterThan(0)
   expect(screen.queryByText('Matched')).not.toBeInTheDocument()
 })
@@ -204,7 +268,7 @@ it.each([false, true])(
             billing_expr: configured ? imageModel.billing_expr : undefined,
           }}
           groupRatio={{ default: 2 }}
-          usableGroup={{ default: { desc: '', ratio: 2 } }}
+          usableGroup={TWO_GROUPS}
           endpointMap={{}}
           autoGroups={[]}
           priceRate={1}
@@ -218,8 +282,8 @@ it.each([false, true])(
     expect(screen.getAllByText(configured ? '/ 张' : '张')).toHaveLength(2)
     expect(screen.queryByText('image_count')).not.toBeInTheDocument()
     if (configured) {
-      expect(screen.getByText('$0.2')).toBeVisible()
-      expect(screen.getByText('$0.4')).toBeVisible()
+      expect(screen.getByText('$0.20')).toBeVisible()
+      expect(screen.getByText('$0.40')).toBeVisible()
     }
   }
 )
@@ -258,6 +322,15 @@ it('updates count unit labels across cards, table cells and breakdowns with loca
 
 afterEach(async () => {
   cleanup()
+  if (originalGetAnimations) {
+    Object.defineProperty(
+      HTMLElement.prototype,
+      'getAnimations',
+      originalGetAnimations
+    )
+  } else {
+    Reflect.deleteProperty(HTMLElement.prototype, 'getAnimations')
+  }
   clients.forEach((client) => client.clear())
   clients.length = 0
   vi.restoreAllMocks()
@@ -317,7 +390,7 @@ it('shows one standard task price and a localized group price without duplicate 
       <ModelDetailsContent
         model={model}
         groupRatio={{ default: 2 }}
-        usableGroup={{ default: { desc: '', ratio: 2 } }}
+        usableGroup={TWO_GROUPS}
         endpointMap={{}}
         autoGroups={[]}
         priceRate={1}
@@ -503,8 +576,8 @@ it('uses the same recharge conversion and token unit in task condition prices', 
       }}
     />
   )
-  expect(screen.getAllByText('$5/1M token')).toHaveLength(2)
-  expect(screen.getAllByText('$3/1M token')).toHaveLength(2)
+  expect(screen.getAllByText('$5.00/1M token')).toHaveLength(2)
+  expect(screen.getAllByText('$3.00/1M token')).toHaveLength(2)
 })
 
 it('switches provider group prices, localized conditions and examples, and shows unconfigured providers', async () => {
@@ -576,7 +649,7 @@ it('switches provider group prices, localized conditions and examples, and shows
       <ModelDetailsContent
         model={shared}
         groupRatio={{ default: 2 }}
-        usableGroup={{ default: { desc: '', ratio: 2 } }}
+        usableGroup={TWO_GROUPS}
         endpointMap={{}}
         autoGroups={[]}
         priceRate={1}
@@ -590,7 +663,7 @@ it('switches provider group prices, localized conditions and examples, and shows
   expect(alpha).toHaveAttribute('aria-selected', 'true')
   let panel = screen.getByRole('tabpanel', { name: 'Alpha' })
   expect(within(panel).getByText('Alpha sample')).toBeVisible()
-  expect(within(panel).getByText('$0.8')).toBeVisible()
+  expect(within(panel).getByText('$0.80')).toBeVisible()
   await user.click(alpha)
   await user.keyboard('{ArrowRight}')
   expect(screen.getByRole('tab', { name: 'Beta' })).toHaveFocus()
@@ -603,8 +676,8 @@ it('switches provider group prices, localized conditions and examples, and shows
   expect(within(panel).getByText('Beta sample')).toBeVisible()
   expect(within(panel).queryByText('Alpha sample')).not.toBeInTheDocument()
   expect(within(panel).getByText('Professional mode')).toBeVisible()
-  expect(within(panel).getByText('$3')).toBeVisible()
-  expect(within(panel).getByText('$6')).toBeVisible()
+  expect(within(panel).getByText('$3.00')).toBeVisible()
+  expect(within(panel).getByText('$6.00')).toBeVisible()
   await act(() => i18next.changeLanguage('zhCN'))
   expect(within(panel).getByText('专业模式')).toBeVisible()
   await act(() => i18next.changeLanguage('en'))
@@ -618,7 +691,7 @@ it('switches provider group prices, localized conditions and examples, and shows
   expect(within(panel).queryByRole('table')).not.toBeInTheDocument()
   await user.click(screen.getByRole('tab', { name: 'Delta' }))
   panel = screen.getByRole('tabpanel', { name: 'Delta' })
-  expect(within(panel).getByText('$0.5')).toBeVisible()
+  expect(within(panel).getByText('$0.50')).toBeVisible()
 })
 
 it('shows provider count, price range and missing-price status in both list and card views', () => {
@@ -661,6 +734,217 @@ it('shows provider count, price range and missing-price status in both list and 
   expect(screen.getAllByText(/Not configured for some providers/)).toHaveLength(
     2
   )
-  expect(screen.getByText('0.4 – 0.8/s')).toBeVisible()
-  expect(screen.getByText('$0.4 – $0.8')).toBeVisible()
+  expect(screen.getByText('0.40 – 0.80/s')).toBeVisible()
+  expect(screen.getByText('$0.40 – $0.80')).toBeVisible()
 })
+
+it('keeps the list price behind a switch, then shows it struck through above the site price', async () => {
+  vi.spyOn(api, 'get').mockResolvedValue({ data: { data: { groups: [] } } })
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  clients.push(client)
+  const discountedModel: PricingModel = {
+    ...model,
+    model_name: 'discounted-text',
+    billing_usage_schema: undefined,
+    price_multiplier: 0.25,
+    group_ratio: { default: 0.25 },
+    billing_expr:
+      'len <= 272000 ? tier("standard", p * 2 + c * 8 + cr * 0.04) : tier("long", p * 4 + c * 12 + cr * 0.08)',
+  }
+  render(
+    <QueryClientProvider client={client}>
+      <ModelDetailsContent
+        model={discountedModel}
+        groupRatio={{ default: 0.25 }}
+        usableGroup={{ default: { desc: '', ratio: 0.25 } }}
+        endpointMap={{}}
+        autoGroups={[]}
+        priceRate={1}
+        usdExchangeRate={1}
+        tokenUnit='M'
+      />
+    </QueryClientProvider>
+  )
+  const prices = screen.getAllByLabelText('Site price')
+  expect(prices.some((price) => price.textContent === '$0.50')).toBe(true)
+  expect(prices.some((price) => price.textContent === '$2.00')).toBe(true)
+  expect(prices.some((price) => price.textContent === '$0.01')).toBe(true)
+  // The drawer charges one price at a time; the list price waits behind a switch.
+  expect(screen.queryAllByLabelText('Base price')).toHaveLength(0)
+
+  await userEvent.click(screen.getByRole('switch', { name: 'Show list price' }))
+  const bases = screen.getAllByLabelText('Base price')
+  expect(bases.every((price) => price.tagName === 'DEL')).toBe(true)
+  expect(bases.some((price) => price.textContent === '$8.00')).toBe(true)
+  // There are two responsive versions of each tier, and no third price summary.
+  expect(screen.getAllByText('$0.50')).toHaveLength(2)
+  expect(
+    screen.queryByRole('region', { name: 'Price schedule' })
+  ).not.toBeInTheDocument()
+  // The preference outlives a drawer, so leave the next test a clean slate.
+  usePricingPreferencesStore.setState({ showListPrice: false })
+})
+
+it('keeps discounted token-unit and recharge conversions consistent with the pricing page', () => {
+  const previous = useSystemConfigStore.getState().config.currency
+  useSystemConfigStore.getState().setConfig({
+    currency: {
+      ...DEFAULT_CURRENCY_CONFIG,
+      quotaDisplayType: 'CNY',
+      usdExchangeRate: 6.7,
+    },
+  })
+  render(
+    <DynamicPricingBreakdown
+      billingExpr='tier("base", p * 2 + c * 8 + cr * 0.04)'
+      showSchedule
+      groupRatioMultiplier={0.25}
+      taskPriceOptions={{
+        tokenUnit: 'K',
+        showRechargePrice: true,
+        priceRate: 3.35,
+        usdExchangeRate: 6.7,
+      }}
+    />
+  )
+  expect(
+    screen
+      .getAllByLabelText('Base price')
+      .some((price) => price.textContent === '¥0.007')
+  ).toBe(true)
+  expect(
+    screen
+      .getAllByLabelText('Site price')
+      .some((price) => price.textContent === '¥0.002')
+  ).toBe(true)
+  expect(screen.getByText('Unit: ¥ / 1K token (unit)')).toBeVisible()
+  expect(screen.queryByText(/Input \/ 1K token/)).not.toBeInTheDocument()
+  useSystemConfigStore.getState().setConfig({ currency: previous })
+})
+
+it('marks today in the billing timezone and navigates across a monthly peak-price boundary', async () => {
+  const now = vi
+    .spyOn(Date, 'now')
+    .mockReturnValue(new Date('2026-10-08T23:00:00Z').getTime())
+  const user = userEvent.setup()
+  const condition =
+    'weekday("Asia/Shanghai") >= 1 && weekday("Asia/Shanghai") <= 5 && day("Asia/Shanghai") >= 8 && ((hour("Asia/Shanghai") >= 9 && hour("Asia/Shanghai") < 12) || (hour("Asia/Shanghai") >= 14 && hour("Asia/Shanghai") < 18))'
+  render(
+    <DynamicPricingBreakdown
+      billingExpr={`${condition} ? tier("peak", p * 2 + c * 8) : tier("off_peak", p * 1 + c * 4)`}
+      showSchedule
+      groupRatioMultiplier={0.25}
+    />
+  )
+  const schedule = screen.getByRole('region', { name: 'Price schedule' })
+  expect(within(schedule).getByText('9')).toHaveAttribute(
+    'aria-current',
+    'date'
+  )
+  const peak = within(schedule).getByRole('img', {
+    name: 'Oct 8 09:00–12:00 · Peak pricing',
+  })
+  expect(peak).toBeEmptyDOMElement()
+  expect(peak).toHaveAttribute('title', '09:00–12:00 · Peak pricing')
+  expect(peak).toHaveClass(
+    'bg-primary',
+    'text-primary-foreground',
+    '-left-px',
+    'right-0'
+  )
+  expect(peak).toHaveStyle({ top: '37.5%', height: '12.5%' })
+  expect(peak).toHaveClass('rounded-l-sm')
+  expect(peak).not.toHaveClass('rounded-r-sm')
+  const nextDayPeak = within(schedule).getByRole('img', {
+    name: 'Oct 9 09:00–12:00 · Peak pricing',
+  })
+  expect(nextDayPeak).toHaveClass('-left-px', 'right-0')
+  expect(nextDayPeak).toHaveStyle({ top: '37.5%', height: '12.5%' })
+  expect(nextDayPeak).toBeEmptyDOMElement()
+  expect(nextDayPeak).toHaveClass('rounded-r-sm')
+  expect(nextDayPeak).not.toHaveClass('rounded-l-sm')
+  expect(within(schedule).queryByText('09:00')).not.toBeInTheDocument()
+  expect(within(schedule).queryByText('14:00')).not.toBeInTheDocument()
+  expect(screen.getByText('Unit: $ / 1M token')).toBeVisible()
+  expect(screen.queryByText('Input / 1M token')).not.toBeInTheDocument()
+  expect(screen.queryByText('Output / 1M token')).not.toBeInTheDocument()
+  expect(screen.queryByText(/Mon–Fri 09:00–12:00 or/)).not.toBeInTheDocument()
+  expect(within(schedule).getByText('09:00–12:00 · 14:00–18:00')).toBeVisible()
+  expect(within(schedule).getByText('00:00').parentElement).toHaveClass('h-40')
+  expect(schedule).not.toHaveClass('rounded-xl', 'border')
+  expect(
+    within(schedule).getByRole('img', {
+      name: 'Oct 7 00:00–24:00 · Off-peak pricing',
+    })
+  ).toBeEmptyDOMElement()
+  expect(
+    within(schedule).getByRole('img', {
+      name: 'Oct 8 09:00–12:00 · Peak pricing',
+    })
+  ).toBeInTheDocument()
+  expect(
+    within(schedule).getByRole('img', {
+      name: 'Oct 7 00:00–24:00 · Off-peak pricing',
+    })
+  ).toBeInTheDocument()
+  expect(
+    within(schedule).getByRole('img', {
+      name: 'Oct 10 00:00–24:00 · Off-peak pricing',
+    })
+  ).toBeInTheDocument()
+  await user.click(
+    within(schedule).getByRole('button', { name: 'Previous week' })
+  )
+  expect(schedule.querySelector('[aria-current="date"]')).toBeNull()
+  expect(
+    within(schedule).getByRole('img', {
+      name: 'Oct 1 00:00–24:00 · Off-peak pricing',
+    })
+  ).toBeInTheDocument()
+  await user.click(within(schedule).getByRole('button', { name: 'Today' }))
+  expect(
+    within(schedule).getByRole('img', {
+      name: 'Oct 8 09:00–12:00 · Peak pricing',
+    })
+  ).toBeInTheDocument()
+  now.mockRestore()
+})
+
+it.each([
+  ['zhCN', '周一'],
+  ['zhTW', '週一'],
+  ['en', 'Mon'],
+  ['fr', 'lun.'],
+  ['ja', '月'],
+  ['ru', 'пн'],
+  [
+    'vi',
+    new Intl.DateTimeFormat('vi-VN', {
+      weekday: 'short',
+      timeZone: 'UTC',
+    }).format(new Date('2026-10-05T00:00:00Z')),
+  ],
+  ['invalid-language', 'Mon'],
+])(
+  'updates the calendar weekday format when switching the interface to %s',
+  async (language, monday) => {
+    // Start from English: the language left behind by the previous case must
+    // not decide the format this case begins with.
+    await act(() => i18next.changeLanguage('en'))
+    vi.spyOn(Date, 'now').mockReturnValue(
+      new Date('2026-10-09T03:00:00Z').getTime()
+    )
+    render(
+      <DynamicPricingBreakdown
+        billingExpr='hour("UTC") < 9 ? tier("a", p * 1) : tier("b", p * 2)'
+        showSchedule
+      />
+    )
+    const schedule = screen.getByRole('region', { name: 'Price schedule' })
+    expect(within(schedule).getByText('Mon')).toBeInTheDocument()
+    await act(() => i18next.changeLanguage(language))
+    expect(within(schedule).getByText(monday)).toBeInTheDocument()
+  }
+)

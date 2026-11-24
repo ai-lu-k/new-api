@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/setting/naming_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
@@ -88,7 +89,7 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo, task *model
 		Group:     info.UsingGroup,
 		Other:     other,
 	})
-	model.UpdateUserUsedQuotaAndRequestCount(info.UserId, info.PriceData.Quota)
+	RecordUserConsumption(info, info.PriceData.Quota)
 	model.UpdateChannelUsedQuota(info.ChannelId, info.PriceData.Quota)
 }
 
@@ -114,6 +115,13 @@ func taskIsSubscription(task *model.Task) bool {
 
 // taskAdjustFunding 调整任务的资金来源（钱包或订阅），delta > 0 表示扣费，delta < 0 表示退还。
 func taskAdjustFunding(task *model.Task, delta int) error {
+	if task.PrivateData.BillingSource == BillingSourceTokenPlan {
+		if task.PrivateData.TokenPlanReservationId > 0 {
+			_, err := model.SettleTokenPlanRequest(task.UserId, task.PrivateData.TokenPlanReservationId, int64(task.Quota)+int64(delta))
+			return err
+		}
+		return model.AdjustTokenPlanQuota(task.UserId, task.PrivateData.TokenPlanWeekId, int64(delta), false)
+	}
 	if taskIsSubscription(task) {
 		return model.PostConsumeUserSubscriptionDelta(task.PrivateData.SubscriptionId, int64(delta))
 	}
@@ -214,6 +222,9 @@ func appendTaskLogInfo(task *model.Task, other *model.LogOther) {
 	if task == nil || other == nil {
 		return
 	}
+	if task.PrivateData.BillingSource != "" {
+		other.SetPublic("billing_source", task.PrivateData.BillingSource)
+	}
 	if task.TaskID != "" {
 		other.SetPublic("task_id", task.TaskID)
 	}
@@ -274,7 +285,9 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) bool 
 	taskAdjustTokenQuota(ctx, task, -quota)
 
 	// 3. 回减预扣时累计的用户和渠道用量，请求次数保持不变
-	model.UpdateUserUsedQuota(task.UserId, -quota)
+	if task.PrivateData.BillingSource != BillingSourceTokenPlan {
+		model.UpdateUserUsedQuota(task.UserId, -quota)
+	}
 	model.UpdateChannelUsedQuota(task.ChannelId, -quota)
 
 	// 4. 记录日志
@@ -342,7 +355,9 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	}
 
 	// 提交阶段已经累计过一次请求；结算阶段只调整最终用量。
-	model.UpdateUserUsedQuota(task.UserId, quotaDelta)
+	if task.PrivateData.BillingSource != BillingSourceTokenPlan {
+		model.UpdateUserUsedQuota(task.UserId, quotaDelta)
+	}
 	model.UpdateChannelUsedQuota(task.ChannelId, quotaDelta)
 
 	var logType int
@@ -386,7 +401,7 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 	modelName := taskModelName(task)
 
 	// 获取模型价格和倍率
-	modelRatio, hasRatioSetting, _ := ratio_setting.GetModelRatio(modelName)
+	modelRatio, hasRatioSetting, _ := ratio_setting.GetModelRatio(naming_setting.BillingName(modelName))
 	// 只有配置了倍率(非固定价格)时才按 token 重新计费
 	if !hasRatioSetting || modelRatio <= 0 {
 		return false
@@ -413,6 +428,7 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 	} else {
 		finalGroupRatio = groupRatio
 	}
+	finalGroupRatio *= naming_setting.PriceMultiplier(modelName)
 
 	// 计算 OtherRatios 乘积（视频折扣、时长等）
 	otherMultiplier := 1.0

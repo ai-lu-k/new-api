@@ -21,10 +21,16 @@ import { isAxiosError } from 'axios'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { DataTablePage, useDataTable } from '@/components/data-table'
+import {
+  DataTablePage,
+  SECTION_FRAME_CLASSNAME,
+  SECTION_TABLE_HEAD_CLASSNAME,
+  useDataTable,
+} from '@/components/data-table'
+import { ErrorState } from '@/components/error-state'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Button } from '@/components/ui/button'
 import { requireServerSuccess } from '@/lib/server-error-message'
+import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { getAuditLogs, type AuditFilters, type AuditLog } from '../api'
@@ -63,6 +69,8 @@ export function AuditLogViewer(props: {
       requireServerSuccess(await getAuditLogs(props.scope, params)),
     enabled: canQuery && !invalidRange,
     retry: false,
+    // Keep the filters and the page shell; the table shows the failure itself.
+    meta: { skipInternalErrorRedirect: true },
   })
   const accessDenied =
     props.scope === 'all' &&
@@ -105,6 +113,63 @@ export function AuditLogViewer(props: {
   const update = (patch: Partial<AuditFilters>) =>
     setFilters((previous) => ({ ...previous, ...patch, p: 1 }))
 
+  const hasActiveFilters = Boolean(
+    filters.start_timestamp ||
+    filters.end_timestamp ||
+    filters.success ||
+    filters.category ||
+    filters.username ||
+    filters.request_id ||
+    tokenScope !== 'all'
+  )
+  const toolbar = (
+    <div className='shrink-0 space-y-2'>
+      <AuditLogFilterBar
+        table={table}
+        filters={filters}
+        onChange={update}
+        scope={props.scope}
+        accessOnly={props.accessOnly}
+        tokenScope={tokenScope}
+        currentTokenRef={props.currentTokenRef}
+        onTokenScopeChange={(value) => {
+          setTokenScope(value)
+          update({})
+        }}
+        isFetching={query.isFetching}
+        onSearch={() => {
+          if (!invalidRange && canQuery) void query.refetch()
+        }}
+        onReset={() => {
+          setTokenScope('all')
+          setFilters({ p: 1, page_size: filters.page_size })
+        }}
+      />
+      {invalidRange && (
+        <Alert variant='destructive'>
+          <AlertDescription>
+            {t('End time must be after start time')}
+          </AlertDescription>
+        </Alert>
+      )}
+    </div>
+  )
+
+  if (query.isError) {
+    return (
+      <div className='flex h-full min-h-0 flex-col gap-3'>
+        {toolbar}
+        <ErrorState
+          title={t('Failed to load audit records')}
+          description={t('Please try again later.')}
+          onRetry={() => {
+            void query.refetch()
+          }}
+        />
+      </div>
+    )
+  }
+
   return (
     <div className='flex h-full min-h-0 flex-col'>
       <DataTablePage
@@ -113,60 +178,30 @@ export function AuditLogViewer(props: {
         isLoading={query.isPending && canQuery && !invalidRange}
         isFetching={query.isFetching}
         emptyTitle={
-          query.isError ? t('Failed to load audit records') : t('No records')
+          hasActiveFilters ? t('No matching results') : t('No records')
+        }
+        emptyDescription={
+          hasActiveFilters
+            ? t('Try adjusting your search')
+            : t(
+                'Audit records start after this feature was enabled. Earlier records remain in Common Logs.'
+              )
         }
         hideMobile={props.accessOnly}
         paginationInFooter={!props.accessOnly}
         className='h-auto min-h-0 flex-1'
         applyHeaderSize
-        getColumnClassName={() => 'py-2'}
-        tableClassName='[&_[data-slot=table]]:text-[13px] [&_[data-slot=table]_td]:text-[13px] [&_[data-slot=table]_td_*]:text-[13px] [&_[data-slot=table]_th]:text-[13px] [&_[data-slot=table]_th_*]:text-[13px]'
-        toolbar={
-          <div className='shrink-0 space-y-2'>
-            <AuditLogFilterBar
-              table={table}
-              filters={filters}
-              onChange={update}
-              scope={props.scope}
-              accessOnly={props.accessOnly}
-              tokenScope={tokenScope}
-              currentTokenRef={props.currentTokenRef}
-              onTokenScopeChange={(value) => {
-                setTokenScope(value)
-                update({})
-              }}
-              isFetching={query.isFetching}
-              onSearch={() => {
-                if (!invalidRange && canQuery) void query.refetch()
-              }}
-              onReset={() => {
-                setTokenScope('all')
-                setFilters({ p: 1, page_size: filters.page_size })
-              }}
-            />
-            {invalidRange && (
-              <Alert variant='destructive'>
-                <AlertDescription>
-                  {t('End time must be after start time')}
-                </AlertDescription>
-              </Alert>
-            )}
-            {query.isError && (
-              <Alert variant='destructive'>
-                <AlertDescription className='flex items-center justify-between gap-2'>
-                  <span>{t('Failed to load audit records')}</span>
-                  <Button
-                    size='sm'
-                    variant='outline'
-                    onClick={() => void query.refetch()}
-                  >
-                    {t('Retry')}
-                  </Button>
-                </AlertDescription>
-              </Alert>
-            )}
-          </div>
-        }
+        getColumnClassName={() => 'py-2.5'}
+        tableClassName={cn(
+          SECTION_FRAME_CLASSNAME,
+          SECTION_TABLE_HEAD_CLASSNAME,
+          '[&_td]:h-12',
+          // The empty block sizes to its own copy instead of a fixed 400 px
+          // table row that pushes the footer pagination away from the list.
+          '[&_td[colspan]]:h-auto',
+          '[&_[data-slot=table]]:text-[13px] [&_[data-slot=table]_td]:text-[13px] [&_[data-slot=table]_td_*]:text-[13px] [&_[data-slot=table]_th]:text-[12px] [&_[data-slot=table]_th_*]:text-[12px]'
+        )}
+        toolbar={toolbar}
       />
     </div>
   )

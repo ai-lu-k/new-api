@@ -25,17 +25,13 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import {
-  flexRender,
-  getCoreRowModel,
-  useReactTable,
-} from '@tanstack/react-table'
-import {
   render,
   screen,
   within,
   cleanup,
   waitFor,
   act,
+  fireEvent,
 } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import i18n from 'i18next'
@@ -46,7 +42,7 @@ import type {
   ModelPricingEntry,
 } from '@/features/model-pricing/api'
 import { pricingOptions } from '@/features/model-pricing/pricing'
-import { usePricingColumns } from '@/features/pricing/components/pricing-columns'
+import { ModelPriceCell } from '@/features/pricing/components/model-price-cell'
 import type { PricingModel } from '@/features/pricing/types'
 import fr from '@/i18n/locales/fr.json'
 import zhCN from '@/i18n/locales/zh.json'
@@ -95,19 +91,9 @@ function Page() {
 }
 
 function CatalogPrice(props: { model: PricingModel }) {
-  const columns = usePricingColumns({ tokenUnit: 'M' })
-  const table = useReactTable({
-    data: [props.model],
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-  })
-  const cell = table
-    .getRowModel()
-    .rows[0].getAllCells()
-    .find((item) => item.column.id === 'price')
   return (
     <div role='group' aria-label='Catalog price'>
-      {cell && flexRender(cell.column.columnDef.cell, cell.getContext())}
+      <ModelPriceCell model={props.model} options={{ tokenUnit: 'M' }} />
     </div>
   )
 }
@@ -337,11 +323,24 @@ it('prefills and creates metadata only when the user explicitly saves it', async
     'channel-only'
   )
   expect(post).not.toHaveBeenCalled()
+  // The name comes prefilled; what the model offers has to be entered.
+  await user.click(screen.getByRole('checkbox', { name: 'Text' }))
+  await user.type(screen.getByLabelText('Context length *'), '64000')
+  fireEvent.change(screen.getByLabelText('Release date *'), {
+    target: { value: '2026-05' },
+  })
+  await user.type(screen.getByLabelText('Series *'), 'Channel')
   await user.click(screen.getByRole('button', { name: 'Save metadata' }))
   await waitFor(() =>
     expect(post).toHaveBeenCalledWith(
       '/api/models/',
-      expect.objectContaining({ model_name: 'channel-only' }),
+      expect.objectContaining({
+        model_name: 'channel-only',
+        input_modalities: 'text',
+        context_length: 64000,
+        release_date: '2026-05',
+        series: 'Channel',
+      }),
       expect.anything()
     )
   )
@@ -546,7 +545,7 @@ it.each([
     name: 'legacy',
     effective: { ModelRatio: 1.5, CompletionRatio: 5, CacheRatio: 0.1 },
     catalog: { model_ratio: 1.5, completion_ratio: 5 },
-    text: 'Input3Output15',
+    text: 'Input3.00Output15.00',
   },
   {
     name: 'single-expression',
@@ -558,7 +557,7 @@ it.each([
       billing_mode: 'tiered_expr',
       billing_expr: 'tier("base", p * 3 + c * 15 + cr * 0.3)',
     },
-    text: 'Input3Output15',
+    text: 'Input3.00Output15.00',
   },
   {
     name: 'tier-expression',
@@ -572,19 +571,19 @@ it.each([
       billing_expr:
         'len <= 200000 ? tier("standard", p * 3 + c * 15) : tier("long", p * 6 + c * 22.5)',
     },
-    text: 'Input3Output15',
+    text: 'Input3.00Output15.00',
   },
   {
     name: 'free-request',
     effective: { ModelPrice: 0 },
     catalog: { quota_type: 1, model_price: 0 },
-    text: 'Per-request0USD/request',
+    text: 'Per-request0.00USD/request',
   },
   {
     name: 'free-tokens',
     effective: { ModelRatio: 0, CompletionRatio: 2 },
     catalog: { model_ratio: 0, completion_ratio: 2 },
-    text: 'Input0Output0',
+    text: 'Input0.00Output0.00',
   },
   {
     name: 'free-expression',
@@ -596,7 +595,7 @@ it.each([
       billing_mode: 'tiered_expr',
       billing_expr: 'tier("free", p * 0 + c * 0)',
     },
-    text: 'Input0Output0',
+    text: 'Input0.00Output0.00',
   },
 ])(
   'shows $name effective pricing like the catalog without requiring a listed model',
@@ -847,7 +846,7 @@ it.each([
       name: 'View pricing for channel-only',
     })
     expect(button.textContent?.replaceAll(/\s/g, '')).toContain(
-      'Input0.5Output1'
+      'Input0.50Output1.00'
     )
     expect(within(button).getByText(caption)).toBeVisible()
     if (type === 'CUSTOM') {

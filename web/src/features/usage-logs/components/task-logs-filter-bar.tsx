@@ -120,6 +120,7 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
     navigate({
       to: '/usage-logs/$section',
       params: { section: props.logCategory },
+      viewTransition: false,
       search: {
         ...filterParams,
         page: 1,
@@ -136,6 +137,7 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
     navigate({
       to: '/usage-logs/$section',
       params: { section: props.logCategory },
+      viewTransition: false,
       search: {
         page: 1,
         startTime: start.getTime(),

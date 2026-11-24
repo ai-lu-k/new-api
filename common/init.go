@@ -27,6 +27,7 @@ func printHelp() {
 	fmt.Println("Original Project: OneAPI by JustSong - https://github.com/songquanpeng/one-api")
 	fmt.Println("Maintainer: QuantumNous - https://github.com/QuantumNous/new-api")
 	fmt.Println("Usage: newapi [--port <port>] [--log-dir <log directory>] [--version] [--help]")
+	fmt.Println("       newapi licenses (print license texts and notices)")
 }
 
 func InitEnv() {
@@ -87,6 +88,7 @@ func InitEnv() {
 	DebugEnabled = os.Getenv("DEBUG") == "true"
 	MemoryCacheEnabled = os.Getenv("MEMORY_CACHE_ENABLED") == "true"
 	IsMasterNode = os.Getenv("NODE_TYPE") != "slave"
+	TokenPlanRetired = GetEnvOrDefaultBool("TOKEN_PLAN_RETIRED", false)
 	PasswordLoginEncryptionEnabled = GetEnvOrDefaultBool("PASSWORD_LOGIN_ENCRYPTION_ENABLED", false)
 	initNodeNameIdentity()
 	TLSInsecureSkipVerify = GetEnvOrDefaultBool("TLS_INSECURE_SKIP_VERIFY", false)

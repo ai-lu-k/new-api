@@ -230,6 +230,11 @@ export function buildApiParams(config: {
     })
   }
 
+  // `type=0` is the backend's "all types" sentinel; sending it adds a filter
+  // that means "no filter", so keep the request clean and let "All Types" stay
+  // an absent parameter.
+  if (params.type === 0) delete params.type
+
   return params
 }
 

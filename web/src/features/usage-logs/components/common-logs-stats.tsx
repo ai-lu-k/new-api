@@ -20,10 +20,10 @@ import { useQuery } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
-import { Skeleton } from '@/components/ui/skeleton'
-import { formatLogQuota } from '@/lib/format'
+import { StatRow, type StatRowItem } from '@/components/stat-row'
+import { toIntlLocale } from '@/i18n/languages'
+import { formatLogQuota, formatNumber } from '@/lib/format'
 import { requireServerSuccess } from '@/lib/server-error-message'
-import { cn } from '@/lib/utils'
 
 import { getLogStats, getUserLogStats } from '../api'
 import { DEFAULT_LOG_STATS } from '../constants'
@@ -32,24 +32,11 @@ import { useLogsViewScope, useUsageLogsContext } from './usage-logs-provider'
 
 const route = getRouteApi('/_authenticated/usage-logs/$section')
 
-function StatBadge(props: {
-  label: string
-  value: string | number
-  accent: string
-}) {
-  return (
-    <span className='border-border/60 bg-muted/25 inline-flex h-7 items-center gap-2 rounded-md border px-2.5 text-xs shadow-xs'>
-      <span className={cn('h-3.5 w-0.5 rounded-full', props.accent)} />
-      <span className='text-muted-foreground'>{props.label}</span>
-      <span className='text-foreground/85 font-mono font-semibold tabular-nums'>
-        {props.value}
-      </span>
-    </span>
-  )
-}
+const MASKED_QUOTA = '••••'
 
 export function CommonLogsStats() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const { isAdminView: isAdmin } = useLogsViewScope()
   const searchParams = route.useSearch()
   const { sensitiveVisible } = useUsageLogsContext()
@@ -76,33 +63,35 @@ export function CommonLogsStats() {
     placeholderData: (previousData) => previousData,
   })
 
-  if (isLoading) {
-    return (
-      <div className='flex items-center gap-2'>
-        <Skeleton className='h-7 w-[150px] rounded-md' />
-        <Skeleton className='h-7 w-[100px] rounded-md' />
-        <Skeleton className='h-7 w-[120px] rounded-md' />
-      </div>
-    )
-  }
+  const usageDisplay = sensitiveVisible
+    ? formatLogQuota(stats?.quota ?? 0)
+    : MASKED_QUOTA
+  const rpmDisplay = formatNumber(stats?.rpm ?? 0, locale)
+  const tpmDisplay = formatNumber(stats?.tpm ?? 0, locale)
 
-  return (
-    <div className='flex flex-wrap items-center gap-2'>
-      <StatBadge
-        label={t('Usage')}
-        value={sensitiveVisible ? formatLogQuota(stats?.quota || 0) : '••••'}
-        accent='bg-sky-500/70'
-      />
-      <StatBadge
-        label={t('RPM')}
-        value={stats?.rpm || 0}
-        accent='bg-rose-500/65'
-      />
-      <StatBadge
-        label={t('TPM')}
-        value={stats?.tpm || 0}
-        accent='bg-slate-400/70'
-      />
-    </div>
-  )
+  const items: StatRowItem[] = [
+    {
+      key: 'usage',
+      label: t('Usage'),
+      value: usageDisplay,
+      valueText: usageDisplay,
+      loading: isLoading,
+    },
+    {
+      key: 'rpm',
+      label: t('RPM'),
+      value: rpmDisplay,
+      valueText: rpmDisplay,
+      loading: isLoading,
+    },
+    {
+      key: 'tpm',
+      label: t('TPM'),
+      value: tpmDisplay,
+      valueText: tpmDisplay,
+      loading: isLoading,
+    },
+  ]
+
+  return <StatRow columns={3} size='page' items={items} className='flex-1' />
 }

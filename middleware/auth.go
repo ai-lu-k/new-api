@@ -25,6 +25,39 @@ import (
 
 const authIdentityContextKey = "auth_identity"
 
+// PreviewRoleHeader asks the dashboard to serve an administrator's own account
+// in the ordinary-user view. It can only ever lower the effective role, never
+// raise it, so a forged header on a non-administrator account changes nothing.
+const PreviewRoleHeader = "X-Preview-Role"
+
+const previewRoleUser = "user"
+
+const previewModeContextKey = "preview_mode"
+
+// PreviewRoleRequested reports whether the dashboard asked for the
+// ordinary-user view. It says nothing about whether the request may have it;
+// only DashboardRole decides that.
+func PreviewRoleRequested(c *gin.Context) bool {
+	return strings.EqualFold(strings.TrimSpace(c.GetHeader(PreviewRoleHeader)), previewRoleUser)
+}
+
+// DashboardRole reports the role this request is authorized with. The stored
+// account keeps its real role; only the request is downgraded, so ending the
+// preview is as simple as dropping the header.
+func DashboardRole(c *gin.Context, realRole int) int {
+	if realRole < common.RoleAdminUser || !PreviewRoleRequested(c) {
+		return realRole
+	}
+	c.Set(previewModeContextKey, true)
+	return common.RoleCommonUser
+}
+
+// PreviewModeActive reports whether this request is served in the ordinary-user
+// preview, where every administrator capability is withheld.
+func PreviewModeActive(c *gin.Context) bool {
+	return c.GetBool(previewModeContextKey)
+}
+
 type dashboardCredentialKind int
 
 const (
@@ -57,7 +90,8 @@ func authHelper(c *gin.Context, minRole int) {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"success": false, "code": "AUTH_USER_DISABLED", "message": common.TranslateMessage(c, i18n.MsgAuthUserBanned)})
 		return
 	}
-	if user.Role < minRole {
+	role := DashboardRole(c, user.Role)
+	if role < minRole {
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"success": false, "code": "AUTH_INSUFFICIENT_PRIVILEGE", "message": common.TranslateMessage(c, i18n.MsgAuthInsufficientPrivilege)})
 		return
 	}
@@ -65,7 +99,10 @@ func authHelper(c *gin.Context, minRole int) {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"success": false, "code": "AUTH_USER_INVALID", "message": common.TranslateMessage(c, i18n.MsgAuthUserInfoInvalid)})
 		return
 	}
-	setDashboardAuthContext(c, user, identity, useAccessToken)
+	setDashboardAuthContext(c, user, identity, useAccessToken, role)
+	if !requireLegalConsent(c, user.Id) {
+		return
+	}
 
 	// 管理/root 写操作审计兜底：内聚在鉴权链路里，保证任何经过 AdminAuth/RootAuth
 	// 的写接口都会自动留痕（无需在路由上单独挂审计中间件，避免漏挂）。
@@ -91,7 +128,11 @@ func TryUserAuth() func(c *gin.Context) {
 			return
 		}
 		if credentialKind != dashboardCredentialUnmatched {
-			setDashboardAuthContext(c, user, identity, credentialKind == dashboardCredentialPAT)
+			role := DashboardRole(c, user.Role)
+			setDashboardAuthContext(c, user, identity, credentialKind == dashboardCredentialPAT, role)
+			if !requireLegalConsent(c, user.Id) {
+				return
+			}
 		}
 		c.Next()
 	}
@@ -165,8 +206,11 @@ func classifyDashboardCredential(c *gin.Context) (*model.UserBase, service.AuthI
 		if err != nil {
 			return nil, service.AuthIdentity{}, dashboardCredentialInternal, err
 		}
-		_, user, err := service.ValidateLoginSession(identity)
+		session, user, err := service.ValidateLoginSession(identity)
 		if err != nil {
+			return nil, service.AuthIdentity{}, dashboardCredentialInternal, err
+		}
+		if err := validateEnvironmentDashboardSession(c, session, user); err != nil {
 			return nil, service.AuthIdentity{}, dashboardCredentialInternal, err
 		}
 		return user, identity, dashboardCredentialInternal, nil
@@ -186,6 +230,31 @@ func classifyDashboardCredential(c *gin.Context) (*model.UserBase, service.AuthI
 	return user, service.AuthIdentity{UserID: user.Id, UserAuthVersion: user.AuthVersion}, dashboardCredentialPAT, nil
 }
 
+// A shadow login is usable only through the authorized production gateway.
+// Its staging JWT alone never permits direct access to the staging instance.
+func validateEnvironmentDashboardSession(c *gin.Context, session *model.UserSession, user *model.UserBase) error {
+	claimsValue, delegated := c.Get(service.EnvironmentClaimsContextKey)
+	if session.LoginMethod != service.EnvironmentBridgeLoginMethod && !delegated {
+		return nil
+	}
+	configValue, ok := c.Get(service.EnvironmentConfigContextKey)
+	if !ok {
+		return service.ErrAuthTokenInvalid
+	}
+	config, ok := configValue.(*service.EnvironmentConfig)
+	if !ok {
+		return service.ErrAuthTokenInvalid
+	}
+	claims, ok := claimsValue.(*service.EnvironmentRequestClaims)
+	if !ok {
+		return service.ErrAuthTokenInvalid
+	}
+	if err := service.ValidateEnvironmentSession(config, claims, session, user); err != nil {
+		return service.ErrAuthTokenInvalid
+	}
+	return nil
+}
+
 func authorizationToken(header string) (string, bool) {
 	header = strings.TrimSpace(header)
 	if header == "" {
@@ -200,10 +269,10 @@ func authorizationToken(header string) (string, bool) {
 	return header, header != ""
 }
 
-func setDashboardAuthContext(c *gin.Context, user *model.UserBase, identity service.AuthIdentity, useAccessToken bool) {
+func setDashboardAuthContext(c *gin.Context, user *model.UserBase, identity service.AuthIdentity, useAccessToken bool, role int) {
 	c.Header("Auth-Version", "864b7076dbcd0a3c01b5520316720ebf")
 	c.Set("username", user.Username)
-	c.Set("role", user.Role)
+	c.Set("role", role)
 	c.Set("id", user.Id)
 	c.Set("group", user.Group)
 	c.Set("user_group", user.Group)
@@ -267,12 +336,16 @@ func TokenOrUserAuth() func(c *gin.Context) {
 				writeDashboardAuthError(c, err)
 				return
 			}
-			_, user, err := service.ValidateLoginSession(identity)
+			session, user, err := service.ValidateLoginSession(identity)
 			if err != nil {
 				writeDashboardAuthError(c, err)
 				return
 			}
-			setDashboardAuthContext(c, user, identity, false)
+			if err := validateEnvironmentDashboardSession(c, session, user); err != nil {
+				writeDashboardAuthError(c, err)
+				return
+			}
+			setDashboardAuthContext(c, user, identity, false, DashboardRole(c, user.Role))
 			c.Next()
 			return
 		}
@@ -303,6 +376,12 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 		parts := strings.Split(key, "-")
 		key = parts[0]
 
+		// Stored plan digests are lookup identifiers, never bearer credentials.
+		if strings.HasPrefix(key, "tp_hash_") {
+			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": common.TranslateMessage(c, i18n.MsgTokenInvalid)})
+			c.Abort()
+			return
+		}
 		token, err := model.GetTokenByKey(key, false)
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -511,6 +590,7 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 	c.Set("token_id", token.Id)
 	c.Set("token_key", token.Key)
 	c.Set("token_name", token.Name)
+	c.Set("token_plan", token.TokenPlan && !common.TokenPlanRetired)
 	c.Set("token_unlimited_quota", token.UnlimitedQuota)
 	if !token.UnlimitedQuota {
 		c.Set("token_quota", token.RemainQuota)

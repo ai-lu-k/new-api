@@ -32,6 +32,98 @@ type ChannelSettings struct {
 	// HTTP2ConnectionShards spreads HTTP/2 traffic across N independent transports
 	// (1-8). Zero/unset means 1. Ignored when HTTPProtocol is "http1".
 	HTTP2ConnectionShards int `json:"http2_connection_shards,omitempty"`
+	// ConcurrencyLimit caps the live generations one user may run on this
+	// channel. Zero leaves the channel unlimited. Each account, including all of
+	// its tokens and keys, has this many slots on the channel and never consumes
+	// another account's slots; exceeding it is a capacity state, never an
+	// upstream fault.
+	ConcurrencyLimit int `json:"concurrency_limit,omitempty"`
+	// ConcurrencyTotalUrl reports how many upstream accounts the channel's pool
+	// currently has available: a JSON object with an integer "accounts_ready"
+	// field. When set, the gateway reads it and caps the whole channel at
+	// accounts_ready × ConcurrencyTotalPerAccount, on top of the per-user limit.
+	// Only an administrator configures this, like the channel's base URL.
+	ConcurrencyTotalUrl string `json:"concurrency_total_url,omitempty"`
+	// ConcurrencyTotalPerAccount is how many live generations one pooled
+	// upstream account can serve. Zero and one both mean the default of 2.
+	ConcurrencyTotalPerAccount int `json:"concurrency_total_per_account,omitempty"`
+	// ConcurrencyTotalLimit caps the whole channel at this many live
+	// generations, counting every user together. Zero derives the cap from
+	// ConcurrencyTotalUrl instead; a positive value wins over that pool
+	// algorithm, for a pool whose capacity is not a function of its ready
+	// accounts.
+	ConcurrencyTotalLimit int `json:"concurrency_total_limit,omitempty"`
+	// RetryAllUpstreamErrors tries another eligible channel for any upstream
+	// failure before output is committed. Local rejections, cancellation,
+	// explicit pins/session bindings and retry budgets remain authoritative.
+	RetryAllUpstreamErrors bool `json:"retry_all_upstream_errors,omitempty"`
+	// ImageBudgetMB caps the total base64 image payload a chat-completions
+	// request may carry upstream on this channel. Zero disables the budget.
+	// When a request exceeds it, oversized data-URL images are first re-encoded
+	// smaller, then the oldest images (never the newest message's) are replaced
+	// with a text placeholder until the request fits.
+	ImageBudgetMB int `json:"image_budget_mb,omitempty"`
+}
+
+// MaxChannelConcurrency bounds the per-channel generation limit accepted at
+// save time and by admission.
+const MaxChannelConcurrency = 10000
+
+// MaxChannelImageBudgetMB bounds the per-channel image budget accepted at save
+// time. The budget protects upstreams that reject oversized request bodies, so
+// anything past a few hundred MB is a misconfiguration rather than a limit.
+const MaxChannelImageBudgetMB = 256
+
+// ValidateImageBudgetMB validates the save-time channel image budget.
+func (s *ChannelSettings) ValidateImageBudgetMB() error {
+	if s == nil {
+		return nil
+	}
+	if s.ImageBudgetMB < 0 || s.ImageBudgetMB > MaxChannelImageBudgetMB {
+		return fmt.Errorf("image_budget_mb must be between 0 and %d", MaxChannelImageBudgetMB)
+	}
+	return nil
+}
+
+// MaxConcurrencyTotalPerAccount bounds how many live generations one pooled
+// upstream account is assumed to serve.
+const MaxConcurrencyTotalPerAccount = 32
+
+// ValidateConcurrencyTotal validates the save-time pool capacity source: a
+// fixed channel-wide cap stays within MaxChannelConcurrency, and the status URL
+// must be an absolute HTTP(S) URL because the gateway fetches it.
+func (s *ChannelSettings) ValidateConcurrencyTotal() error {
+	if s == nil {
+		return nil
+	}
+	if s.ConcurrencyTotalLimit < 0 || s.ConcurrencyTotalLimit > MaxChannelConcurrency {
+		return fmt.Errorf("concurrency_total_limit must be between 0 and %d", MaxChannelConcurrency)
+	}
+	if s.ConcurrencyTotalPerAccount < 0 || s.ConcurrencyTotalPerAccount > MaxConcurrencyTotalPerAccount {
+		return fmt.Errorf("concurrency_total_per_account must be between 0 and %d", MaxConcurrencyTotalPerAccount)
+	}
+	if s.ConcurrencyTotalUrl == "" {
+		return nil
+	}
+	parsed, err := url.Parse(s.ConcurrencyTotalUrl)
+	if err != nil {
+		return fmt.Errorf("concurrency_total_url is not a valid URL: %w", err)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" || parsed.Host == "" {
+		return fmt.Errorf("concurrency_total_url must be an absolute http(s) URL")
+	}
+	return nil
+}
+
+// ValidateConcurrencyLimit validates the save-time channel concurrency limit.
+func (s *ChannelSettings) ValidateConcurrencyLimit() error {
+	if s == nil {
+		return nil
+	}
+	if s.ConcurrencyLimit < 0 || s.ConcurrencyLimit > MaxChannelConcurrency {
+		return fmt.Errorf("concurrency_limit must be between 0 and %d", MaxChannelConcurrency)
+	}
+	return nil
 }
 
 // BindsTaskPlugin reports whether the channel is bound to the task plugin,

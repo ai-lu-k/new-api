@@ -16,11 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Link2 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout/components/section-page-layout'
+import { Reveal } from '@/components/motion/reveal'
+import { SectionHeading } from '@/components/section-heading'
+import { SettingsShell } from '@/components/settings-shell'
 import { Button } from '@/components/ui/button'
 import {
   Empty,
@@ -29,7 +31,6 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
-import { TitledCard } from '@/components/ui/titled-card'
 import { useProfile } from '@/features/profile/hooks/use-profile'
 
 import { AccessTokenCard } from './components/access-token-card'
@@ -40,9 +41,21 @@ import { PasskeyCard } from './components/passkey-card'
 import { PrivacyCard } from './components/privacy-card'
 import { TwoFACard } from './components/two-fa-card'
 
+/**
+ * Security & access: sign-in methods, live sessions and the account's own
+ * destructive actions, chosen from the group list on the left.
+ */
 export function Security() {
   const { t } = useTranslation()
   const { profile, loading, refreshProfile, fetchProfile } = useProfile()
+
+  const groups = [
+    { id: 'security-authentication', label: t('Login & Authentication') },
+    { id: 'security-verification', label: t('Security verification') },
+    { id: 'security-access', label: t('Sessions & Access') },
+    { id: 'security-privacy', label: t('Privacy') },
+    { id: 'security-account', label: t('Account Actions') },
+  ]
 
   let content: ReactNode
   if (loading) {
@@ -73,76 +86,92 @@ export function Security() {
     )
   } else {
     content = (
-      <div className='grid gap-4 sm:gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.46fr)] xl:items-start'>
-        <div className='min-w-0 space-y-4 sm:space-y-6'>
-          <section
-            aria-labelledby='security-authentication'
-            className='space-y-3'
-          >
-            <h3 id='security-authentication' className='text-sm font-semibold'>
-              {t('Login & Authentication')}
-            </h3>
+      <div className='min-w-0 space-y-6 sm:space-y-8'>
+        <section id='security-authentication' className='scroll-mt-4 space-y-3'>
+          <Reveal className='space-y-3'>
+            <SectionHeading
+              as='h2'
+              title={t('Login & Authentication')}
+              className='border-border border-b pb-2'
+            />
             <AccountActionCard
               action='password'
               username={profile.username}
               hasPassword={profile.has_password}
               onUpdate={refreshProfile}
             />
-            <TitledCard
-              title={t('Account Bindings')}
-              icon={<Link2 className='size-4' />}
-              headerClassName='px-3 py-2.5 !pb-2.5 sm:px-4 sm:py-2.5 sm:!pb-2.5'
-              contentClassName='p-3 sm:p-3'
-              titleClassName='text-sm sm:text-sm'
-              iconClassName='size-7 sm:size-7'
-              disableHoverEffect
-            >
+            <div className='border-border space-y-3 border-t pt-3'>
+              <SectionHeading
+                as='h3'
+                level='card'
+                title={t('Account Bindings')}
+              />
               <AccountBindings profile={profile} onUpdate={refreshProfile} />
-            </TitledCard>
-          </section>
-          <section aria-labelledby='security-access' className='space-y-4'>
-            <h3 id='security-access' className='text-sm font-semibold'>
-              {t('Sessions & Access')}
-            </h3>
-            <LoginSessionsCard />
-            <AccessTokenCard />
-          </section>
-          <section aria-labelledby='security-account' className='space-y-4'>
-            <h3 id='security-account' className='text-sm font-semibold'>
-              {t('Account Actions')}
-            </h3>
-            <AccountActionCard action='delete' username={profile.username} />
-          </section>
-        </div>
-        <aside
-          aria-labelledby='security-verification'
-          className='min-w-0 space-y-4 sm:space-y-6 xl:sticky xl:top-0'
-        >
-          <div className='space-y-3'>
-            <h3 id='security-verification' className='text-sm font-semibold'>
-              {t('Security verification')}
-            </h3>
+            </div>
+          </Reveal>
+        </section>
+
+        <section id='security-verification' className='scroll-mt-4 space-y-3'>
+          <Reveal delay={0.04} className='space-y-3'>
+            <SectionHeading
+              as='h2'
+              title={t('Security verification')}
+              className='border-border border-b pb-2'
+            />
             <PasskeyCard loading={loading} />
             <TwoFACard loading={loading} />
-          </div>
-          <section aria-labelledby='security-privacy' className='space-y-4'>
-            <h3 id='security-privacy' className='text-sm font-semibold'>
-              {t('Privacy')}
-            </h3>
+          </Reveal>
+        </section>
+
+        <section id='security-access' className='scroll-mt-4 space-y-3'>
+          <Reveal delay={0.08} className='space-y-3'>
+            <SectionHeading
+              as='h2'
+              title={t('Sessions & Access')}
+              className='border-border border-b pb-2'
+            />
+            <LoginSessionsCard />
+            <AccessTokenCard />
+          </Reveal>
+        </section>
+
+        <section id='security-privacy' className='scroll-mt-4 space-y-3'>
+          <Reveal delay={0.12} className='space-y-3'>
+            <SectionHeading
+              as='h2'
+              title={t('Privacy')}
+              className='border-border border-b pb-2'
+            />
             <PrivacyCard profile={profile} onUpdate={refreshProfile} />
-          </section>
-        </aside>
+          </Reveal>
+        </section>
+
+        <section id='security-account' className='scroll-mt-4 space-y-3'>
+          <Reveal delay={0.12} className='space-y-3'>
+            <SectionHeading
+              as='h2'
+              title={t('Account Actions')}
+              className='border-border border-b pb-2'
+            />
+            <AccountActionCard action='delete' username={profile.username} />
+          </Reveal>
+        </section>
       </div>
     )
   }
 
   return (
-    <SectionPageLayout>
+    <SectionPageLayout pageIndex={<>{t('Personal workspace')} / 10</>}>
       <SectionPageLayout.Title>
         {t('Security & Access')}
       </SectionPageLayout.Title>
+      <SectionPageLayout.Description>
+        {t('Manage your security settings and account access')}
+      </SectionPageLayout.Description>
       <SectionPageLayout.Content>
-        <div className='mx-auto w-full max-w-7xl'>{content}</div>
+        <SettingsShell navLabel={t('Security & Access')} items={groups}>
+          {content}
+        </SettingsShell>
       </SectionPageLayout.Content>
     </SectionPageLayout>
   )

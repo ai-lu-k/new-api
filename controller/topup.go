@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,7 +20,6 @@ import (
 
 	"github.com/Calcium-Ion/go-epay/epay"
 	"github.com/gin-gonic/gin"
-	"github.com/samber/lo"
 	"github.com/shopspring/decimal"
 )
 
@@ -336,6 +337,7 @@ func RequestEpay(c *gin.Context) {
 		TradeNo:         tradeNo,
 		PaymentMethod:   req.PaymentMethod,
 		PaymentProvider: model.PaymentProviderEpay,
+		EpayMerchantId:  params["pid"],
 		CreateTime:      time.Now().Unix(),
 		Status:          common.TopUpStatusPending,
 	}
@@ -391,6 +393,29 @@ func UnlockOrder(tradeNo string) {
 	createLock.Unlock()
 }
 
+// The gateway signs a bare "k=v&k=v" string without escaping, so a value that
+// carries "&" can be split back into two parameters by the receiving side while
+// the signature still matches. No legitimate callback value we accept contains
+// "&": the URLs we hand out are built from the callback address plus a fixed
+// path, and the item name is generated here. Rejecting the character closes
+// that class outright instead of relying on the gateway to escape correctly.
+func epayNotificationHasSplittableValue(params map[string]string) (string, bool) {
+	for key, value := range params {
+		if strings.Contains(value, "&") {
+			return key, true
+		}
+	}
+	return "", false
+}
+
+var epayItemNamePattern = regexp.MustCompile(`^TUC[0-9]+$`)
+
+// EpayNotify only credits a top-up whose callback item name still looks like
+// the one RequestEpay generated for that amount.
+func epayTopUpNameIsExpected(name string) bool {
+	return epayItemNamePattern.MatchString(name)
+}
+
 func EpayNotify(c *gin.Context) {
 	if !isEpayWebhookEnabled() {
 		logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 webhook 被拒绝 reason=webhook_disabled path=%q client_ip=%s", c.Request.RequestURI, c.ClientIP()))
@@ -398,30 +423,43 @@ func EpayNotify(c *gin.Context) {
 		return
 	}
 
-	var params map[string]string
-
-	if c.Request.Method == "POST" {
-		// POST 请求：从 POST body 解析参数
+	var values url.Values
+	if c.Request.Method == http.MethodPost {
 		if err := c.Request.ParseForm(); err != nil {
-			logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 webhook POST 表单解析失败 path=%q client_ip=%s error=%q", c.Request.RequestURI, c.ClientIP(), err.Error()))
 			_, _ = c.Writer.Write([]byte("fail"))
 			return
 		}
-		params = lo.Reduce(lo.Keys(c.Request.PostForm), func(r map[string]string, t string, i int) map[string]string {
-			r[t] = c.Request.PostForm.Get(t)
-			return r
-		}, map[string]string{})
+		values = c.Request.PostForm
 	} else {
-		// GET 请求：从 URL Query 解析参数
-		params = lo.Reduce(lo.Keys(c.Request.URL.Query()), func(r map[string]string, t string, i int) map[string]string {
-			r[t] = c.Request.URL.Query().Get(t)
-			return r
-		}, map[string]string{})
+		var err error
+		values, err = url.ParseQuery(c.Request.URL.RawQuery)
+		if err != nil {
+			_, _ = c.Writer.Write([]byte("fail"))
+			return
+		}
+	}
+	params := make(map[string]string, len(values))
+	for key, entries := range values {
+		if len(entries) != 1 {
+			_, _ = c.Writer.Write([]byte("fail"))
+			return
+		}
+		params[key] = entries[0]
 	}
 	logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 webhook 收到请求 path=%q client_ip=%s method=%s params=%q", c.Request.RequestURI, c.ClientIP(), c.Request.Method, common.GetJsonString(params)))
 
 	if len(params) == 0 {
 		logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 webhook 参数为空 path=%q client_ip=%s", c.Request.RequestURI, c.ClientIP()))
+		_, _ = c.Writer.Write([]byte("fail"))
+		return
+	}
+	if key, unsafe := epayNotificationHasSplittableValue(params); unsafe {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 webhook 参数含可拆分字符 path=%q client_ip=%s field=%s", c.Request.RequestURI, c.ClientIP(), key))
+		_, _ = c.Writer.Write([]byte("fail"))
+		return
+	}
+	if !epayTopUpNameIsExpected(params["name"]) {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 webhook 商品名不合法 path=%q client_ip=%s name=%q", c.Request.RequestURI, c.ClientIP(), params["name"]))
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
 	}
@@ -446,6 +484,16 @@ func EpayNotify(c *gin.Context) {
 		}
 		return
 	}
+	for _, field := range []string{"pid", "type", "out_trade_no", "trade_no", "money", "trade_status"} {
+		if params[field] == "" {
+			_, _ = c.Writer.Write([]byte("fail"))
+			return
+		}
+	}
+	if _, err := model.EpayMoneyCents(verifyInfo.Money); err != nil || params["sign_type"] != "MD5" {
+		_, _ = c.Writer.Write([]byte("fail"))
+		return
+	}
 	logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 webhook 验签成功 trade_no=%s callback_type=%s trade_status=%s client_ip=%s verify_info=%q", verifyInfo.ServiceTradeNo, verifyInfo.Type, verifyInfo.TradeStatus, c.ClientIP(), common.GetJsonString(verifyInfo)))
 
 	if verifyInfo.TradeStatus == epay.StatusTradeSuccess {
@@ -453,7 +501,10 @@ func EpayNotify(c *gin.Context) {
 		// 数据库行锁 + 事务内状态校验保证（多实例部署下同样安全）。
 		LockOrder(verifyInfo.ServiceTradeNo)
 		defer UnlockOrder(verifyInfo.ServiceTradeNo)
-		alreadyDone, err := model.RechargeEpay(verifyInfo.ServiceTradeNo, verifyInfo.Type, c.ClientIP())
+		alreadyDone, err := model.RechargeEpay(verifyInfo.ServiceTradeNo, model.EpayNotification{
+			Money: verifyInfo.Money, MerchantId: params["pid"],
+			LegacyMerchantId: operation_setting.EpayId, PaymentMethod: verifyInfo.Type,
+		}, c.ClientIP())
 		if err != nil {
 			switch {
 			case errors.Is(err, model.ErrTopUpNotFound):
@@ -509,7 +560,17 @@ func RequestAmount(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "充值金额过低"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "success", "data": strconv.FormatFloat(payMoney, 'f', 2, 64)})
+	paidAmount := strconv.FormatFloat(payMoney, 'f', 2, 64)
+	quota, _ := getTopUpQuota(req.Amount) // Validated above, before reading settings.
+	bonus, err := model.CalculateTopUpBonus(quota, &model.TopUpPayment{Currency: "CNY", Amount: paidAmount}, common.GetTimestamp())
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"message": "success", "data": paidAmount,
+		"campaign_bonus_quota": bonus, "payment_currency": "CNY",
+	})
 }
 
 func GetUserTopUps(c *gin.Context) {
@@ -526,6 +587,9 @@ func GetUserTopUps(c *gin.Context) {
 		topups, total, err = model.SearchUserTopUps(userId, keyword, pageInfo)
 	} else {
 		topups, total, err = model.GetUserTopUps(userId, pageInfo)
+	}
+	if err == nil {
+		err = model.LoadTopUpBonuses(topups)
 	}
 	if err != nil {
 		common.ApiError(c, err)
@@ -551,6 +615,9 @@ func GetAllTopUps(c *gin.Context) {
 		topups, total, err = model.SearchAllTopUps(keyword, pageInfo)
 	} else {
 		topups, total, err = model.GetAllTopUps(pageInfo)
+	}
+	if err == nil {
+		err = model.LoadTopUpBonuses(topups)
 	}
 	if err != nil {
 		common.ApiError(c, err)

@@ -49,6 +49,12 @@ function Command({
   )
 }
 
+/* The palette is a feedback panel: it rises 8px and fades in with its rows
+   (`[data-motion-panel='feedback']` in `styles/swiss.css`). */
+const FEEDBACK_PANEL_PROPS = {
+  'data-motion-panel': 'feedback',
+} as React.ComponentProps<typeof DialogContent>
+
 function CommandDialog({
   title = 'Command Palette',
   description = 'Search for a command to run...',
@@ -75,6 +81,7 @@ function CommandDialog({
           className
         )}
         showCloseButton={showCloseButton}
+        {...FEEDBACK_PANEL_PROPS}
       >
         {children}
       </DialogContent>
@@ -176,7 +183,7 @@ function CommandItem({
     <CommandPrimitive.Item
       data-slot='command-item'
       className={cn(
-        "group/command-item data-selected:bg-muted data-selected:text-foreground data-selected:*:[svg]:text-foreground relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none in-data-[slot=dialog-content]:rounded-lg! data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "group/command-item transition-colors duration-(--motion-fast) ease-(--ease-out) data-selected:bg-muted data-selected:text-foreground data-selected:*:[svg]:text-foreground relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none in-data-[slot=dialog-content]:rounded-lg! data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}

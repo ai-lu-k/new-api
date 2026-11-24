@@ -24,6 +24,7 @@ import {
   usePlaygroundOptions,
   usePlaygroundState,
 } from './hooks'
+import { getPlaygroundModelMode } from './lib'
 
 export function Playground() {
   const {
@@ -41,8 +42,15 @@ export function Playground() {
     clearMessages,
   } = usePlaygroundState()
 
+  const modelMode = getPlaygroundModelMode(models, config.model)
+  // Direct image generation swaps the parameter panel; chat-image models keep
+  // the chat parameters and only force a non-streaming request.
+  const isImageGeneration = modelMode === 'image'
+  const isImageModel = modelMode !== 'text'
+
   const { sendChat, stopGeneration, isGenerating } = useChatHandler({
     config,
+    mode: modelMode,
     parameterEnabled,
     onMessageUpdate: updateMessages,
   })
@@ -81,6 +89,7 @@ export function Playground() {
         <PlaygroundChat
           messages={messages}
           isLoadingMessages={isLoadingMessages}
+          isImageModel={isImageModel}
           onRegenerateMessage={handleRegenerateMessage}
           onEditMessage={handleEditMessage}
           onDeleteMessage={handleDeleteMessage}
@@ -101,6 +110,7 @@ export function Playground() {
           groups={groups}
           groupValue={config.group}
           isGenerating={isGenerating}
+          isImageGeneration={isImageGeneration}
           isModelLoading={isLoadingModels}
           modelValue={config.model}
           models={models}

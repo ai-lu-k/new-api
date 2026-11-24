@@ -26,9 +26,12 @@ import { useTranslation } from 'react-i18next'
 import {
   DataTablePage,
   DataTableBulkActions,
+  SECTION_FRAME_CLASSNAME,
+  SECTION_TABLE_HEAD_CLASSNAME,
   useDataTable,
 } from '@/components/data-table'
 import { ErrorState } from '@/components/error-state'
+import { SectionHeading } from '@/components/section-heading'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -41,6 +44,7 @@ import { useTableUrlState } from '@/hooks/use-table-url-state'
 import { formatTimestampToDate } from '@/lib/format'
 import { getLobeIcon } from '@/lib/lobe-icon'
 import { createServerError } from '@/lib/server-error-message'
+import { cn } from '@/lib/utils'
 
 import { searchVendors } from '../api'
 import { vendorsQueryKeys } from '../lib'
@@ -257,6 +261,11 @@ export function VendorsTable() {
         columns={columns}
         isLoading={query.isLoading}
         isFetching={query.isFetching}
+        tableHeading={<SectionHeading as='h2' title={t('All Vendors')} />}
+        tableClassName={cn(
+          SECTION_FRAME_CLASSNAME,
+          SECTION_TABLE_HEAD_CLASSNAME
+        )}
         emptyTitle={t('No vendors found')}
         emptyDescription={t('Add a vendor or adjust your search.')}
         applyHeaderSize

@@ -34,6 +34,7 @@ import { isTokenBasedModel } from '../lib/model-helpers'
 import { formatPrice, formatRequestPrice } from '../lib/price'
 import { taskUsageUnitLabel } from '../lib/task-price-display'
 import type { PricingModel, TokenUnit } from '../types'
+import { PriceFade } from './price-fade'
 
 export type ModelPriceCellOptions = {
   tokenUnit?: TokenUnit
@@ -249,12 +250,12 @@ export function ModelPriceCell(props: {
             >
               {metric.label}
             </span>
-            <span
+            <PriceFade
+              key={metric.value}
+              value={metric.value}
               className='min-w-0 font-mono text-sm break-words whitespace-normal tabular-nums'
               title={metric.value}
-            >
-              {metric.value}
-            </span>
+            />
           </span>
         ))}
       </span>

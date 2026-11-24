@@ -20,6 +20,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/level_gate_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
@@ -217,8 +218,9 @@ func getModelListGroups(c *gin.Context) (modelListGroups, error) {
 
 func ListModels(c *gin.Context, modelType int) {
 	acceptUnsetRatioModel := operation_setting.SelfUseModeEnabled
+	// 等级闸门按用户判断，所以 userId 提到这一层；未配等级的模型不会用到它。
+	userId := c.GetInt("id")
 	if !acceptUnsetRatioModel {
-		userId := c.GetInt("id")
 		if userId > 0 {
 			userSettings, _ := model.GetUserSetting(userId, false)
 			if userSettings.AcceptUnsetRatioModel {
@@ -257,6 +259,10 @@ func ListModels(c *gin.Context, modelType int) {
 			}
 		}
 		if !acceptUnsetRatioModel && !helper.HasModelBillingConfig(modelName) {
+			continue
+		}
+		// 等级不够的模型不出现在列表里 —— 看得见却调不动，比看不见更让人困惑。
+		if minLevel := level_gate_setting.GetMinLevel(modelName); minLevel > 0 && !service.UserMeetsMinLevel(userId, minLevel) {
 			continue
 		}
 		userModelNames = append(userModelNames, modelName)

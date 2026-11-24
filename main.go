@@ -23,8 +23,10 @@ import (
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/oauth"
+	"github.com/QuantumNous/new-api/pkg/benchmark"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
+	"github.com/QuantumNous/new-api/pkg/relaytrace"
 	"github.com/QuantumNous/new-api/pkg/wsmanager"
 	"github.com/QuantumNous/new-api/relay"
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
@@ -47,9 +49,24 @@ var buildFS embed.FS
 //go:embed web/dist/index.html
 var indexPage []byte
 
+//go:embed LICENSE
+var projectLicense string
+
+//go:embed NOTICE
+var projectNotice string
+
+//go:embed THIRD-PARTY-LICENSES.md
+var thirdPartyLicenses string
+
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "plugin" {
-		os.Exit(jsplugin.RunCLI(os.Args[2:], os.Stdout, os.Stderr))
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "plugin":
+			os.Exit(jsplugin.RunCLI(os.Args[2:], os.Stdout, os.Stderr))
+		case "licenses":
+			fmt.Print(projectLicense, "\n", projectNotice, "\n", thirdPartyLicenses)
+			return
+		}
 	}
 	startTime := time.Now()
 	kitutil.SetLogging(common.SysLog, func(message string) {
@@ -79,6 +96,23 @@ func main() {
 			common.FatalLog("failed to close database: " + err.Error())
 		}
 	}()
+	latencyContext, stopLatency := context.WithCancel(context.Background())
+	if err := service.ConfigureRelayObservations(); err != nil {
+		// Procurement metadata is optional and must never stop generation.
+		common.SysError("relay procurement configuration rejected; unconfigured costs remain unknown: " + err.Error())
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := model.WaitRelayObservationWrites(ctx); err != nil {
+			common.SysError("relay observations did not drain before shutdown")
+		}
+	}()
+	defer func() { stopLatency(); service.WaitUpstreamLatency() }()
+	if err := service.StartUpstreamLatency(latencyContext); err != nil {
+		common.FatalLog("failed to initialize upstream latency fitting: " + err.Error())
+		return
+	}
 
 	if common.RedisEnabled {
 		// for compatibility with old versions
@@ -106,13 +140,31 @@ func main() {
 		go model.SyncChannelCache(common.SyncFrequency)
 	}
 	wsmanager.StartSubscriber(context.Background())
+	if common.IsMasterNode {
+		go service.SyncCommandCodeFinanceLoop()
+		go service.SyncWorkBuddyFinanceLoop()
+		// Referral rewards frozen while reset coupons were retired are paid in
+		// vouchers here. Issuance is idempotent, so a restart only retries.
+		gopool.Go(func() {
+			issued, err := model.RetryPendingReferralRewards(time.Now())
+			if err != nil {
+				common.SysError("failed to backfill pending referral rewards: " + err.Error())
+				return
+			}
+			if issued > 0 {
+				common.SysLog(fmt.Sprintf("backfilled %d pending referral rewards", issued))
+			}
+		})
+	}
 
 	// Warm pricing after channel cache initialization so Advanced Custom
 	// endpoint inference can read cached route settings on first request.
 	model.GetPricing()
+	benchmark.Default.Start(context.Background())
 
 	// 热更新配置
 	go model.SyncOptions(common.SyncFrequency)
+	go model.RunModelDailyTokenCleanup(context.Background())
 	go controller.SyncTaskPlugins()
 
 	// 周期性重载授权策略，保证多节点/多 master 部署下权限变更能传播到每个实例
@@ -134,6 +186,10 @@ func main() {
 
 	// Subscription quota reset task (daily/weekly/monthly/custom)
 	service.StartSubscriptionQuotaResetTask()
+
+	// Daily upstream funding refresh, with a mail alert when an account can no
+	// longer cover three days of its seven-day average spend.
+	service.StartUpstreamAccountRefreshTask()
 
 	// Report this process as a system instance so the System Info page can show
 	// all currently alive nodes in multi-instance deployments.
@@ -202,10 +258,13 @@ func main() {
 	InjectGoogleAnalytics()
 
 	// 设置路由
-	router.SetRouter(server, router.WebAssets{
+	if err := router.SetRouter(server, router.WebAssets{
 		BuildFS:   buildFS,
 		IndexPage: indexPage,
-	})
+	}); err != nil {
+		common.FatalLog(err.Error())
+		return
+	}
 	var port = os.Getenv("PORT")
 	if port == "" {
 		port = strconv.Itoa(*common.Port)
@@ -306,6 +365,9 @@ func InitResources() error {
 	// Initialize model settings
 	ratio_setting.InitRatioSettings()
 
+	if err = relaytrace.Configure(); err != nil {
+		return err
+	}
 	service.InitHttpClient()
 
 	service.InitTokenEncoders()
@@ -336,6 +398,24 @@ func InitResources() error {
 		}
 	}
 	model.InitOptionMap()
+	if err := model.InitializeBenchmarkSnapshots(); err != nil {
+		return fmt.Errorf("failed to initialize benchmark snapshots: %w", err)
+	}
+	if err := model.InitializeBenchmarkMappings(); err != nil {
+		return fmt.Errorf("failed to initialize benchmark mappings: %w", err)
+	}
+	if common.IsMasterNode {
+		if err := model.InitializeLegalVersions(); err != nil {
+			return fmt.Errorf("failed to initialize legal versions: %w", err)
+		}
+	}
+	// Legacy client profiles use the configured aliases and price suffixes.
+	// Resolve them only after options have loaded, before serving any requests.
+	if common.IsMasterNode {
+		if err := model.MigrateModelClientConfigs(model.DB); err != nil {
+			return fmt.Errorf("failed to migrate model client profiles: %w", err)
+		}
+	}
 
 	// 清理旧的磁盘缓存文件
 	common.CleanupOldCacheFiles()
@@ -345,6 +425,15 @@ func InitResources() error {
 	if err != nil {
 		return err
 	}
+	// The usage-level backfill reads manual quota additions from the log
+	// database, so it can only run once that connection exists. Slaves never
+	// migrate; the master seeds the ledgers and the marker keeps it one-off.
+	if common.IsMasterNode {
+		if err = model.MigrateUsageLevelGiftExclusion(model.DB); err != nil {
+			common.FatalLog("failed to seed the usage level ledgers: " + err.Error())
+			return err
+		}
+	}
 
 	// Initialize Redis
 	err = common.InitRedisClient()
@@ -352,6 +441,7 @@ func InitResources() error {
 		return err
 	}
 
+	relaytrace.Windows.Start()
 	perfmetrics.Init()
 
 	// 启动系统监控
@@ -376,6 +466,9 @@ func InitResources() error {
 	}
 
 	service.StartAuthArtifactCleanup()
+	// Vouchers lapse on their own deadline: an unopened one costs nothing until
+	// it is opened, so the sweep only has to keep the state honest.
+	service.StartVoucherExpiry()
 
 	return nil
 }

@@ -23,6 +23,38 @@ type FundingSource interface {
 	Refund() error
 }
 
+// TokenPlanFunding uses a fixed calendar bucket; ordinary token quota remains
+// a usage statistic, while the weekly allowance is authoritative in the DB.
+type TokenPlanFunding struct {
+	userId        int
+	tokenId       int
+	weekId        int
+	reservationId int
+	consumed      int
+	walletUsed    int64
+}
+
+func (f *TokenPlanFunding) Source() string { return BillingSourceTokenPlan }
+func (f *TokenPlanFunding) PreConsume(amount int) error {
+	reservation, err := model.ReserveTokenPlanRequest(f.userId, f.tokenId, int64(amount), time.Now())
+	if err != nil {
+		return err
+	}
+	f.weekId, f.reservationId, f.consumed = reservation.WeekId, reservation.Id, amount
+	return nil
+}
+func (f *TokenPlanFunding) Settle(delta int) error {
+	reservation, err := model.SettleTokenPlanRequest(f.userId, f.reservationId, int64(f.consumed)+int64(delta))
+	if err == nil {
+		f.walletUsed = reservation.WalletUsed
+	}
+	return err
+}
+func (f *TokenPlanFunding) Refund() error {
+	_, err := model.SettleTokenPlanRequest(f.userId, f.reservationId, 0)
+	return err
+}
+
 // ---------------------------------------------------------------------------
 // WalletFunding — 钱包资金来源实现
 // ---------------------------------------------------------------------------

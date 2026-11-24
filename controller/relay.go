@@ -22,6 +22,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
+	kitdto "github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -74,7 +75,16 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	var (
 		newAPIError *types.NewAPIError
 		ws          *websocket.Conn
+		relayInfo   *relaycommon.RelayInfo
 	)
+	observation := service.BeginRelayObservation(c, relayFormat)
+	defer func() {
+		recovered := recover()
+		observation.Finish(c, relayInfo, newAPIError, recovered != nil)
+		if recovered != nil {
+			panic(recovered)
+		}
+	}()
 
 	if relayFormat == types.RelayFormatOpenAIRealtime {
 		var err error
@@ -91,6 +101,21 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			service.RecordRequestPolicyTermination(c, newAPIError)
 			logger.LogError(c, fmt.Sprintf("relay error: %s", common.LocalLogPreview(newAPIError.Error())))
 			newAPIError.SetMessage(common.MessageWithRequestId(newAPIError.Error(), requestId))
+			// A heartbeat may already have committed the SSE response. Finish
+			// with a protocol error event, never append an unframed JSON body.
+			if relayFormat != types.RelayFormatOpenAIRealtime && c.Writer.Written() && strings.HasPrefix(c.Writer.Header().Get("Content-Type"), "text/event-stream") {
+				payload := gin.H{"error": newAPIError.ToOpenAIError()}
+				prefix := ""
+				if relayFormat == types.RelayFormatClaude {
+					payload = gin.H{"type": "error", "error": newAPIError.ToClaudeError()}
+					prefix = "event: error\n"
+				}
+				if encoded, err := common.Marshal(payload); err == nil {
+					c.Render(-1, common.CustomEvent{Data: prefix + "data: " + string(encoded)})
+					_ = helper.FlushWriter(c)
+					return
+				}
+			}
 			switch relayFormat {
 			case types.RelayFormatOpenAIRealtime:
 				helper.WssError(c, ws, newAPIError.ToOpenAIError())
@@ -118,11 +143,12 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		return
 	}
 
-	relayInfo, err := relaycommon.GenRelayInfo(c, relayFormat, request, ws)
+	relayInfo, err = relaycommon.GenRelayInfo(c, relayFormat, request, ws)
 	if err != nil {
 		newAPIError = types.NewError(err, types.ErrorCodeGenRelayInfoFailed)
 		return
 	}
+	defer func() { service.RecordUpstreamLatency(requestId, relayInfo) }()
 
 	defer func() {
 		recovered := recover()
@@ -155,17 +181,35 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	relayInfo.RetryIndex = 0
 	relayInfo.LastError = nil
 
+	// Each attempt holds its channel's capacity only while that attempt runs.
+	var releaseChannel func()
+	defer func() {
+		if releaseChannel != nil {
+			releaseChannel()
+		}
+	}()
 	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
 		relayInfo.StreamStatus = nil
 		relayInfo.PerformanceBusinessRejection = false
 		relayInfo.PerformanceOutputTokens = 0
 		relayInfo.RetryIndex = retryParam.GetRetry()
-		channel, channelErr := getChannel(c, relayInfo, retryParam)
+		if releaseChannel != nil {
+			releaseChannel()
+			releaseChannel = nil
+		}
+		// A cancelled request cannot receive any retried response; stop before
+		// the next attempt acquires a channel and its generation capacity.
+		if requestErr := c.Request.Context().Err(); requestErr != nil {
+			newAPIError = types.NewErrorWithStatusCode(requestErr, types.ErrorCodeDoRequestFailed, http.StatusRequestTimeout, types.ErrOptionWithSkipRetry(), types.ErrOptionWithHideErrMsg("client closed the request"))
+			break
+		}
+		channel, release, channelErr := getChannel(c, relayInfo, retryParam)
 		if channelErr != nil {
 			logger.LogError(c, channelErr.Error())
 			newAPIError = channelErr
 			break
 		}
+		releaseChannel = release
 		service.AppendUsedChannel(c, channel.Id)
 		if billingErr := service.PrepareTieredBillingForSelectedGroup(c, relayInfo); billingErr != nil {
 			newAPIError = billingErr
@@ -184,6 +228,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
 
+		previousTrace := relayInfo.TransportTrace
 		switch relayFormat {
 		case types.RelayFormatOpenAIRealtime:
 			newAPIError = relay.WssHelper(c, relayInfo)
@@ -194,6 +239,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		default:
 			newAPIError = relayHandler(c, relayInfo)
 		}
+		service.RecordRelayAttempt(c, relayInfo, previousTrace, newAPIError)
 
 		if newAPIError == nil {
 			service.MarkRequestPolicySuccess(c, relayInfo.StreamStatus)
@@ -204,12 +250,23 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		newAPIError = service.NormalizeViolationFeeError(newAPIError)
 		relayInfo.LastError = newAPIError
 
-		decision := service.DecideRelayRetry(c, newAPIError, common.RetryTimes-retryParam.GetRetry())
+		remainingRetries := common.RetryTimes - retryParam.GetRetry()
+		if retryParam.SelectFromRemaining {
+			remainingRetries = min(remainingRetries, common.RetryTimes+1-service.RequestPolicy(c).Attempts)
+		}
+		decision := service.DecideRelayRetry(c, newAPIError, remainingRetries, relayInfo)
+		if retryParam.SelectFromRemaining && remainingRetries <= 0 && decision.Action == "retry" {
+			decision = service.PolicyDecision{Action: "stop", Reason: "attempt_budget_exhausted", Source: "global"}
+		}
 		service.RecordPolicyFailure(c, channel.Id, newAPIError, decision)
 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError, relayInfo)
 
 		if decision.Action != "retry" {
 			break
+		}
+		if decision.Reason == "all_upstream_errors" || retryParam.SelectFromRemaining {
+			service.GetChannelConstraints(c).ExcludeChannel(channel.Id)
+			retryParam.SelectFromRemaining = true
 		}
 	}
 
@@ -259,38 +316,119 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service.RetryParam) (*model.Channel, *types.NewAPIError) {
-	if info.ChannelMeta == nil {
-		autoBan := c.GetBool("auto_ban")
-		autoBanInt := 1
-		if !autoBan {
-			autoBanInt = 0
-		}
-		channel := &model.Channel{
-			Id:      c.GetInt("channel_id"),
-			Type:    c.GetInt("channel_type"),
-			Name:    c.GetString("channel_name"),
-			AutoBan: &autoBanInt,
-		}
-		service.RequestPolicy(c).BeginAttempt(channel, info.UsingGroup)
-		return channel, nil
-	}
-	channel, selectGroup, err := service.CacheGetRandomSatisfiedChannel(retryParam)
-	if err != nil {
-		return nil, types.NewError(fmt.Errorf("获取分组 %s 下模型 %s 的可用渠道失败（retry）: %s", selectGroup, info.OriginModelName, err.Error()), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
-	}
-	if channel == nil {
-		return nil, types.NewError(fmt.Errorf("分组 %s 下模型 %s 的可用渠道不存在（retry）", selectGroup, info.OriginModelName), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
-	}
+// channelCapacityFallbacks bounds the capacity fallbacks one attempt may take.
+// Each fallback excludes the channel that reported the cap and selection never
+// returns an excluded channel, so the real bound is the number of candidates;
+// this cap only guarantees termination if that exclusion were ever ignored.
+const channelCapacityFallbacks = 32
 
-	info.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, info)
-
-	service.RequestPolicy(c).BeginAttempt(channel, selectGroup)
-	newAPIError := middleware.SetupContextForSelectedChannel(c, channel, info.OriginModelName)
-	if newAPIError != nil {
-		return nil, newAPIError
+// getChannel resolves the channel for one attempt and admits this user against
+// that channel's generation limit. The per-user limit is this account's own
+// capacity, so a rejection there is reported instead of being bypassed by
+// selecting another channel. A channel-wide cap is the shared pool's state
+// instead: another eligible channel may still have room, so that rejection
+// excludes the full channel and reselects, without spending the request's retry
+// budget. Only a request whose every candidate is at its cap reports the 429.
+// The returned release must run when the attempt ends; it is always non-nil.
+func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service.RetryParam) (*model.Channel, func(), *types.NewAPIError) {
+	// The first attempt already has the distributor's channel; every retry
+	// selects from the remaining candidates.
+	useContextChannel := info.ChannelMeta == nil
+	var lastCapacityErr *types.NewAPIError
+	for fallback := 0; fallback <= channelCapacityFallbacks; fallback++ {
+		// The distributor published this request's own channel, including its
+		// settings, until a capacity fallback replaces it.
+		fromContext := useContextChannel && fallback == 0
+		var (
+			channel     *model.Channel
+			selectGroup string
+		)
+		if fromContext {
+			autoBanInt := 1
+			if !c.GetBool("auto_ban") {
+				autoBanInt = 0
+			}
+			channel = &model.Channel{
+				Id:      c.GetInt("channel_id"),
+				Type:    c.GetInt("channel_type"),
+				Name:    c.GetString("channel_name"),
+				AutoBan: &autoBanInt,
+			}
+			selectGroup = info.UsingGroup
+		} else {
+			selectParam := retryParam
+			if fallback > 0 {
+				// A capacity fallback ranks whatever is left from its highest
+				// priority again, so a lower-priority disaster-recovery channel
+				// can serve, and never spends the caller's retry budget.
+				remainingParam := *retryParam
+				remainingParam.SelectFromRemaining = true
+				selectParam = &remainingParam
+			}
+			selected, group, err := service.CacheGetRandomSatisfiedChannel(selectParam)
+			if err != nil {
+				return nil, nil, types.NewError(fmt.Errorf("获取分组 %s 下模型 %s 的可用渠道失败（retry）: %s", group, info.OriginModelName, err.Error()), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
+			}
+			if selected == nil {
+				if fallback > 0 {
+					// Every remaining candidate reported its cap, so the last
+					// rejection is this request's answer.
+					return nil, nil, lastCapacityErr
+				}
+				return nil, nil, types.NewError(fmt.Errorf("分组 %s 下模型 %s 的可用渠道不存在（retry）", group, info.OriginModelName), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
+			}
+			channel, selectGroup = selected, group
+			info.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, info)
+		}
+		// The first attempt's channel comes from the distributor, which already
+		// published its settings; a reselected channel carries its own.
+		setting := channel.GetSetting()
+		if fromContext {
+			setting, _ = common.GetContextKeyType[kitdto.ChannelSettings](c, constant.ContextKeyChannelSetting)
+		}
+		release, capacityErr := service.StartChannelGeneration(c, channel.Id, info.UserId, setting, info.OriginModelName)
+		if capacityErr == nil {
+			service.RecordRelayCandidate(c, channel.Id, selectGroup, "admitted")
+			service.RequestPolicy(c).BeginAttempt(channel, selectGroup)
+			if fallback > 0 {
+				// The rejection already answered with a retry hint that this
+				// attempt no longer needs.
+				c.Writer.Header().Del("Retry-After")
+			}
+			if !fromContext {
+				// This channel was not published by the distributor, either
+				// because it is a retry or because it replaced a full one.
+				if setupErr := middleware.SetupContextForSelectedChannel(c, channel, info.OriginModelName); setupErr != nil {
+					release()
+					return nil, nil, setupErr
+				}
+			}
+			return channel, release, nil
+		}
+		// Only a real capacity state of this attempt's channel is reported as
+		// such, whether the per-user limit or the channel-wide cap fired; an
+		// unavailable ledger or an invalid limit must fail closed with its own
+		// code instead of looking like a capacity rejection.
+		reason := "capacity_rejected"
+		if capacityErr.GetErrorCode() != types.ErrorCodeChannelConcurrencyExceeded {
+			reason = "local_rejection"
+		}
+		service.RecordRelayCandidate(c, channel.Id, selectGroup, reason)
+		// This account's own limit does not move to another channel, and a
+		// pinned channel is never bypassed: both keep reporting the rejection.
+		// TaskRelayInfo carries the origin-task pin and is absent on ordinary
+		// relays, so read it only when the task relay attached it.
+		lockedToOriginTask := info.TaskRelayInfo != nil && info.LockedChannel != nil
+		if !types.IsChannelCapacityFallback(capacityErr) || lockedToOriginTask {
+			return nil, nil, capacityErr
+		}
+		if _, pinned, _ := service.GetChannelConstraints(c).ResolvedPin(); pinned {
+			return nil, nil, capacityErr
+		}
+		lastCapacityErr = capacityErr
+		service.GetChannelConstraints(c).ExcludeChannel(channel.Id)
 	}
-	return channel, nil
+	return nil, nil, lastCapacityErr
 }
 
 func processChannelError(c *gin.Context, channelError types.ChannelError, err *types.NewAPIError, relayInfo *relaycommon.RelayInfo) {
@@ -304,6 +442,12 @@ func RelayMidjourney(c *gin.Context) {
 			service.RecordRequestPolicyTermination(c, types.NewErrorWithStatusCode(errors.New("Midjourney submission failed"), types.ErrorCodeBadResponseStatusCode, http.StatusBadGateway, types.ErrOptionWithSkipRetry()))
 		}
 	}()
+	var releaseChannel func()
+	defer func() {
+		if releaseChannel != nil {
+			releaseChannel()
+		}
+	}()
 	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatMjProxy, nil, nil)
 
 	if err != nil {
@@ -313,6 +457,27 @@ func RelayMidjourney(c *gin.Context) {
 			"code":        4,
 		})
 		return
+	}
+
+	// Task polling, notifications and image-seed lookups read state without
+	// generating, so they never take channel generation capacity.
+	switch relayInfo.RelayMode {
+	case relayconstant.RelayModeMidjourneyNotify,
+		relayconstant.RelayModeMidjourneyTaskFetch,
+		relayconstant.RelayModeMidjourneyTaskFetchByCondition,
+		relayconstant.RelayModeMidjourneyTaskImageSeed:
+	default:
+		setting, _ := common.GetContextKeyType[kitdto.ChannelSettings](c, constant.ContextKeyChannelSetting)
+		release, capacityErr := service.StartChannelGeneration(c, c.GetInt("channel_id"), relayInfo.UserId, setting, relayInfo.OriginModelName)
+		if capacityErr != nil {
+			c.JSON(capacityErr.StatusCode, gin.H{
+				"description": capacityErr.Err.Error(),
+				"type":        "rate_limit_error",
+				"code":        30,
+			})
+			return
+		}
+		releaseChannel = release
 	}
 
 	var mjErr *taskdto.MidjourneyResponse
@@ -501,6 +666,24 @@ func executeTaskSubmissionWith(
 		Retry:       common.GetPointer(0),
 	}
 
+	// Each attempt holds its channel's capacity only while that attempt runs.
+	// An origin-task pin keeps one channel for every attempt, so its lease is
+	// acquired once and released with the submission.
+	lockedChannel, _ := relayInfo.LockedChannel.(*model.Channel)
+	var releaseChannel func()
+	defer func() {
+		if releaseChannel != nil {
+			releaseChannel()
+		}
+	}()
+	if lockedChannel != nil {
+		release, capacityErr := service.StartChannelGeneration(c, lockedChannel.Id, relayInfo.UserId, lockedChannel.GetSetting(), relayInfo.OriginModelName)
+		if capacityErr != nil {
+			return nil, service.TaskErrorWrapperLocal(capacityErr.Err, string(capacityErr.GetErrorCode()), capacityErr.StatusCode)
+		}
+		releaseChannel = release
+	}
+
 	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
 		stage = "select_channel"
 		if requestErr := c.Request.Context().Err(); requestErr != nil {
@@ -510,8 +693,8 @@ func executeTaskSubmissionWith(
 		}
 		var channel *model.Channel
 
-		if lockedCh, ok := relayInfo.LockedChannel.(*model.Channel); ok && lockedCh != nil {
-			channel = lockedCh
+		if lockedChannel != nil {
+			channel = lockedChannel
 			policy.BeginAttempt(channel, relayInfo.UsingGroup)
 			if retryParam.GetRetry() > 0 {
 				if setupErr := middleware.SetupContextForSelectedChannel(c, channel, relayInfo.OriginModelName); setupErr != nil {
@@ -520,13 +703,24 @@ func executeTaskSubmissionWith(
 				}
 			}
 		} else {
+			if releaseChannel != nil {
+				releaseChannel()
+				releaseChannel = nil
+			}
 			var channelErr *types.NewAPIError
-			channel, channelErr = getChannel(c, relayInfo, retryParam)
+			var release func()
+			channel, release, channelErr = getChannel(c, relayInfo, retryParam)
 			if channelErr != nil {
 				logger.LogError(c, channelErr.Error())
-				taskErr = service.TaskErrorWrapperLocal(channelErr.Err, "get_channel_failed", channelErr.StatusCode)
+				code := "get_channel_failed"
+				switch channelErr.GetErrorCode() {
+				case types.ErrorCodeChannelConcurrencyExceeded, types.ErrorCodeChannelConcurrencyUnavailable:
+					code = string(channelErr.GetErrorCode())
+				}
+				taskErr = service.TaskErrorWrapperLocal(channelErr.Err, code, channelErr.StatusCode)
 				break
 			}
+			releaseChannel = release
 		}
 		diagnostics.attempt(retryParam.GetRetry()+1, channel, relayInfo.LockedChannel != nil)
 
@@ -543,8 +737,15 @@ func executeTaskSubmissionWith(
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
 
+		if err := model.ChannelGenerationLeaseFromContext(c.Request.Context()).ProtectTaskSubmission(); err != nil {
+			taskErr = service.TaskErrorWrapperLocal(err, string(types.ErrorCodeChannelConcurrencyUnavailable), http.StatusServiceUnavailable)
+			break
+		}
 		stage = "submit"
 		result, taskErr = submit(c, relayInfo)
+		if taskErr == nil && result != nil && (result.Immediate == nil || (result.Immediate.Status != model.TaskStatusSuccess && result.Immediate.Status != model.TaskStatusFailure)) {
+			model.ChannelGenerationLeaseFromContext(c.Request.Context()).MarkTaskAccepted()
+		}
 		if requestErr := c.Request.Context().Err(); requestErr != nil {
 			diagnostics.cancelled("after_submit", retryParam.GetRetry()+1)
 			taskErr = service.TaskErrorWrapperLocal(requestErr, "request_cancelled", http.StatusRequestTimeout)
@@ -619,6 +820,8 @@ func executeTaskSubmissionWith(
 	task.PrivateData.UpstreamTaskID = result.UpstreamTaskID
 	task.PrivateData.BillingSource = relayInfo.BillingSource
 	task.PrivateData.SubscriptionId = relayInfo.SubscriptionId
+	task.PrivateData.TokenPlanWeekId = relayInfo.TokenPlanWeekId
+	task.PrivateData.TokenPlanReservationId = relayInfo.TokenPlanReservationId
 	task.PrivateData.TokenId = relayInfo.TokenId
 	task.PrivateData.NodeName = common.NodeName
 	task.PrivateData.BillingContext = &model.TaskBillingContext{

@@ -30,7 +30,7 @@ func setupDashboardAuthMiddlewareTest(t *testing.T) {
 	previousSecret := common.SessionSecret
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.AuditLog{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.AuditLog{}, &model.Option{}))
 	model.DB = db
 	model.LOG_DB = db
 	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
@@ -333,4 +333,68 @@ func TestApplyWebSocketSubprotocolAuthorizationReadsRepeatedHeaders(t *testing.T
 
 	assert.True(t, applyWebSocketSubprotocolAuthorization(header))
 	assert.Equal(t, "Bearer sk-later-field", header.Get("Authorization"))
+}
+
+func TestDashboardPreviewRoleWithholdsAdministratorAccess(t *testing.T) {
+	setupDashboardAuthMiddlewareTest(t)
+	gin.SetMode(gin.TestMode)
+
+	adminToken := "sk-preview-admin"
+	admin := &model.User{
+		Username: "preview-admin", Password: "password-placeholder", Role: common.RoleAdminUser,
+		Status: common.UserStatusEnabled, Group: "default", AccessToken: &adminToken, AuthVersion: 1,
+		AffCode: "preview-admin-aff",
+	}
+	require.NoError(t, model.DB.Create(admin).Error)
+	member := createMiddlewarePATUser(t, "preview-member", "sk-preview-member")
+
+	router := gin.New()
+	router.GET("/admin", AdminAuth(), func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"role": c.GetInt("role"), "preview": PreviewModeActive(c)})
+	})
+	router.GET("/user", UserAuth(), func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"role": c.GetInt("role"), "preview": PreviewModeActive(c)})
+	})
+
+	tests := []struct {
+		name       string
+		path       string
+		token      string
+		preview    bool
+		wantStatus int
+		wantRole   int
+		wantActive bool
+	}{
+		{name: "administrator reaches admin routes", path: "/admin", token: adminToken, wantStatus: http.StatusOK, wantRole: common.RoleAdminUser},
+		{name: "preview administrator is refused admin routes", path: "/admin", token: adminToken, preview: true, wantStatus: http.StatusForbidden},
+		{name: "preview administrator is served as a user", path: "/user", token: adminToken, preview: true, wantStatus: http.StatusOK, wantRole: common.RoleCommonUser, wantActive: true},
+		{name: "ordinary member cannot change its own role", path: "/user", token: "sk-preview-member", preview: true, wantStatus: http.StatusOK, wantRole: common.RoleCommonUser},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			request.Header.Set("Authorization", "Bearer "+tt.token)
+			if tt.preview {
+				request.Header.Set(PreviewRoleHeader, "user")
+			}
+			response := httptest.NewRecorder()
+
+			router.ServeHTTP(response, request)
+
+			require.Equal(t, tt.wantStatus, response.Code)
+			if tt.wantStatus != http.StatusOK {
+				return
+			}
+			var body struct {
+				Role    int  `json:"role"`
+				Preview bool `json:"preview"`
+			}
+			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &body))
+			assert.Equal(t, tt.wantRole, body.Role)
+			assert.Equal(t, tt.wantActive, body.Preview)
+		})
+	}
+
+	assert.NotZero(t, member.Id)
 }

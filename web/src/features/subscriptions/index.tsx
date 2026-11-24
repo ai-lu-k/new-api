@@ -36,10 +36,17 @@ function SubscriptionsContent() {
 
   return (
     <>
-      <SectionPageLayout fixedContent>
+      <SectionPageLayout
+        fixedContent
+        stackActionsOnMobile
+        pageIndex={<>{t('Admin area')} / 05</>}
+      >
         <SectionPageLayout.Title>
           {t('Subscription Management')}
         </SectionPageLayout.Title>
+        <SectionPageLayout.Description>
+          {t('Recurring plans users can buy, and who is subscribed to them.')}
+        </SectionPageLayout.Description>
         <SectionPageLayout.Actions>
           <div className='flex items-center gap-2'>
             <Alert variant='default' className='hidden px-3 py-2 sm:flex'>

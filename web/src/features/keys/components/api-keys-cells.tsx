@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next'
 
 import { BadgeCell } from '@/components/data-table'
 import { MaskedValueTrigger } from '@/components/masked-value-display'
+import { IconCrossfade } from '@/components/motion/icon-crossfade'
 import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -74,13 +75,15 @@ export function ApiKeyCell({ apiKey }: { apiKey: ApiKey }) {
     if (ok) markKeyCopied(apiKey.id)
   }, [resolvedFullKey, resolveRealKey, apiKey.id, markKeyCopied])
 
-  let copyIcon = <Copy className='size-3.5' />
+  // 140ms cross-fade between the three glyphs (L4): the cell keeps one width
+  // while the tick arrives, so the key row never nudges sideways.
+  let copyState = 'copy'
   let copyTooltip = t('Copy API key')
   if (isLoading) {
-    copyIcon = <Loader2 className='size-3.5 animate-spin' />
+    copyState = 'loading'
     copyTooltip = t('Loading...')
   } else if (isCopied) {
-    copyIcon = <Check className='size-3.5 text-green-600' />
+    copyState = 'copied'
     copyTooltip = t('Copied!')
   }
 
@@ -127,7 +130,20 @@ export function ApiKeyCell({ apiKey }: { apiKey: ApiKey }) {
             />
           }
         >
-          {copyIcon}
+          <IconCrossfade
+            state={copyState}
+            glyphs={[
+              { key: 'copy', glyph: <Copy className='size-3.5' /> },
+              {
+                key: 'copied',
+                glyph: <Check className='size-3.5 text-green-600' />,
+              },
+              {
+                key: 'loading',
+                glyph: <Loader2 className='size-3.5 animate-spin' />,
+              },
+            ]}
+          />
         </TooltipTrigger>
         <TooltipContent>{copyTooltip}</TooltipContent>
       </Tooltip>

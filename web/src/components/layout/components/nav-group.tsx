@@ -57,6 +57,17 @@ import type {
 import { ChatPresetsItem } from './chat-presets-item'
 
 /**
+ * The selected row hands its black block to the shared mark that travels
+ * between rows (`app-sidebar`), so it keeps only the inverted text; hover and
+ * the colour swap run on `--motion-fast`.
+ */
+const NAV_ROW_CLASS =
+  // The block travels for --motion-base, so the label waits half of that
+  // before swapping colour: it is never white-on-white or black-on-black
+  // while the block is still on its way.
+  'transition-[width,height,padding,background-color,color]! duration-(--motion-fast) [transition-delay:calc(var(--motion-base)/2)] data-active:bg-transparent! data-active:hover:bg-transparent! data-active:text-background'
+
+/**
  * Sidebar navigation group component
  * Renders a group of navigation items, supporting regular links and collapsible submenus
  */
@@ -126,6 +137,7 @@ function SidebarMenuLink({ item, href }: { item: NavLink; href: string }) {
     <SidebarMenuItem>
       <SidebarMenuButton
         isActive={checkIsActive(href, item)}
+        className={NAV_ROW_CLASS}
         tooltip={item.title}
         render={
           <Link
@@ -181,7 +193,7 @@ function SidebarMenuCollapsible({
         {item.icon && <item.icon className='shrink-0' />}
         <span className='min-w-0 flex-1 truncate'>{item.title}</span>
         {item.badge && <NavBadge>{item.badge}</NavBadge>}
-        <ChevronRight className='ms-auto size-4 shrink-0 transition-transform duration-200 group-data-[panel-open]/collapsible-trigger:rotate-90' />
+        <ChevronRight className='ms-auto size-4 shrink-0 transition-transform duration-(--motion-fast) ease-(--ease-out) group-data-[panel-open]/collapsible-trigger:rotate-90' />
       </CollapsibleTrigger>
       <CollapsibleContent className='CollapsibleContent'>
         <SidebarMenuSub>
@@ -189,6 +201,7 @@ function SidebarMenuCollapsible({
             <SidebarMenuSubItem key={subItem.title}>
               <SidebarMenuSubButton
                 isActive={checkIsActive(href, subItem)}
+                className={NAV_ROW_CLASS}
                 render={
                   <Link
                     to={subItem.url}
@@ -227,6 +240,7 @@ function SidebarMenuCollapsedDropdown({
           render={
             <SidebarMenuButton
               tooltip={item.title}
+              className={NAV_ROW_CLASS}
               isActive={checkIsActive(href, item)}
             />
           }
@@ -234,7 +248,7 @@ function SidebarMenuCollapsedDropdown({
           {item.icon && <item.icon className='shrink-0' />}
           <span className='min-w-0 flex-1 truncate'>{item.title}</span>
           {item.badge && <NavBadge>{item.badge}</NavBadge>}
-          <ChevronRight className='ms-auto size-4 shrink-0 transition-transform duration-200 group-data-[popup-open]/dropdown-trigger:rotate-90' />
+          <ChevronRight className='ms-auto size-4 shrink-0 transition-transform duration-(--motion-fast) ease-(--ease-out) group-data-[popup-open]/dropdown-trigger:rotate-90' />
         </DropdownMenuTrigger>
         <DropdownMenuContent side='right' align='start' sideOffset={4}>
           <DropdownMenuGroup>

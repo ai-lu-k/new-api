@@ -27,7 +27,6 @@ import {
   DataTableToolbar,
   useDataTable,
 } from '@/components/data-table'
-import { EmptyState } from '@/components/empty-state'
 import { ErrorState } from '@/components/error-state'
 import { Button } from '@/components/ui/button'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
@@ -181,7 +180,7 @@ export function SystemTaskHistory(props: { activeRefreshAt: number }) {
         }
         preActions={
           <Button
-            variant='destructive'
+            variant='outline'
             size='sm'
             disabled={
               historyQuery.isFetching ||
@@ -209,11 +208,11 @@ export function SystemTaskHistory(props: { activeRefreshAt: number }) {
             {tasks.length > 0 ? (
               <SystemTasksTable tasks={tasks} />
             ) : (
-              <EmptyState
-                title={t('No historical system tasks.')}
-                className='min-h-32'
-                bordered
-              />
+              <div className='flex items-center py-6'>
+                <p className='text-muted-foreground text-[13px] leading-snug'>
+                  {t('No historical system tasks.')}
+                </p>
+              </div>
             )}
             <div className='mt-3'>
               <DataTablePagination table={table} compact />

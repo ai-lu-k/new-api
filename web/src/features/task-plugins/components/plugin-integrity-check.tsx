@@ -117,7 +117,7 @@ export function PluginIntegrityCheck(props: PluginIntegrityCheckProps) {
           >
             {t('Integrity hash')}
             <ChevronDown
-              className='size-3 transition-transform group-aria-expanded:rotate-180'
+              className='size-3 transition-transform duration-(--motion-fast) ease-(--ease-out) group-aria-expanded:rotate-180'
               aria-hidden='true'
             />
           </CollapsibleTrigger>

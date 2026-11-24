@@ -274,7 +274,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = React.memo(
                       isMobile ? 'text-xs' : 'text-[10px]'
                     )}
                   >
-                    {t('{{category}} Models', { category })}
+                    {t('{{category}} Models', { category: t(category) })}
                   </div>
                   {categoryModels.map((model) => (
                     <CommandItem
@@ -620,6 +620,22 @@ export const ModelGroupSelector: React.FC<ModelGroupSelectorProps> = ({
     })
   }, [models, searchQuery])
 
+  // Models are grouped by their `category` when one is provided (the
+  // playground labels text and image models); unlabelled models keep a single
+  // ungrouped list so other callers see no change.
+  const groupedModels = useMemo(() => {
+    const groups = new Map<string, ModelOption[]>()
+
+    for (const model of filteredModels) {
+      const category = model.category ?? ''
+      const models = groups.get(category) ?? []
+      models.push(model)
+      groups.set(category, models)
+    }
+
+    return [...groups.entries()]
+  }, [filteredModels])
+
   const handleModelChange = useCallback(
     (value: string) => {
       onModelChange(value)
@@ -758,43 +774,51 @@ export const ModelGroupSelector: React.FC<ModelGroupSelectorProps> = ({
             {t('No model found.')}
           </div>
         ) : (
-          <CommandGroup className='p-1'>
-            {filteredModels.map((model) => (
-              <CommandItem
-                className={cn(
-                  modelGroupSelectorLayoutClasses.modelItem,
-                  selectedModel === model.value
-                    ? modelGroupSelectorLayoutClasses.selectedModelItem
-                    : modelGroupSelectorLayoutClasses.unselectedModelItem
-                )}
-                key={model.value}
-                onSelect={handleModelChange}
-                ref={
-                  selectedModel === model.value
-                    ? selectedModelOptionRef
-                    : undefined
-                }
-                value={model.value}
-              >
-                <span
+          groupedModels.map(([category, categoryModels]) => (
+            <CommandGroup
+              className='p-1'
+              key={category}
+              heading={category ? t(category) : undefined}
+            >
+              {categoryModels.map((model) => (
+                <CommandItem
                   className={cn(
-                    'min-w-0 truncate',
+                    modelGroupSelectorLayoutClasses.modelItem,
                     selectedModel === model.value
-                      ? modelGroupSelectorLayoutClasses.selectedModelText
-                      : modelGroupSelectorLayoutClasses.unselectedModelText
+                      ? modelGroupSelectorLayoutClasses.selectedModelItem
+                      : modelGroupSelectorLayoutClasses.unselectedModelItem
                   )}
+                  key={model.value}
+                  onSelect={handleModelChange}
+                  ref={
+                    selectedModel === model.value
+                      ? selectedModelOptionRef
+                      : undefined
+                  }
+                  value={model.value}
                 >
-                  {model.label}
-                </span>
-                <Check
-                  className={cn(
-                    'size-3.5 shrink-0',
-                    selectedModel === model.value ? 'opacity-100' : 'opacity-0'
-                  )}
-                />
-              </CommandItem>
-            ))}
-          </CommandGroup>
+                  <span
+                    className={cn(
+                      'min-w-0 truncate',
+                      selectedModel === model.value
+                        ? modelGroupSelectorLayoutClasses.selectedModelText
+                        : modelGroupSelectorLayoutClasses.unselectedModelText
+                    )}
+                  >
+                    {model.label}
+                  </span>
+                  <Check
+                    className={cn(
+                      'size-3.5 shrink-0',
+                      selectedModel === model.value
+                        ? 'opacity-100'
+                        : 'opacity-0'
+                    )}
+                  />
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          ))
         )}
       </CommandList>
     </Command>

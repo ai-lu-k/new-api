@@ -41,12 +41,15 @@ export type FilteringSettings = Pick<
   SecuritySettings,
   'CheckSensitiveEnabled' | 'CheckSensitiveOnPromptEnabled' | 'SensitiveWords'
 >
-export type RequestPolicySettings = RetrySettings &
+export type RequestPolicySettings = {
+  ModelDailyTokenLimits: string
+} & RetrySettings &
   HealthSettings &
   FilteringSettings &
   Pick<ChannelAffinitySettings, keyof ChannelAffinitySettings>
 
 export const defaultRequestPolicySettings: RequestPolicySettings = {
+  ModelDailyTokenLimits: '{"deepseek-v4.1-flash-x0.1":200000000}',
   RetryTimes: 0,
   AutomaticRetryStatusCodes:
     '100-199,300-399,401-407,409-499,500-503,505-523,525-599',

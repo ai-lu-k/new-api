@@ -34,10 +34,12 @@ export function NavigationProgress() {
 
   return (
     <LoadingBar
-      color='var(--muted-foreground)'
+      color='var(--foreground)'
       ref={ref}
-      shadow={true}
+      // No glow: the bar is a 2px hairline, not a light source.
+      shadow={false}
       height={2}
+      transitionTime={140}
     />
   )
 }

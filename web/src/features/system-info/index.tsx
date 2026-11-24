@@ -28,7 +28,7 @@ export function SystemInfo() {
   const { t } = useTranslation()
 
   return (
-    <SectionPageLayout>
+    <SectionPageLayout pageIndex={<>{t('Admin area')} / 08</>}>
       <SectionPageLayout.Title>
         <span className='inline-flex min-w-0 items-center gap-2'>
           <span className='truncate'>{t('System Info')}</span>
@@ -37,8 +37,13 @@ export function SystemInfo() {
           </Badge>
         </span>
       </SectionPageLayout.Title>
+      <SectionPageLayout.Description>
+        {t(
+          'Instance health and the background tasks they are running right now.'
+        )}
+      </SectionPageLayout.Description>
       <SectionPageLayout.Content>
-        <div className='space-y-4'>
+        <div className='space-y-6'>
           <SystemInstancesPanel />
           <SystemTasksPanel />
         </div>

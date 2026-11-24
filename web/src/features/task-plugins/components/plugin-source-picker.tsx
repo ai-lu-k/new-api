@@ -49,7 +49,7 @@ export function PluginSourcePicker(props: PluginSourcePickerProps) {
   return (
     <div
       className={cn(
-        'flex flex-col items-center gap-2 rounded-lg border border-dashed px-4 py-6 text-center transition-colors',
+        'flex flex-col items-center gap-2 rounded-lg border border-dashed px-4 py-6 text-center transition-colors duration-(--motion-fast) ease-(--ease-out)',
         isDragActive ? 'border-primary bg-primary/5' : 'bg-muted/20'
       )}
       onDragOver={(event) => {

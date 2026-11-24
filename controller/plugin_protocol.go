@@ -254,8 +254,10 @@ func serveTaskPluginProtocol(
 	// disconnecting that observer must not cancel submission, persistence, or
 	// billing settlement; the submission keeps its own bounded lifetime.
 	func() {
+		leaseContext, cancelLease := model.WithChannelGenerationLeaseCancellation(context.WithoutCancel(clientRequest.Context()))
+		defer cancelLease()
 		submissionContext, cancelSubmission := context.WithTimeout(
-			context.WithoutCancel(clientRequest.Context()),
+			leaseContext,
 			deps.submissionTimeout,
 		)
 		c.Request = clientRequest.Clone(submissionContext)

@@ -60,6 +60,7 @@ import { DynamicPricingBreakdown } from '@/features/pricing/components/dynamic-p
 import { usePricingData } from '@/features/pricing/hooks/use-pricing-data'
 import { BILLING_PRICING_VARS } from '@/features/pricing/lib/billing-expr'
 import { pluginUsageSchema } from '@/features/pricing/lib/plugin-pricing'
+import { RequestObservationDetails } from '@/features/relay-funnel/components/request-observation'
 import { PolicyDecisionRecord } from '@/features/system-settings/request-policies/decision-record'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { formatBillingCurrencyFromUSD } from '@/lib/currency'
@@ -91,6 +92,7 @@ import { USAGE_BILLING_PATH, type LogOtherData } from '../../types'
 import { ResponseModelDetails } from '../model-badge'
 import { PluginAuthorLink } from '../plugin-author-link'
 import { DetailRow, DetailSection } from './log-detail-layout'
+import { RelayDiagnostics } from './relay-diagnostics'
 
 // Maps a channel-update changed-field token (as recorded by the backend audit)
 // to its i18n label key for display in the audit details.
@@ -748,6 +750,19 @@ export function DetailsDialog(props: DetailsDialogProps) {
             />
           )}
         </div>
+
+        <RelayDiagnostics
+          outcome={other?.relay_outcome}
+          report={other?.admin_info?.relay_diagnostics}
+          timeline={other?.root_info?.relay_timeline}
+          isAdmin={props.isAdmin}
+          isRoot={props.isRoot === true}
+        />
+
+        <RequestObservationDetails
+          requestId={props.log.request_id}
+          enabled={props.open && props.isRoot === true && showTiming}
+        />
 
         {/* Request conversion (admin only, not for refund) */}
         {showConversion && (

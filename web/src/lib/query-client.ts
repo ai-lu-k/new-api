@@ -18,12 +18,18 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { MutationCache, QueryCache, QueryClient } from '@tanstack/react-query'
 
+import { isEnvironmentRecoveryBlocked } from './environment'
 import { handleServerError } from './handle-server-error'
-import { getServerErrorStatus } from './server-error-message'
+import {
+  getServerErrorSources,
+  getServerErrorStatus,
+} from './server-error-message'
 
 interface ErrorNotificationMeta extends Record<string, unknown> {
   /** Disable automatic notifications when a caller presents the failure itself. */
   errorToast?: boolean
+  /** Keep the page shell when a query fails with 500 and render it in place. */
+  skipInternalErrorRedirect?: boolean
 }
 
 declare module '@tanstack/react-query' {
@@ -40,6 +46,16 @@ export function createAppQueryClient(
     defaultOptions: {
       queries: {
         retry: (failureCount, error) => {
+          if (isEnvironmentRecoveryBlocked()) return false
+          if (
+            getServerErrorSources(error).some(
+              (source) =>
+                source.code === 'ENVIRONMENT_CHANGED' ||
+                source.code === 'ENVIRONMENT_UNAVAILABLE'
+            )
+          ) {
+            return false
+          }
           if (import.meta.env.DEV || failureCount > 3) return false
           return ![401, 403].includes(getServerErrorStatus(error) ?? 0)
         },
@@ -58,7 +74,14 @@ export function createAppQueryClient(
     queryCache: new QueryCache({
       onError: (error, query) => {
         if (query.meta?.errorToast !== false) handleServerError(error)
-        if (getServerErrorStatus(error) === 500) onInternalServerError?.()
+        // A page that renders its own failure state keeps the shell, filters
+        // and retry button by opting out with meta.skipInternalErrorRedirect.
+        if (
+          getServerErrorStatus(error) === 500 &&
+          query.meta?.skipInternalErrorRedirect !== true
+        ) {
+          onInternalServerError?.()
+        }
       },
     }),
   })

@@ -37,7 +37,7 @@ export function useAuditLogColumns(
       {
         accessorKey: 'created_at',
         header: t('Time'),
-        size: 180,
+        size: 176,
         cell: ({ row }) => (
           <span className='font-mono tabular-nums'>
             {dayjs.unix(row.original.created_at).format('YYYY-MM-DD HH:mm:ss')}
@@ -51,13 +51,13 @@ export function useAuditLogColumns(
         {
           accessorKey: 'username',
           header: t('Username'),
-          size: 100,
+          size: 96,
           meta: { label: t('Username') },
         },
         {
           id: 'event',
           header: t('Event'),
-          size: 360,
+          size: 280,
           accessorFn: (entry) => {
             const detail = buildAuditDetails(entry, t)
             return [detail.summary, detail.operation?.description]
@@ -108,27 +108,16 @@ export function useAuditLogColumns(
       {
         accessorKey: 'ip',
         header: 'IP',
-        size: 120,
+        size: 108,
         cell: ({ row }) => (
           <span className='font-mono'>{row.original.ip || '—'}</span>
         ),
         meta: { label: 'IP' },
       },
       {
-        accessorKey: 'user_agent',
-        header: t('Client'),
-        size: 180,
-        cell: ({ row }) => (
-          <TruncatedCell className='max-w-48'>
-            {row.original.user_agent || '—'}
-          </TruncatedCell>
-        ),
-        meta: { label: t('Client'), mobileHidden: true },
-      },
-      {
         accessorKey: 'method',
         header: t('Method'),
-        size: 76,
+        size: 60,
         cell: ({ row }) => (
           <span className='text-muted-foreground font-mono'>
             {row.original.method || '—'}
@@ -139,9 +128,9 @@ export function useAuditLogColumns(
       {
         accessorKey: 'route',
         header: t('Route'),
-        size: 220,
+        size: 160,
         cell: ({ row }) => (
-          <TruncatedCell className='max-w-60 font-mono'>
+          <TruncatedCell className='max-w-40 font-mono'>
             {row.original.route || '—'}
           </TruncatedCell>
         ),
@@ -150,7 +139,7 @@ export function useAuditLogColumns(
       {
         accessorKey: 'status',
         header: 'HTTP',
-        size: 60,
+        size: 52,
         cell: ({ row }) => (
           <span className='font-mono tabular-nums'>
             {row.original.status || '—'}
@@ -161,7 +150,7 @@ export function useAuditLogColumns(
       {
         accessorKey: 'success',
         header: t('Result'),
-        size: 82,
+        size: 72,
         cell: ({ row }) => (
           <StatusBadge
             label={row.original.success ? t('Success') : t('Failed')}
@@ -174,10 +163,13 @@ export function useAuditLogColumns(
       {
         id: 'details',
         header: t('Details'),
-        size: 70,
+        size: 76,
         enableHiding: false,
+        // The last column stays in view at every width: the request-client
+        // column moved into this dialog so the row no longer hides its only
+        // detail entry behind a horizontal scroll.
         cell: ({ row }) => <AuditLogDetailsDialog entry={row.original} />,
-        meta: { label: t('Details') },
+        meta: { label: t('Details'), pinned: 'right' as const },
       }
     )
     return columns

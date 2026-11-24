@@ -22,6 +22,7 @@ import { z } from 'zod'
 import { sanitizeAuthRedirect } from '@/features/auth/lib/auth-redirect'
 import { SignIn } from '@/features/auth/sign-in'
 import { resolveAuthentication } from '@/lib/auth-session'
+import { openAuthDialog } from '@/stores/auth-dialog-store'
 import { useAuthStore } from '@/stores/auth-store'
 
 const searchSchema = z.object({
@@ -45,5 +46,11 @@ export const Route = createFileRoute('/(auth)/sign-in')({
         '/dashboard'
       throw redirect({ href: target, replace: true })
     }
+
+    // Signing in is a dialog over the page, not a page of its own. A direct
+    // visit (bookmark, expired session, an old link) lands on the home page
+    // with the dialog open, so the flow looks the same however it started.
+    openAuthDialog('sign-in', { redirectTo: search?.redirect })
+    throw redirect({ to: '/', replace: true })
   },
 })

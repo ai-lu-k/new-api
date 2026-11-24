@@ -23,6 +23,7 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/config"
+	"github.com/QuantumNous/new-api/setting/naming_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -928,6 +929,7 @@ export function parseTaskResult() { return {}; }
 				require.NoError(t, model.UpdateModelPricing([]model.ModelPricingChange{{ModelName: exact.ModelName, ExpectedVersion: priceBefore.Entries[0].Version, Pricing: model.PricingValues{"ModelPrice": float64(0)}}}))
 				exact.ModelName = "matrix-renamed"
 				exact.Endpoints = `{"openai":{"path":"/v1/chat/completions","method":"POST"}}`
+				exact.InputModalities, exact.ContextLength, exact.ReleaseDate, exact.Series = "text", 128000, "2026-01", "Matrix"
 				response := modelManagementRequest(t, UpdateModelMeta, http.MethodPut, "/api/models/", exact, nil)
 				assert.Contains(t, response.Body.String(), `"success":true`)
 				var reloaded model.Model
@@ -946,6 +948,117 @@ export function parseTaskResult() { return {}; }
 				assert.Empty(t, prices.Entries[0].Configured)
 				var ability model.Ability
 				require.NoError(t, db.Where("model = ? AND channel_id = ? AND enabled = ?", "matrix-hidden-unpriced", active.Id, true).First(&ability).Error)
+			})
+			t.Run("catalog_facts_are_required_and_kept_per_name", func(t *testing.T) {
+				naming := naming_setting.GetModelNamingSetting()
+				previousSuffix := naming.PriceSuffixEnabled
+				naming.PriceSuffixEnabled = true
+				t.Cleanup(func() { naming.PriceSuffixEnabled = previousSuffix })
+
+				// The refusal names the fact, in whatever language the test
+				// run has loaded.
+				asks := func(field string) string {
+					context, _ := gin.CreateTestContext(httptest.NewRecorder())
+					context.Request = httptest.NewRequest(http.MethodPost, "/api/models/", nil)
+					return common.TranslateMessage(context, "model_catalog."+field)
+				}
+
+				// Saving by hand asks for each fact in turn.
+				draft := model.Model{ModelName: "catalog-model", Description: "Described once", Status: 1}
+				for _, step := range []struct {
+					missing string
+					fill    func()
+				}{
+					{"input_modalities", func() { draft.InputModalities = "Image, text,image" }},
+					{"context_length", func() { draft.ContextLength = 1048576; draft.SupportedParameters = "tools,telepathy" }},
+					{"supported_parameters", func() { draft.SupportedParameters = "reasoning, tools"; draft.ReleaseDate = "2026-13" }},
+					{"release_date", func() { draft.ReleaseDate = "2026-09" }},
+					{"series", func() { draft.Series = " DeepSeek " }},
+				} {
+					response := modelManagementRequest(t, CreateModelMeta, http.MethodPost, "/api/models/", draft, nil)
+					assert.Contains(t, response.Body.String(), asks(step.missing))
+					step.fill()
+				}
+				var created struct {
+					Success bool
+					Data    model.Model
+				}
+				modelManagementRequest(t, CreateModelMeta, http.MethodPost, "/api/models/", draft, &created)
+				require.True(t, created.Success)
+				var stored model.Model
+				require.NoError(t, db.First(&stored, created.Data.Id).Error)
+				assert.Equal(t, "text,image", stored.InputModalities, "lists are stored once each, in a fixed order")
+				assert.Equal(t, "tools,reasoning", stored.SupportedParameters)
+				assert.Equal(t, 1048576, stored.ContextLength)
+				assert.Equal(t, "2026-09", stored.ReleaseDate)
+				assert.Equal(t, "DeepSeek", stored.Series)
+
+				// An edit keeps them, and cannot drop one.
+				stored.ContextLength, stored.SupportedParameters = 200000, ""
+				response := modelManagementRequest(t, UpdateModelMeta, http.MethodPut, "/api/models/", stored, nil)
+				assert.Contains(t, response.Body.String(), `"success":true`)
+				var edited model.Model
+				require.NoError(t, db.First(&edited, stored.Id).Error)
+				assert.Equal(t, 200000, edited.ContextLength)
+				assert.Empty(t, edited.SupportedParameters, "a model may support none of the listed parameters")
+				edited.Series = ""
+				response = modelManagementRequest(t, UpdateModelMeta, http.MethodPut, "/api/models/", edited, nil)
+				assert.Contains(t, response.Body.String(), asks("series"))
+
+				// A row made another way has none yet: showing or hiding it
+				// still works, a full save asks for them.
+				bare := model.Model{ModelName: "catalog-bare", Status: 1}
+				require.NoError(t, bare.Insert())
+				bare.Status = 0
+				response = modelManagementRequest(t, UpdateModelMeta, http.MethodPut, "/api/models/?status_only=true", bare, nil)
+				assert.Contains(t, response.Body.String(), `"success":true`)
+				response = modelManagementRequest(t, UpdateModelMeta, http.MethodPut, "/api/models/", bare, nil)
+				assert.Contains(t, response.Body.String(), asks("input_modalities"))
+
+				// The model list gives a name its own facts. A price tier of
+				// it borrows the description, not the facts.
+				channel := model.Channel{Name: "Catalog route", Type: 1, Status: common.ChannelStatusEnabled}
+				require.NoError(t, db.Create(&channel).Error)
+				require.NoError(t, db.Create(&[]model.Ability{
+					{Model: "catalog-model", Group: "default", ChannelId: channel.Id, Enabled: true},
+					{Model: "catalog-model-x0.5", Group: "default", ChannelId: channel.Id, Enabled: true},
+				}).Error)
+				t.Cleanup(func() {
+					require.NoError(t, db.Where("channel_id = ?", channel.Id).Delete(&model.Ability{}).Error)
+					require.NoError(t, db.Delete(&model.Channel{}, channel.Id).Error)
+					require.NoError(t, db.Unscoped().Where("model_name LIKE ?", "catalog-%").Delete(&model.Model{}).Error)
+					model.RefreshPricing()
+				})
+				listed := func() map[string]model.Pricing {
+					model.RefreshPricing()
+					entries := map[string]model.Pricing{}
+					for _, entry := range model.GetPricing() {
+						entries[entry.ModelName] = entry
+					}
+					return entries
+				}
+				entries := listed()
+				own := entries["catalog-model"]
+				assert.Equal(t, []string{"text", "image"}, own.InputModalities)
+				assert.Equal(t, 200000, own.ContextLength)
+				assert.Equal(t, "2026-09", own.ReleaseDate)
+				assert.Equal(t, "DeepSeek", own.Series)
+				tier := entries["catalog-model-x0.5"]
+				require.NotNil(t, tier.PriceMultiplier, "the tier is recognised")
+				assert.Equal(t, "Described once", tier.Description)
+				assert.Empty(t, tier.InputModalities)
+				assert.Zero(t, tier.ContextLength)
+				assert.Empty(t, tier.ReleaseDate)
+				assert.Empty(t, tier.Series)
+
+				tierRow := model.Model{ModelName: "catalog-model-x0.5", Status: 1,
+					InputModalities: "text", ContextLength: 64000, SupportedParameters: "tools", ReleaseDate: "2026-09", Series: "DeepSeek"}
+				modelManagementRequest(t, CreateModelMeta, http.MethodPost, "/api/models/", tierRow, &created)
+				require.True(t, created.Success)
+				tier = listed()["catalog-model-x0.5"]
+				assert.Equal(t, []string{"text"}, tier.InputModalities)
+				assert.Equal(t, 64000, tier.ContextLength)
+				assert.Equal(t, []string{"tools"}, tier.SupportedParameters)
 			})
 			t.Run("metadata_preview_selection_versions_and_transaction", func(t *testing.T) {
 				local := &model.Model{ModelName: "matrix-existing", Description: "Local description", Tags: "keep", Status: 1, SyncOfficial: 1}

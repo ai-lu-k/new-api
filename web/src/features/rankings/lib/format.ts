@@ -20,18 +20,34 @@ For commercial licensing, please contact support@quantumnous.com
 // Rankings formatting helpers
 // ----------------------------------------------------------------------------
 
+import { formatCompactNumber, formatNumber } from '@/lib/format'
+
 /** Format a token count as `1.2B`, `42M`, `980K`, or `512`. */
 export function formatTokens(value: number): string {
   if (!Number.isFinite(value) || value <= 0) return '0'
-  if (value >= 1_000_000_000_000)
+  if (value >= 1_000_000_000_000) {
     return `${(value / 1_000_000_000_000).toFixed(2)}T`
-  if (value >= 1_000_000_000)
+  }
+  if (value >= 1_000_000_000) {
     return `${(value / 1_000_000_000).toFixed(value >= 10_000_000_000 ? 1 : 2)}B`
-  if (value >= 1_000_000)
+  }
+  if (value >= 1_000_000) {
     return `${(value / 1_000_000).toFixed(value >= 10_000_000 ? 1 : 2)}M`
-  if (value >= 1_000)
+  }
+  if (value >= 1_000) {
     return `${(value / 1_000).toFixed(value >= 10_000 ? 0 : 1)}K`
+  }
   return value.toLocaleString()
+}
+
+/**
+ * Format a call count. Small counts stay exact so a single call still reads
+ * as `1`; large ones are compacted the same way tokens are.
+ */
+export function formatCalls(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '0'
+  if (value < 1_000) return formatNumber(value)
+  return formatCompactNumber(value)
 }
 
 /** Format a 0..1 share as a percentage with two decimals. */

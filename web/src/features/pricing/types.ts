@@ -69,6 +69,13 @@ export type PricingModel = {
   model_ratio: number
   completion_ratio: number
   model_price?: number
+  /**
+   * The price tier spelled in the model name ("-x0.25"). The ratios and
+   * expressions above are those of the model without it.
+   */
+  price_multiplier?: number
+  /** Unix seconds at which a limited-time offer of this model ends. */
+  promo_ends_at?: number
   cache_ratio?: number | null
   create_cache_ratio?: number | null
   image_ratio?: number | null
@@ -101,6 +108,10 @@ export type PricingModel = {
   input_modalities?: Modality[]
   output_modalities?: Modality[]
   capabilities?: ModelCapability[]
+  /** Request features the model supports, from a short fixed list. */
+  supported_parameters?: string[]
+  /** The family the model belongs to, such as "DeepSeek" or "GPT". */
+  series?: string
 }
 
 /** Input/output modalities supported by a model. */

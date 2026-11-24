@@ -419,5 +419,84 @@
         "conditionText": "Text-only requests"
       }
     ]
+  },
+  {
+    "name": "image resolution default",
+    "expression": "(param(\"generationConfig.image_config.imageSize\") ?? param(\"generationConfig.imageConfig.imageSize\") ?? param(\"extra_body.google.image_config.image_size\") ?? \"1K\") in [\"4K\", \"4k\"] ? tier(\"4K\", fixed(0.45)) : (param(\"generationConfig.image_config.imageSize\") ?? param(\"generationConfig.imageConfig.imageSize\") ?? param(\"extra_body.google.image_config.image_size\") ?? \"1K\") in [\"2K\", \"2k\"] ? tier(\"2K\", fixed(0.25)) : tier(\"1K\", fixed(0.15))",
+    "body": {},
+    "cost": 150000.0,
+    "tier": "1K",
+    "billingUnit": "request",
+    "fixedPrice": 0.15
+  },
+  {
+    "name": "image resolution native 2K",
+    "expression": "(param(\"generationConfig.image_config.imageSize\") ?? param(\"generationConfig.imageConfig.imageSize\") ?? param(\"extra_body.google.image_config.image_size\") ?? \"1K\") in [\"4K\", \"4k\"] ? tier(\"4K\", fixed(0.45)) : (param(\"generationConfig.image_config.imageSize\") ?? param(\"generationConfig.imageConfig.imageSize\") ?? param(\"extra_body.google.image_config.image_size\") ?? \"1K\") in [\"2K\", \"2k\"] ? tier(\"2K\", fixed(0.25)) : tier(\"1K\", fixed(0.15))",
+    "body": {
+      "generationConfig": {
+        "imageConfig": {
+          "imageSize": "2K"
+        }
+      }
+    },
+    "cost": 250000.0,
+    "tier": "2K",
+    "billingUnit": "request",
+    "fixedPrice": 0.25
+  },
+  {
+    "name": "image resolution OpenAI 4K",
+    "expression": "(param(\"generationConfig.image_config.imageSize\") ?? param(\"generationConfig.imageConfig.imageSize\") ?? param(\"extra_body.google.image_config.image_size\") ?? \"1K\") in [\"4K\", \"4k\"] ? tier(\"4K\", fixed(0.45)) : (param(\"generationConfig.image_config.imageSize\") ?? param(\"generationConfig.imageConfig.imageSize\") ?? param(\"extra_body.google.image_config.image_size\") ?? \"1K\") in [\"2K\", \"2k\"] ? tier(\"2K\", fixed(0.25)) : tier(\"1K\", fixed(0.15))",
+    "body": {
+      "extra_body": {
+        "google": {
+          "image_config": {
+            "image_size": "4k"
+          }
+        }
+      }
+    },
+    "cost": 450000.0,
+    "tier": "4K",
+    "billingUnit": "request",
+    "fixedPrice": 0.45
+  },
+  {
+    "name": "image resolution earlier alias wins",
+    "expression": "(param(\"generationConfig.image_config.imageSize\") ?? param(\"generationConfig.imageConfig.imageSize\") ?? param(\"extra_body.google.image_config.image_size\") ?? \"1K\") in [\"4K\", \"4k\"] ? tier(\"4K\", fixed(0.45)) : (param(\"generationConfig.image_config.imageSize\") ?? param(\"generationConfig.imageConfig.imageSize\") ?? param(\"extra_body.google.image_config.image_size\") ?? \"1K\") in [\"2K\", \"2k\"] ? tier(\"2K\", fixed(0.25)) : tier(\"1K\", fixed(0.15))",
+    "body": {
+      "generationConfig": {
+        "image_config": {
+          "imageSize": "1K"
+        },
+        "imageConfig": {
+          "imageSize": "4K"
+        }
+      }
+    },
+    "cost": 150000.0,
+    "tier": "1K",
+    "billingUnit": "request",
+    "fixedPrice": 0.15
+  },
+  {
+    "name": "coalesce binds before arithmetic",
+    "expression": "(param(\"zero\") ?? 7) + 3",
+    "body": {
+      "zero": 0
+    },
+    "cost": 3,
+    "tier": ""
+  },
+  {
+    "name": "coalesce preserves false",
+    "expression": "(param(\"enabled\") ?? true) ? tier(\"yes\", fixed(1)) : tier(\"no\", fixed(0))",
+    "body": {
+      "enabled": false
+    },
+    "cost": 0,
+    "tier": "no",
+    "billingUnit": "request",
+    "fixedPrice": 0
   }
 ]

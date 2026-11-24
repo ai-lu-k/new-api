@@ -51,6 +51,21 @@ func DoCheckin(c *gin.Context) {
 		return
 	}
 
+	// The human check runs before any state changes so a script cannot farm the
+	// daily award. It is mandatory whenever the provider is configured.
+	if geeTestAvailable() {
+		var request struct {
+			Captcha *geeTestProof `json:"captcha"`
+		}
+		if common.DecodeJson(c.Request.Body, &request) != nil || !verifyGeeTest(c, request.Captcha, "checkin_human") {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "Human verification failed or expired. Please verify again.",
+			})
+			return
+		}
+	}
+
 	userId := c.GetInt("id")
 
 	checkin, err := model.UserCheckin(userId)

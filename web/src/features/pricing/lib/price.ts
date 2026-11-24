@@ -16,7 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { formatBillingCurrencyFromUSD } from '@/lib/currency'
+import {
+  formatBillingCurrencyFromUSD,
+  getCurrencyDisplay,
+} from '@/lib/currency'
 
 import { QUOTA_TYPE_VALUES, TOKEN_UNIT_DIVISORS } from '../constants'
 import type { PricingModel, TokenUnit, PriceType } from '../types'
@@ -26,32 +29,81 @@ import { getConfiguredGroupRatio, getDisplayGroupRatio } from './model-helpers'
 // Price Calculation Utilities
 // ----------------------------------------------------------------------------
 
+/** Hard cap so even a vanishingly small price keeps a non-zero digit. */
+const MAX_PRICE_FRACTION_DIGITS = 6
+
+/** Money is written with at least two decimals so a column of prices lines up. */
+const MONEY_FRACTION_DIGITS = 2
+
+/** Below one cent, two decimals would read as zero, so the price keeps its own. */
+const SMALLEST_MONEY_AMOUNT = 10 ** -MONEY_FRACTION_DIGITS
+
+/** Rounding error a shown price may keep; smaller amounts tolerate more. */
+const PRICE_ERROR_TOLERANCE: { min: number; tolerance: number }[] = [
+  { min: 1, tolerance: 0.05 },
+  { min: 0.01, tolerance: 0.1 },
+  { min: 0, tolerance: 0.25 },
+]
+
 /**
- * Strip trailing zeros from formatted price string while preserving currency symbols
+ * Fraction digits for a price in the display currency: the fewest decimals
+ * whose rounding error stays within the size-dependent tolerance, so prices
+ * look neat without distorting the amount. Never collapses to zero.
  */
-export function stripTrailingZeros(formatted: string): string {
-  // Match currency symbol at start, number, and potential 'k' suffix
-  const match = formatted.match(/^([^\d-]*)([-\d,]+\.?\d*)(k?)$/)
-  if (!match) return formatted
-
-  const [, symbol, number, suffix] = match
-
-  // Remove commas for processing
-  const cleanNumber = number.replaceAll(',', '')
-
-  // Convert to number and back to remove trailing zeros
-  const parsed = Number.parseFloat(cleanNumber)
-  if (Number.isNaN(parsed)) return formatted
-
-  // Convert to string, which automatically removes trailing zeros
-  let result = parsed.toString()
-
-  // If the result is in scientific notation, format it properly
-  if (result.includes('e')) {
-    result = parsed.toFixed(20).replace(/\.?0+$/, '')
+export function priceFractionDigits(displayAmount: number): number {
+  const magnitude = Math.abs(displayAmount)
+  if (!Number.isFinite(magnitude) || magnitude === 0) return 0
+  let tolerance = 0
+  for (const tier of PRICE_ERROR_TOLERANCE) {
+    if (magnitude >= tier.min) {
+      tolerance = tier.tolerance
+      break
+    }
   }
+  for (let digits = 0; digits <= MAX_PRICE_FRACTION_DIGITS; digits++) {
+    const scale = 10 ** digits
+    const rounded = Math.round(magnitude * scale) / scale
+    if (rounded > 0 && Math.abs(rounded - magnitude) / magnitude <= tolerance) {
+      return digits
+    }
+  }
+  return MAX_PRICE_FRACTION_DIGITS
+}
 
-  return `${symbol}${result}${suffix}`
+/**
+ * Display digits for a price: money keeps the two decimals every other amount
+ * shows, while a sub-cent unit price (per token, or a 1K-token unit) keeps the
+ * fewest digits whose error stays within tolerance instead of collapsing.
+ */
+export function priceDisplayFractionDigits(displayAmount: number): number {
+  const digits = priceFractionDigits(displayAmount)
+  if (displayAmount === 0) return MONEY_FRACTION_DIGITS
+  if (Math.abs(displayAmount) < SMALLEST_MONEY_AMOUNT) return digits
+  return Math.max(digits, MONEY_FRACTION_DIGITS)
+}
+
+/**
+ * Format a model price with the shared display precision. The configured price
+ * is not modified; only the displayed digits are rounded to a readable scale.
+ */
+export function formatPricingAmount(
+  amountUSD: number,
+  options?: { showSymbol?: boolean; tokenUnit?: TokenUnit }
+): string {
+  const tokenUnit = options?.tokenUnit ?? 'M'
+  const divisor = TOKEN_UNIT_DIVISORS[tokenUnit]
+  const { meta } = getCurrencyDisplay()
+  const exchangeRate = meta.kind === 'tokens' ? 1 : meta.exchangeRate
+  const digits = priceDisplayFractionDigits(
+    (amountUSD / divisor) * exchangeRate
+  )
+  return formatBillingCurrencyFromUSD(amountUSD / divisor, {
+    showSymbol: options?.showSymbol ?? true,
+    digitsLarge: digits,
+    digitsSmall: digits,
+    abbreviate: false,
+    minimumNonZero: 10 ** -digits,
+  })
 }
 
 /**
@@ -165,12 +217,9 @@ export function formatPrice(
     usdExchangeRate
   )
 
-  const price = priceInUSD / TOKEN_UNIT_DIVISORS[tokenUnit]
-  return formatBillingCurrencyFromUSD(price, {
+  return formatPricingAmount(priceInUSD, {
     showSymbol: showCurrencySymbol,
-    digitsLarge: 4,
-    digitsSmall: 6,
-    abbreviate: false,
+    tokenUnit,
   })
 }
 
@@ -201,12 +250,7 @@ export function formatGroupPrice(
     usdExchangeRate
   )
 
-  const price = priceInUSD / TOKEN_UNIT_DIVISORS[tokenUnit]
-  return formatBillingCurrencyFromUSD(price, {
-    digitsLarge: 4,
-    digitsSmall: 6,
-    abbreviate: false,
-  })
+  return formatPricingAmount(priceInUSD, { tokenUnit })
 }
 
 /**
@@ -234,11 +278,7 @@ export function formatFixedPrice(
     usdExchangeRate
   )
 
-  return formatBillingCurrencyFromUSD(priceInUSD, {
-    digitsLarge: 4,
-    digitsSmall: 4,
-    abbreviate: false,
-  })
+  return formatPricingAmount(priceInUSD)
 }
 
 /**
@@ -267,10 +307,5 @@ export function formatRequestPrice(
     usdExchangeRate
   )
 
-  return formatBillingCurrencyFromUSD(priceInUSD, {
-    showSymbol: showCurrencySymbol,
-    digitsLarge: 4,
-    digitsSmall: 4,
-    abbreviate: false,
-  })
+  return formatPricingAmount(priceInUSD, { showSymbol: showCurrencySymbol })
 }

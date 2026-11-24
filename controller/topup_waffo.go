@@ -140,7 +140,17 @@ func RequestWaffoAmount(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "success", "data": strconv.FormatFloat(payMoney, 'f', 2, 64)})
+	paidAmount := strconv.FormatFloat(payMoney, 'f', 2, 64)
+	quota, _ := getTopUpQuota(req.Amount)
+	bonus, err := model.CalculateTopUpBonus(quota, &model.TopUpPayment{Currency: getWaffoCurrency(), Amount: paidAmount}, common.GetTimestamp())
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"message": "success", "data": paidAmount,
+		"campaign_bonus_quota": bonus, "payment_currency": getWaffoCurrency(),
+	})
 }
 
 // RequestWaffoPay 创建 Waffo 支付订单
@@ -411,7 +421,9 @@ func handleWaffoPayment(c *gin.Context, wh *core.WebhookHandler, result *core.Pa
 	LockOrder(merchantOrderId)
 	defer UnlockOrder(merchantOrderId)
 
-	if err := model.RechargeWaffo(merchantOrderId, c.ClientIP()); err != nil {
+	if err := model.RechargeWaffo(merchantOrderId, c.ClientIP(), model.TopUpPayment{
+		Currency: result.OrderCurrency, Amount: result.OrderAmount,
+	}); err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Waffo 充值处理失败 trade_no=%s client_ip=%s error=%q", merchantOrderId, c.ClientIP(), err.Error()))
 		sendWaffoWebhookResponse(c, wh, false, err.Error())
 		return

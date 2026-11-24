@@ -34,7 +34,10 @@ export interface ApiResponse<T = unknown> {
  */
 export type TopupInfoResponse = ApiResponse<TopupInfo>
 export type RedemptionResponse = ApiResponse<number>
-export type AmountResponse = ApiResponse<string>
+export type AmountResponse = ApiResponse<string> & {
+  campaign_bonus_quota?: number
+  payment_currency?: string
+}
 export type PaymentResponse = ApiResponse<Record<string, unknown>> & {
   url?: string
 }
@@ -271,6 +274,13 @@ export interface TopupRecord {
   complete_time?: number
   /** Payment status */
   status: TopupStatus
+  bonus_redemption?: {
+    id: number
+    key: string
+    quota: number
+    status: number
+    expired_time: number
+  }
 }
 
 /**

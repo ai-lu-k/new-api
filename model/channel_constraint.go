@@ -5,6 +5,7 @@ import (
 
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 )
 
 var filterEvalOrder = []dto.ChannelFilterKind{
@@ -37,11 +38,26 @@ func ChannelSatisfiesFilters(ch *Channel, modelName string, filters []dto.Channe
 // Caller must hold channelSyncLock (read lock). The input slice is never mutated.
 // A missing id in channelsIDM is kept for request_path (downstream consistency
 // error) and dropped for task_plugin_identity, matching the previous filters.
+// Excluded channels are dropped before any other filter: a capacity rejection
+// narrows later selection without changing why a channel is otherwise
+// eligible.
 func filterCandidateIDs(ids []int, modelName string, filters []dto.ChannelFilter) (kept []int, emptiedBy dto.ChannelFilterKind) {
 	if len(ids) == 0 {
 		return ids, ""
 	}
 	kept = ids
+	if excluded := excludedChannelIds(filters); len(excluded) > 0 {
+		next := make([]int, 0, len(kept))
+		for _, id := range kept {
+			if _, skip := excluded[id]; !skip {
+				next = append(next, id)
+			}
+		}
+		kept = next
+		if len(kept) == 0 {
+			return kept, dto.FilterExcludedChannels
+		}
+	}
 	for _, kind := range filterEvalOrder {
 		kindFilters := filtersByKind(filters, kind)
 		if len(kindFilters) == 0 {
@@ -60,6 +76,16 @@ func filterCandidateIDs(ids []int, modelName string, filters []dto.ChannelFilter
 		kept = next
 	}
 	return kept, ""
+}
+
+// excludedChannelIds returns the shared exclusion set of the request, if any.
+func excludedChannelIds(filters []dto.ChannelFilter) map[int]struct{} {
+	for _, filter := range filters {
+		if filter.Kind == dto.FilterExcludedChannels {
+			return filter.ExcludedChannelIds
+		}
+	}
+	return nil
 }
 
 func filtersByKind(filters []dto.ChannelFilter, kind dto.ChannelFilterKind) []dto.ChannelFilter {
@@ -97,7 +123,7 @@ func channelMatchesFilter(ch *Channel, modelName string, filter dto.ChannelFilte
 			return true
 		}
 		config := ch.GetOtherSettings().AdvancedCustom
-		return config != nil && config.SupportsPathForModel(filter.RequestPath, modelName)
+		return config != nil && config.SupportsPathForModel(relayconstant.CanonicalRequestPath(filter.RequestPath), modelName)
 	case dto.FilterTaskPluginIdentity:
 		if filter.TaskPluginKey == "" {
 			return ch.Type != constant.ChannelTypeTaskPlugin

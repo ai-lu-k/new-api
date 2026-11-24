@@ -37,3 +37,55 @@ export interface HomePageContentResult {
   isLoaded: boolean
   isUrl: boolean
 }
+
+/** Money granted on the site, in yuan, with the number of entries it took. */
+export type GiftAmount = {
+  amount: number
+  count: number
+}
+
+/**
+ * One way gift money is granted. The backend owns the wording: `label` and
+ * `note` are rendered as received, and `key` only picks a fallback label.
+ */
+export type GiftSource = {
+  key: string
+  label?: string
+  amount: number
+  count: number
+  note?: string
+}
+
+/** `GET /api/gift-stats`: what the site handed out today, this week, in 30 days. */
+export type GiftStats = {
+  today: GiftAmount
+  week: GiftAmount
+  month: GiftAmount
+  sources: GiftSource[]
+}
+
+export type GiftStatsResponse = {
+  success: boolean
+  message?: string
+  data?: GiftStats
+}
+
+/** One row of a rankings board, narrowed to the field the home page reads. */
+export type HomeRankingRow = {
+  total_requests?: number
+}
+
+/**
+ * `/api/rankings` also returns an image board, a decision board and a request
+ * count per row. `RankingsSnapshot` in `features/rankings` declares neither, so
+ * the home page narrows the same response here instead of widening the shared
+ * type from a page-local feature.
+ */
+export type HomeRankingsSnapshot = {
+  models?: HomeRankingRow[]
+  image_models?: HomeRankingRow[]
+  decision_models?: HomeRankingRow[]
+  models_history?: {
+    points?: { ts: string; tokens: number }[]
+  }
+}

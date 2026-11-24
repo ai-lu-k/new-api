@@ -23,6 +23,7 @@ import { useStatus } from '@/hooks/use-status'
 import { requireServerSuccess } from '@/lib/server-error-message'
 
 import { getPricing } from '../api'
+import { scaleGroupRatios } from '../lib/model-helpers'
 
 export function usePricingData(enabled = true) {
   const { status } = useStatus()
@@ -59,7 +60,7 @@ export function usePricingData(enabled = true) {
         vendor_name: vendor?.name,
         vendor_icon: vendor?.icon,
         vendor_description: vendor?.description,
-        group_ratio: data.group_ratio,
+        group_ratio: scaleGroupRatios(data.group_ratio, model.price_multiplier),
       }
     })
   }, [data])

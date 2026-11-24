@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import i18next from 'i18next'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
 
 import { handleServerError } from '@/lib/handle-server-error'
@@ -59,11 +59,11 @@ const defaultPaymentAmountCalculators: PaymentAmountCalculators = {
   waffoPancake: calculateWaffoPancakeAmount,
 }
 
-export async function requestPaymentAmount(
+export async function requestPaymentQuote(
   topupAmount: number,
   paymentType: string,
   calculators: PaymentAmountCalculators = defaultPaymentAmountCalculators
-): Promise<number> {
+): Promise<{ amount: number; campaignBonusQuota?: number }> {
   let calculator = calculators.regular
   if (isStripePayment(paymentType)) {
     calculator = calculators.stripe
@@ -75,33 +75,43 @@ export async function requestPaymentAmount(
 
   const response = await calculator({ amount: topupAmount })
   if (!isApiSuccess(response) || !response.data) {
-    return 0
+    return { amount: 0 }
   }
 
-  return Number.parseFloat(response.data)
+  return {
+    amount: Number.parseFloat(response.data),
+    campaignBonusQuota:
+      response.payment_currency?.toUpperCase() === 'CNY'
+        ? response.campaign_bonus_quota
+        : undefined,
+  }
 }
 
 export function usePayment() {
   const [amount, setAmount] = useState<number>(0)
   const [calculating, setCalculating] = useState(false)
   const [processing, setProcessing] = useState(false)
+  const [campaignBonusQuota, setCampaignBonusQuota] = useState<number>()
+  const quoteRequest = useRef(0)
 
   // Calculate payment amount
   const calculatePaymentAmount = useCallback(
     async (topupAmount: number, paymentType: string) => {
+      const request = ++quoteRequest.current
+      setCampaignBonusQuota(undefined)
       try {
         setCalculating(true)
-        const calculatedAmount = await requestPaymentAmount(
-          topupAmount,
-          paymentType
-        )
-        setAmount(calculatedAmount)
-        return calculatedAmount
+        const quote = await requestPaymentQuote(topupAmount, paymentType)
+        if (request !== quoteRequest.current) return 0
+        setAmount(quote.amount)
+        setCampaignBonusQuota(quote.campaignBonusQuota)
+        return quote.amount
       } catch {
+        if (request !== quoteRequest.current) return 0
         setAmount(0)
         return 0
       } finally {
-        setCalculating(false)
+        if (request === quoteRequest.current) setCalculating(false)
       }
     },
     []
@@ -161,6 +171,7 @@ export function usePayment() {
 
   return {
     amount,
+    campaignBonusQuota,
     calculating,
     processing,
     calculatePaymentAmount,

@@ -1,5 +1,10 @@
 package common
 
+import (
+	"net/url"
+	"strings"
+)
+
 type DatabaseType string
 
 const (
@@ -41,7 +46,7 @@ func UsingLogDatabase(databaseType DatabaseType) bool {
 	return logDatabaseType == databaseType
 }
 
-// SQLitePath is the DSN for the default SQLite database. It uses WAL journal
+// SQLiteDSN supplies concurrency defaults for a SQLite database. It uses WAL journal
 // mode so readers are never blocked by the single writer, plus a 30s busy
 // timeout for writers to queue.
 //
@@ -61,4 +66,28 @@ func UsingLogDatabase(databaseType DatabaseType) bool {
 //     front, so writers serialize through the busy timeout instead of dying on
 //     a stale snapshot. Autocommit SELECTs stay concurrent because WAL keeps
 //     readers unlocked.
-var SQLitePath = "one-api.db?_pragma=busy_timeout(30000)&_pragma=journal_mode(WAL)&_txlock=immediate"
+func SQLiteDSN(path string) (string, error) {
+	file, query, _ := strings.Cut(path, "?")
+	options, err := url.ParseQuery(query)
+	if err != nil {
+		return "", err
+	}
+	pragmas := make(map[string]bool)
+	for _, pragma := range options["_pragma"] {
+		name, _, _ := strings.Cut(pragma, "(")
+		name, _, _ = strings.Cut(name, "=")
+		pragmas[strings.ToLower(strings.TrimSpace(name))] = true
+	}
+	if !pragmas["busy_timeout"] {
+		options.Add("_pragma", "busy_timeout(30000)")
+	}
+	if !pragmas["journal_mode"] {
+		options.Add("_pragma", "journal_mode(WAL)")
+	}
+	if !options.Has("_txlock") {
+		options.Set("_txlock", "immediate")
+	}
+	return file + "?" + options.Encode(), nil
+}
+
+var SQLitePath = "one-api.db"

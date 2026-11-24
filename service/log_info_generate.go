@@ -71,7 +71,11 @@ func AppendRelayLogAdminInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo,
 	if ctx == nil || other == nil {
 		return
 	}
+	AppendTransportDiagnostics(relayInfo, other)
 	other.SetAdmin("use_channel", ctx.GetStringSlice("use_channel"))
+	if requested := common.GetContextKeyString(ctx, constant.ContextKeyRequestedModel); requested != "" {
+		other.SetAdmin("requested_model", requested)
+	}
 	if relayInfo != nil {
 		if billingModel := relayInfo.GetBillingModelName(); billingModel != "" && billingModel != relayInfo.OriginModelName {
 			other.SetAdmin("billing_model", billingModel)
@@ -169,6 +173,9 @@ func appendStreamStatus(relayInfo *relaycommon.RelayInfo, other *model.LogOther)
 	if outcome := ss.ResponseOutcome(); outcome != "" {
 		streamInfo["response_status"] = outcome
 	}
+	if outcome := ss.OutcomeSnapshot(); outcome.ErrorCode != "" {
+		other.SetAdmin("stream_error_code", outcome.ErrorCode)
+	}
 	if ss.EndError != nil {
 		streamInfo["end_error"] = ss.EndError.Error()
 	}
@@ -187,12 +194,15 @@ func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other *model.LogOther) 
 	if relayInfo == nil || other == nil {
 		return
 	}
-	// billing_source: "wallet" or "subscription"
+	// Keep the actual funding source explicit in consume logs.
 	if relayInfo.BillingSource != "" {
 		other.SetPublic("billing_source", relayInfo.BillingSource)
 	}
 	if relayInfo.UserSetting.BillingPreference != "" {
 		other.SetPublic("billing_preference", relayInfo.UserSetting.BillingPreference)
+	}
+	if relayInfo.BillingSource == BillingSourceTokenPlan {
+		other.SetPublic("wallet_quota_deducted", relayInfo.TokenPlanWalletQuota)
 	}
 	if relayInfo.BillingSource == "subscription" {
 		if relayInfo.SubscriptionId != 0 {
@@ -326,6 +336,7 @@ func GenerateMjOtherInfo(relayInfo *relaycommon.RelayInfo, priceData hosttypes.P
 		other.SetPublic("user_group_ratio", priceData.GroupRatioInfo.GroupSpecialRatio)
 	}
 	appendRequestPath(nil, relayInfo, other)
+	appendBillingInfo(relayInfo, other)
 	return other
 }
 
@@ -355,6 +366,9 @@ func InjectTieredBillingInfo(other *model.LogOther, relayInfo *relaycommon.Relay
 		if result.ImageCount != nil {
 			other.SetPublic("image_count", *result.ImageCount)
 		}
+		if result.Chars != nil {
+			other.SetPublic("chars", *result.Chars)
+		}
 		other.SetPublic("matched_tier", result.MatchedTier)
 		if result.BillingUnit != "" {
 			other.SetPublic("billing_unit", result.BillingUnit)
@@ -368,6 +382,9 @@ func InjectTieredBillingInfo(other *model.LogOther, relayInfo *relaycommon.Relay
 	} else if snap.EstimatedBillingUnit != "" {
 		if snap.EstimatedImageCount != nil {
 			other.SetPublic("image_count", *snap.EstimatedImageCount)
+		}
+		if snap.EstimatedChars != nil {
+			other.SetPublic("chars", *snap.EstimatedChars)
 		}
 		other.SetPublic("matched_tier", snap.EstimatedTier)
 		other.SetPublic("billing_unit", snap.EstimatedBillingUnit)

@@ -16,43 +16,39 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { HelpCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
+import {
+  SectionPanel,
+  type SectionPanelStatus,
+} from '@/components/section-panel'
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion'
-import { IconBadge } from '@/components/ui/icon-badge'
 import { Markdown } from '@/components/ui/markdown'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useFAQ } from '@/features/dashboard/hooks/use-status-data'
 import type { FAQItem } from '@/features/dashboard/types'
 
-import { PanelWrapper } from '../ui/panel-wrapper'
-
 export function FAQPanel() {
   const { t } = useTranslation()
   const { items: list, loading } = useFAQ()
 
+  let status: SectionPanelStatus = 'ready'
+  if (loading) status = 'loading'
+  else if (!list.length) status = 'empty'
+
   return (
-    <PanelWrapper
-      title={
-        <span className='flex items-center gap-2'>
-          <IconBadge tone='chart-4' size='sm'>
-            <HelpCircle />
-          </IconBadge>
-          {t('FAQ')}
-        </span>
-      }
+    <SectionPanel
+      title={t('FAQ')}
+      level='card'
       description={t('Answers for common access and billing questions')}
-      loading={loading}
-      empty={!list.length}
+      status={status}
       emptyMessage={t('No FAQ entries available')}
-      height='h-80'
-      contentClassName='p-0'
+      placeholderClassName='h-24'
     >
       <ScrollArea className='h-80'>
         <Accordion className='w-full px-4 sm:px-5'>
@@ -70,7 +66,12 @@ export function FAQPanel() {
                     {item.question}
                   </Markdown>
                 </AccordionTrigger>
-                <AccordionContent>
+                {/* The panel already carries the open height and collapses to
+                    `h-0` on `data-starting-style` / `data-ending-style`; the
+                    repo has no `animate-accordion-*` keyframes, so without an
+                    explicit transition the answer snaps open. Height rides the
+                    base token, the answer itself fades on the fast one. */}
+                <AccordionContent className='[transition:height_var(--motion-base)_var(--ease-out),opacity_var(--motion-fast)_var(--ease-out)] data-ending-style:opacity-0 data-starting-style:opacity-0'>
                   <Markdown className='text-muted-foreground/60 text-sm'>
                     {item.answer}
                   </Markdown>
@@ -80,6 +81,6 @@ export function FAQPanel() {
           })}
         </Accordion>
       </ScrollArea>
-    </PanelWrapper>
+    </SectionPanel>
   )
 }

@@ -45,12 +45,16 @@ export function useAuthRedirect() {
   }, [])
 
   /**
-   * Handle successful login
-   * @param userData - Optional user data from login response
-   * @param redirectTo - Redirect path after login
+   * Handle successful login. When `onAuthenticated` is supplied the caller
+   * keeps the visitor on the current page (the sign-in dialog does this);
+   * otherwise the visitor is sent to the redirect target.
    */
   const handleLoginSuccess = useCallback(
-    async (bundle: AuthBundle, redirectTo?: string) => {
+    async (
+      bundle: AuthBundle,
+      redirectTo?: string,
+      onAuthenticated?: () => void
+    ) => {
       if (
         !mounted.current ||
         useAuthStore.getState().auth.session?.sid !== sessionID
@@ -61,6 +65,11 @@ export function useAuthRedirect() {
       const savedLang = getSavedLanguage(bundle.user)
       if (savedLang && savedLang !== i18n.language) {
         await i18n.changeLanguage(savedLang)
+      }
+
+      if (onAuthenticated) {
+        onAuthenticated()
+        return
       }
 
       const targetPath =
@@ -74,7 +83,11 @@ export function useAuthRedirect() {
    * Every primary login transport returns the same bundle-or-challenge contract.
    */
   const handleLoginResult = useCallback(
-    async (result: unknown, redirectTo?: string): Promise<boolean> => {
+    async (
+      result: unknown,
+      redirectTo?: string,
+      onAuthenticated?: () => void
+    ): Promise<boolean> => {
       if (
         !mounted.current ||
         useAuthStore.getState().auth.session?.sid !== sessionID
@@ -82,7 +95,7 @@ export function useAuthRedirect() {
         return false
       }
       if (isAuthBundle(result)) {
-        await handleLoginSuccess(result, redirectTo)
+        await handleLoginSuccess(result, redirectTo, onAuthenticated)
         return true
       }
       if (!isLoginChallenge(result)) {

@@ -8,15 +8,31 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 )
 
+// MaxSpeechCharacters caps the characters a text-to-speech request may
+// synthesize. Every supported provider limit is far below it; the bound exists
+// so a user-controlled text length can never become an unbounded billing
+// multiplier in the chars pricing variable.
+const MaxSpeechCharacters = 100000
+
 type AudioRequest struct {
-	Model          string          `json:"model"`
-	Input          string          `json:"input"`
-	Voice          string          `json:"voice"`
+	Model string `json:"model"`
+	Input string `json:"input"`
+	// Empty on a request whose voice comes from a reference recording; an
+	// empty string would be rejected as an invalid voice by speech providers.
+	Voice          string          `json:"voice,omitempty"`
 	Instructions   string          `json:"instructions,omitempty"`
 	ResponseFormat string          `json:"response_format,omitempty"`
 	Speed          *float64        `json:"speed,omitempty"`
 	StreamFormat   string          `json:"stream_format,omitempty"`
 	Metadata       json.RawMessage `json:"metadata,omitempty"`
+	// Speech models that clone a voice from a recording per request take the
+	// recording here (OpenRouter-style `input_references`). It is forwarded
+	// verbatim: the gateway never inspects or stores the audio, and the
+	// reference does not change what the request is billed.
+	InputReferences json.RawMessage `json:"input_references,omitempty"`
+	// Provider holds provider-specific passthrough options (for example the
+	// delivery language a speech provider needs for a cloned voice).
+	Provider json.RawMessage `json:"provider,omitempty"`
 	// vllm-omini
 	TaskType                json.RawMessage `json:"task_type,omitempty"`
 	Language                json.RawMessage `json:"language,omitempty"`

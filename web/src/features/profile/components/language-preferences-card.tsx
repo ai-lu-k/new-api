@@ -16,13 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Languages, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { SectionPanel } from '@/components/section-panel'
 import { Combobox } from '@/components/ui/combobox'
-import { TitledCard } from '@/components/ui/titled-card'
 import {
   INTERFACE_LANGUAGE_OPTIONS,
   normalizeInterfaceLanguage,
@@ -98,12 +98,10 @@ export function LanguagePreferencesCard(props: LanguagePreferencesCardProps) {
   }
 
   return (
-    <TitledCard
+    <SectionPanel
       title={t('Language Preferences')}
       description={t('Set the language used across the interface')}
-      icon={<Languages className='h-4 w-4' />}
-      iconTone='chart-4'
-      disableHoverEffect
+      contentClassName='pt-1'
     >
       <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4'>
         <div className='space-y-1'>
@@ -131,6 +129,6 @@ export function LanguagePreferencesCard(props: LanguagePreferencesCardProps) {
           )}
         </div>
       </div>
-    </TitledCard>
+    </SectionPanel>
   )
 }

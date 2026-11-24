@@ -347,14 +347,28 @@ func newHTTPClientFromTransportFactory(policy HTTPTransportPolicy, factory func(
 	if policy.Protocol == dto.HTTPProtocolHTTP1 || policy.Shards == 1 {
 		transport := factory()
 		applyHTTPTransportPolicy(transport, policy)
-		return newRelayHTTPClient(transport)
+		if policy.phaseTimeouts {
+			transport.ResponseHeaderTimeout = 0
+		}
+		client := newRelayHTTPClient(transport)
+		if policy.phaseTimeouts {
+			client.Timeout = 0
+		}
+		return client
 	}
 	shardedFactory := func() *http.Transport {
 		transport := factory()
 		applyHTTPTransportPolicy(transport, policy)
+		if policy.phaseTimeouts {
+			transport.ResponseHeaderTimeout = 0
+		}
 		return transport
 	}
-	return newRelayHTTPClient(newShardedRoundTripper(policy, shardedFactory))
+	client := newRelayHTTPClient(newShardedRoundTripper(policy, shardedFactory))
+	if policy.phaseTimeouts {
+		client.Timeout = 0
+	}
+	return client
 }
 
 func newDirectHTTPClient(policy HTTPTransportPolicy, tlsConfig *tls.Config) *http.Client {
@@ -387,7 +401,16 @@ func GetHttpClientWithProxy(rawProxyURL string) (*http.Client, error) {
 // channel transport settings. Default auto + 1 shard shares the same client pool as
 // GetHttpClientWithProxy / GetHttpClient for the empty-proxy case.
 func GetHttpClientWithProxySettings(rawProxyURL string, settings dto.ChannelSettings) (*http.Client, error) {
+	return getHTTPClientWithPolicy(rawProxyURL, NormalizeHTTPTransportPolicy(settings))
+}
+
+func GetPhaseRelayHTTPClient(rawProxyURL string, settings dto.ChannelSettings) (*http.Client, error) {
 	policy := NormalizeHTTPTransportPolicy(settings)
+	policy.phaseTimeouts = true
+	return getHTTPClientWithPolicy(rawProxyURL, policy)
+}
+
+func getHTTPClientWithPolicy(rawProxyURL string, policy HTTPTransportPolicy) (*http.Client, error) {
 	trimmedProxyURL := strings.TrimSpace(rawProxyURL)
 
 	if trimmedProxyURL == "" {

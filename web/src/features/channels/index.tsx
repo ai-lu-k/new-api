@@ -87,13 +87,22 @@ export function Channels() {
 
   return (
     <ChannelsProvider>
-      <SectionPageLayout fixedContent>
+      <SectionPageLayout
+        fixedContent
+        stackActionsOnMobile
+        pageIndex={<>{t('Admin area')} / 01</>}
+      >
         <SectionPageLayout.Title>
           <span className='flex min-w-0 items-center gap-2'>
             <span className='truncate'>{t('Channels')}</span>
             {retryBadge}
           </span>
         </SectionPageLayout.Title>
+        <SectionPageLayout.Description>
+          {t(
+            'Connect upstream providers and control how requests are routed to them.'
+          )}
+        </SectionPageLayout.Description>
         <SectionPageLayout.Actions>
           <ChannelsPrimaryButtons />
         </SectionPageLayout.Actions>

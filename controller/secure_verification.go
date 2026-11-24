@@ -40,6 +40,14 @@ func writeSecurityOperationError(c *gin.Context, err error) {
 	var code, message string
 	var protocolError *protocol.Error
 	switch {
+	case errors.Is(err, model.ErrRewardVerification):
+		code, message = "REGISTRATION_VERIFICATION_FAILED", model.ErrRewardVerification.Error()
+	case errors.Is(err, model.ErrRegistrationVerificationResendWait):
+		status = http.StatusTooManyRequests
+		code, message = "REGISTRATION_VERIFICATION_RESEND_WAIT", model.ErrRegistrationVerificationResendWait.Error()
+	case errors.Is(err, model.ErrRegistrationVerificationRequired):
+		status = http.StatusConflict
+		code, message = "REGISTRATION_VERIFICATION_REQUIRED", model.ErrRegistrationVerificationRequired.Error()
 	case errors.Is(err, passkeysvc.ErrRPIDUnavailable):
 		code, message = "PASSKEY_RP_ID_UNAVAILABLE", i18n.T(c, i18n.MsgPasskeyRPIDUnavailable)
 	case errors.Is(err, system_setting.ErrPasskeyRPIDInvalid):

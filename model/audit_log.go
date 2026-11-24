@@ -19,6 +19,10 @@ const (
 	AuditCategorySecurity    = "security"
 	AuditCategoryOperation   = "operation"
 	AuditCategoryAccessToken = "access_token"
+	// AuditCategoryBot records reads performed by the external support bot. No
+	// user acted, so those entries are written against the data subject with the
+	// service credential fingerprint in TokenRef.
+	AuditCategoryBot = "bot"
 )
 
 // AuditLog is retained independently of usage logs and their cleanup/TTL policy.
@@ -101,6 +105,9 @@ func RecordAuditLog(c *gin.Context, entry AuditLog) {
 	}
 	switch entry.ActorRole {
 	case common.RoleCommonUser, common.RoleAdminUser, common.RoleRootUser:
+	case common.RoleGuestUser:
+		// No user acted: a service credential such as the support bot reads on
+		// behalf of the data subject recorded in the entry.
 	default:
 		logger.LogError(ctx, fmt.Sprintf("audit actor role unavailable (request_id=%s, actor_role=%d)", entry.RequestId, entry.ActorRole))
 		entry.ActorRole = 0 // Unknown actors remain visible to root only.
@@ -255,7 +262,12 @@ func MigrateAuditLogs() error {
 }
 
 func ValidAuditCategory(category string) bool {
-	return category == "" || category == AuditCategoryLogin || category == AuditCategorySecurity || category == AuditCategoryOperation || category == AuditCategoryAccessToken
+	switch category {
+	case "", AuditCategoryLogin, AuditCategorySecurity, AuditCategoryOperation, AuditCategoryAccessToken, AuditCategoryBot:
+		return true
+	default:
+		return false
+	}
 }
 
 func ValidTokenFingerprint(value string) bool {

@@ -20,21 +20,19 @@ import { useCallback, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { PublicLayout } from '@/components/layout'
-import { Footer } from '@/components/layout/components/footer'
+import { ProjectAttribution } from '@/components/layout/components/footer'
 import { RichContent } from '@/components/rich-content'
 import { useTheme } from '@/context/theme-provider'
+import { QuickStart } from '@/features/guide/components/quick-start'
 import { isLikelyHtml } from '@/lib/content-format'
-import { useAuthStore } from '@/stores/auth-store'
 
-import { CTA, Features, Hero, HowItWorks, Stats } from './components'
+import { HomePage } from './components'
 import { useHomePageContent } from './hooks'
 
 export function Home() {
   const { i18n, t } = useTranslation()
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const { resolvedTheme } = useTheme()
-  const { auth } = useAuthStore()
-  const isAuthenticated = !!auth.user
   const { content, isLoaded, isUrl } = useHomePageContent()
 
   const syncIframePreferences = useCallback(() => {
@@ -61,7 +59,7 @@ export function Home() {
   if (!isLoaded) {
     return (
       <PublicLayout showMainContainer={false}>
-        <main className='flex min-h-screen items-center justify-center'>
+        <main className='flex min-h-[calc(100svh-var(--app-header-height,3.5rem))] items-center justify-center'>
           <div className='text-muted-foreground'>{t('Loading...')}</div>
         </main>
       </PublicLayout>
@@ -83,7 +81,7 @@ export function Home() {
           <iframe
             ref={iframeRef}
             src={content}
-            className='h-screen w-full border-none'
+            className='h-[calc(100svh-var(--app-header-height,3.5rem))] w-full border-none'
             title={t('Custom Home Page')}
             sandbox='allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts allow-top-navigation-by-user-activation'
             onLoad={syncIframePreferences}
@@ -103,6 +101,14 @@ export function Home() {
             content={content}
             className='custom-home-content'
           />
+          {/* The stored HTML is the page's heading; the ways to start follow it. */}
+          <QuickStart />
+          {/* A stored home page replaces the default one and its footer, so
+              the project's attribution notice and the link to the original
+              project are kept here, at the foot of the page. */}
+          <p className='px-4 pb-10 text-center text-xs'>
+            <ProjectAttribution currentYear={new Date().getFullYear()} inline />
+          </p>
         </PublicLayout>
       )
     }
@@ -120,14 +126,7 @@ export function Home() {
     )
   }
 
-  return (
-    <PublicLayout showMainContainer={false}>
-      <Hero isAuthenticated={isAuthenticated} />
-      <Stats />
-      <Features />
-      <HowItWorks />
-      <CTA isAuthenticated={isAuthenticated} />
-      <Footer />
-    </PublicLayout>
-  )
+  // No custom home page is configured: the site's own page takes over, with
+  // its figures read live from the public APIs.
+  return <HomePage />
 }

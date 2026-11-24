@@ -98,7 +98,7 @@ export function UptimeSparkline(props: UptimeSparklineProps) {
               render={
                 <div
                   className={cn(
-                    'rounded-sm transition-opacity hover:opacity-80',
+                    'rounded-sm transition-opacity duration-(--motion-fast) ease-(--ease-out) hover:opacity-80',
                     barWidth,
                     containerHeight,
                     'flex items-end'

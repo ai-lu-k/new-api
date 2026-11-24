@@ -20,12 +20,26 @@ import { Dialog as DialogPrimitive } from '@base-ui/react/dialog'
 import { Cancel01Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import * as React from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
+import { useOverlayReturnFocus } from '@/hooks/use-overlay-return-focus'
 import { cn } from '@/lib/utils'
 
-function Dialog({ ...props }: DialogPrimitive.Root.Props) {
-  return <DialogPrimitive.Root data-slot='dialog' {...props} />
+function Dialog({ open, onOpenChange, ...props }: DialogPrimitive.Root.Props) {
+  const { handleOpenChange } = useOverlayReturnFocus(open)
+
+  return (
+    <DialogPrimitive.Root
+      data-slot='dialog'
+      open={open}
+      onOpenChange={(nextOpen, details) => {
+        handleOpenChange(nextOpen)
+        onOpenChange?.(nextOpen, details)
+      }}
+      {...props}
+    />
+  )
 }
 
 function DialogTrigger({ ...props }: DialogPrimitive.Trigger.Props) {
@@ -48,7 +62,8 @@ function DialogOverlay({
     <DialogPrimitive.Backdrop
       data-slot='dialog-overlay'
       className={cn(
-        'data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 fixed inset-0 isolate z-50 bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs',
+        // Timing lives in styles/swiss.css (L3), driven by the motion tokens.
+        'fixed inset-0 isolate z-50 bg-black/10 supports-backdrop-filter:backdrop-blur-xs',
         className
       )}
       {...props}
@@ -60,17 +75,21 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  overlayClassName,
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean
+  overlayClassName?: string
 }) {
+  const { t } = useTranslation()
+
   return (
     <DialogPortal>
-      <DialogOverlay />
+      <DialogOverlay className={overlayClassName} />
       <DialogPrimitive.Popup
         data-slot='dialog-content'
         className={cn(
-          'bg-popover text-popover-foreground ring-foreground/10 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 fixed top-[var(--dialog-viewport-center,50dvh)] left-1/2 z-50 grid max-h-[var(--dialog-available-height,calc(100dvh-2rem))] w-full overflow-y-auto overscroll-contain max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl p-4 text-sm ring-1 duration-100 outline-none sm:max-w-sm',
+          'bg-popover text-popover-foreground ring-foreground/10 fixed top-[var(--dialog-viewport-center,50dvh)] left-1/2 z-50 grid max-h-[var(--dialog-available-height,calc(100dvh-2rem))] w-full overflow-y-auto overscroll-contain max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl p-4 text-sm ring-1 outline-none sm:max-w-sm',
           className
         )}
         {...props}
@@ -88,7 +107,7 @@ function DialogContent({
             }
           >
             <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} />
-            <span className='sr-only'>Close</span>
+            <span className='sr-only'>{t('Close')}</span>
           </DialogPrimitive.Close>
         )}
       </DialogPrimitive.Popup>
@@ -114,6 +133,8 @@ function DialogFooter({
 }: React.ComponentProps<'div'> & {
   showCloseButton?: boolean
 }) {
+  const { t } = useTranslation()
+
   return (
     <div
       data-slot='dialog-footer'
@@ -126,7 +147,7 @@ function DialogFooter({
       {children}
       {showCloseButton && (
         <DialogPrimitive.Close render={<Button variant='outline' />}>
-          Close
+          {t('Close')}
         </DialogPrimitive.Close>
       )}
     </div>

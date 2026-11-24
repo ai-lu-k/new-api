@@ -23,6 +23,8 @@ import { API_ENDPOINTS } from './constants'
 import type {
   ChatCompletionRequest,
   ChatCompletionResponse,
+  ImageGenerationRequest,
+  ImageGenerationResponse,
   ModelOption,
   GroupOption,
 } from './types'
@@ -42,6 +44,30 @@ export async function sendChatCompletion(
 }
 
 /**
+ * Send image generation request (never streaming)
+ */
+export async function sendImageGeneration(
+  payload: ImageGenerationRequest,
+  signal?: AbortSignal
+): Promise<ImageGenerationResponse> {
+  const res = await api.post(API_ENDPOINTS.IMAGE_GENERATIONS, payload, {
+    signal,
+    skipErrorHandler: true,
+  } as Record<string, unknown>)
+  return res.data
+}
+
+function toStringSet(value: unknown): Set<string> {
+  if (!Array.isArray(value)) {
+    return new Set<string>()
+  }
+
+  return new Set<string>(
+    value.filter((item): item is string => typeof item === 'string')
+  )
+}
+
+/**
  * Get user available models
  */
 export async function getUserModels(group: string): Promise<ModelOption[]> {
@@ -55,10 +81,27 @@ export async function getUserModels(group: string): Promise<ModelOption[]> {
     return []
   }
 
-  return data.data.map((model: string) => ({
-    label: model,
-    value: model,
-  }))
+  // `image_generation_models` lists models that can serve
+  // /pg/images/generations directly. `image_output_models` is the wider list:
+  // it also contains models that answer with an inline `data:` image through
+  // chat completions, so it drives the dropdown group.
+  const imageGenerationModels = toStringSet(data.image_generation_models)
+  const imageOutputModels = toStringSet(data.image_output_models)
+
+  return data.data.map((model: string) => {
+    const isImageGeneration = imageGenerationModels.has(model)
+    // A direct image-generation model always outputs an image, even if an older
+    // backend response does not list it in `image_output_models` yet.
+    const isImageOutput = isImageGeneration || imageOutputModels.has(model)
+
+    return {
+      label: model,
+      value: model,
+      category: isImageOutput ? 'Image' : 'Text',
+      isImageGeneration,
+      isImageOutput,
+    }
+  })
 }
 
 /**

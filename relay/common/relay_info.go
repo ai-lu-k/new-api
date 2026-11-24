@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	"github.com/QuantumNous/new-api/pkg/relaytrace"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/convmeta"
@@ -82,16 +83,21 @@ type TokenCountMeta struct {
 }
 
 type RelayInfo struct {
-	TokenId           int
-	TokenKey          string
-	TokenGroup        string
-	UserId            int
-	UsingGroup        string // 使用的分组，当auto跨分组重试时，会变动
-	UserGroup         string // 用户所在分组
-	TokenUnlimited    bool
-	StartTime         time.Time
-	FirstResponseTime time.Time
-	isFirstResponse   bool
+	TokenId                int
+	TokenKey               string
+	TokenGroup             string
+	UserId                 int
+	UsingGroup             string // 使用的分组，当auto跨分组重试时，会变动
+	UserGroup              string // 用户所在分组
+	TokenUnlimited         bool
+	TokenPlan              bool
+	TokenPlanWeekId        int
+	TokenPlanReservationId int
+	TokenPlanWalletQuota   int64
+	TokenPlanOutputLimit   uint
+	StartTime              time.Time
+	FirstResponseTime      time.Time
+	isFirstResponse        bool
 	//SendLastReasoningResponse bool
 	IsStream               bool
 	IsGeminiBatchEmbedding bool
@@ -159,6 +165,10 @@ type RelayInfo struct {
 	SubscriptionAmountUsedAfterPreConsume int64
 	IsClaudeBetaQuery                     bool // /v1/messages?beta=true
 	IsChannelTest                         bool // channel test request
+	TransportTrace                        *relaytrace.Attempt
+	TransportTimeoutLog                   *relaytrace.Attempt
+	TransportAttempts                     []*relaytrace.Attempt
+	TransportAttemptsTruncated            bool
 	RetryIndex                            int
 	LastError                             *types.NewAPIError
 	RuntimeHeadersOverride                map[string]any
@@ -178,6 +188,10 @@ type RelayInfo struct {
 	TieredBillingSnapshot *billingexpr.BillingSnapshot
 	BillingRequestInput   *billingexpr.RequestInput
 	BillingImageCount     *int
+	// BillingChars is the character count billed for a text-to-speech request.
+	// It is frozen at price time from the parsed input text and reused at
+	// settlement so estimation and charge always describe the same quantity.
+	BillingChars *int
 	// ImageRequestCount is the effective quantity sent on the current attempt;
 	// ImageQuotaBeforeGroup is the frozen legacy estimate before request ratios.
 	ImageRequestCount     int
@@ -227,6 +241,16 @@ func (info *RelayInfo) UpdateImageCount(count int64) {
 		n := int(count)
 		info.BillingImageCount = &n
 	}
+}
+
+// SetBillingChars records the speech character quantity used by the chars
+// pricing variable. Out-of-range counts are ignored so an invalid length can
+// never become a billing multiplier.
+func (info *RelayInfo) SetBillingChars(chars int) {
+	if info == nil || chars < 0 || chars > dto.MaxSpeechCharacters {
+		return
+	}
+	info.BillingChars = &chars
 }
 
 func (info *RelayInfo) RequestedImageCount() int {
@@ -294,7 +318,7 @@ func (info *RelayInfo) InitChannelMeta(c *gin.Context) {
 	if channelType == constant.ChannelTypeAdvancedCustom &&
 		!channelMeta.ChannelSetting.PassThroughBodyEnabled &&
 		c.Request != nil && c.Request.URL != nil {
-		route, matched := channelMeta.ChannelOtherSettings.AdvancedCustom.MatchPathForModel(c.Request.URL.Path, info.OriginModelName)
+		route, matched := channelMeta.ChannelOtherSettings.AdvancedCustom.MatchPathForModel(relayconstant.CanonicalRequestPath(c.Request.URL.Path), info.OriginModelName)
 		if matched && route.PassThroughBodyEnabled {
 			channelMeta.ChannelSetting.PassThroughBodyEnabled = true
 		}
@@ -607,6 +631,7 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 		TokenId:        common.GetContextKeyInt(c, constant.ContextKeyTokenId),
 		TokenKey:       common.GetContextKeyString(c, constant.ContextKeyTokenKey),
 		TokenUnlimited: common.GetContextKeyBool(c, constant.ContextKeyTokenUnlimited),
+		TokenPlan:      c.GetBool("token_plan"),
 		TokenGroup:     tokenGroup,
 
 		isFirstResponse: true,

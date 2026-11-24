@@ -143,7 +143,7 @@ export function NumericSpinnerInput({
       <div
         onBlur={handleControlBlur}
         className={cn(
-          'group/spinner border-input inline-flex h-7 items-center gap-0 rounded-md border transition-colors',
+          'group/spinner border-input inline-flex h-7 items-center gap-0 rounded-md border transition-colors duration-(--motion-fast) ease-(--ease-out)',
           !disabled && 'hover:bg-muted/60',
           editing && 'bg-muted/60 ring-primary/30 ring-1'
         )}
@@ -155,7 +155,7 @@ export function NumericSpinnerInput({
           onClick={handleDecrement}
           disabled={disabled || atMin}
           className={cn(
-            'text-muted-foreground/0 group-hover/spinner:text-muted-foreground flex h-7 w-6 shrink-0 items-center justify-center rounded-l-md transition-colors',
+            'text-muted-foreground/0 group-hover/spinner:text-muted-foreground flex h-7 w-6 shrink-0 items-center justify-center rounded-l-md transition-colors duration-(--motion-fast) ease-(--ease-out)',
             !disabled &&
               !atMin &&
               'group-hover/spinner:hover:text-foreground group-hover/spinner:hover:bg-muted',
@@ -198,7 +198,7 @@ export function NumericSpinnerInput({
           onClick={handleIncrement}
           disabled={disabled || atMax}
           className={cn(
-            'text-muted-foreground/0 group-hover/spinner:text-muted-foreground flex h-7 w-6 shrink-0 items-center justify-center rounded-r-md transition-colors',
+            'text-muted-foreground/0 group-hover/spinner:text-muted-foreground flex h-7 w-6 shrink-0 items-center justify-center rounded-r-md transition-colors duration-(--motion-fast) ease-(--ease-out)',
             !disabled &&
               !atMax &&
               'group-hover/spinner:hover:text-foreground group-hover/spinner:hover:bg-muted',

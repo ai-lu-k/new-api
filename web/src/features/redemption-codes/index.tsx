@@ -29,10 +29,17 @@ export function Redemptions() {
   const { t } = useTranslation()
   return (
     <RedemptionsProvider>
-      <SectionPageLayout fixedContent>
+      <SectionPageLayout
+        fixedContent
+        stackActionsOnMobile
+        pageIndex={<>{t('Admin area')} / 04</>}
+      >
         <SectionPageLayout.Title>
           {t('Redemption Codes')}
         </SectionPageLayout.Title>
+        <SectionPageLayout.Description>
+          {t('Codes users redeem for wallet credit, and who has used them.')}
+        </SectionPageLayout.Description>
         <SectionPageLayout.Actions>
           <RedemptionsPrimaryButtons />
         </SectionPageLayout.Actions>

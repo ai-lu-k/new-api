@@ -49,13 +49,16 @@ export function GeneralError({
   const isRateLimited = status === 429
   const title = isRateLimited
     ? t('Too many requests')
-    : `${t('Oops! Something went wrong')} ${`:')`}`
+    : t('Oops! Something went wrong')
   const description = isRateLimited
     ? t('Please wait a moment before trying again.')
     : t('Please try again later.')
 
   return (
-    <div className={cn('h-svh w-full', className)}>
+    <div
+      data-page-style='swiss'
+      className={cn('bg-background text-foreground h-svh w-full', className)}
+    >
       <div className='m-auto flex h-full w-full flex-col items-center justify-center gap-2'>
         {!minimal && (
           <h1 className='text-[7rem] leading-tight font-bold'>

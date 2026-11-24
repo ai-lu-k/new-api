@@ -48,7 +48,7 @@ export function LearnMore({
         render={<Button variant='outline' size='icon' />}
       >
         <span className='sr-only'>{t('Learn more')}</span>
-        <CircleQuestionMark className='size-4 [&>circle]:hidden' />
+        <CircleQuestionMark className='size-4' />
       </PopoverTrigger>
       <PopoverContent
         side='top'

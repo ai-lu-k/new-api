@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/setting/naming_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 
@@ -89,7 +90,7 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 		return nil
 	}
 	userQuota, err := model.GetUserQuota(relayInfo.UserId, false)
-	if err != nil {
+	if err != nil && !relayInfo.TokenPlan {
 		return err
 	}
 
@@ -98,7 +99,7 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 		return err
 	}
 
-	modelName := relayInfo.OriginModelName
+	modelName := naming_setting.BillingName(relayInfo.OriginModelName)
 	textInputTokens := usage.InputTokenDetails.TextTokens
 	textOutTokens := usage.OutputTokenDetails.TextTokens
 	audioInputTokens := usage.InputTokenDetails.AudioTokens
@@ -118,6 +119,7 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 	if ok {
 		actualGroupRatio = userGroupRatio
 	}
+	actualGroupRatio *= naming_setting.PriceMultiplier(relayInfo.OriginModelName)
 
 	quotaInfo := QuotaInfo{
 		InputDetails: TokenDetails{
@@ -137,6 +139,12 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 	quota, clamp := calculateAudioQuota(quotaInfo)
 	noteQuotaClamp(relayInfo, clamp)
 
+	if relayInfo.TokenPlan {
+		if relayInfo.Billing == nil {
+			return errors.New("Token Plan realtime billing session is missing")
+		}
+		return relayInfo.Billing.Reserve(relayInfo.FinalPreConsumedQuota + quota)
+	}
 	if userQuota < quota {
 		return fmt.Errorf("user quota is not enough, user quota: %s, need quota: %s", logger.FormatQuota(userQuota), logger.FormatQuota(quota))
 	}
@@ -175,7 +183,7 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 
 	tokenName := ctx.GetString("token_name")
 	completionRatio := decimal.NewFromFloat(ratio_setting.GetCompletionRatio(modelName))
-	audioRatio := decimal.NewFromFloat(ratio_setting.GetAudioRatio(relayInfo.OriginModelName))
+	audioRatio := decimal.NewFromFloat(ratio_setting.GetAudioRatio(naming_setting.BillingName(relayInfo.OriginModelName)))
 	audioCompletionRatio := decimal.NewFromFloat(ratio_setting.GetAudioCompletionRatio(modelName))
 
 	modelRatio := relayInfo.PriceData.ModelRatio
@@ -222,7 +230,7 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 		logger.LogError(ctx, fmt.Sprintf("total tokens is 0, cannot consume quota, userId %d, channelId %d, "+
 			"tokenId %d, model %s， pre-consumed quota %d", relayInfo.UserId, relayInfo.ChannelId, relayInfo.TokenId, modelName, relayInfo.FinalPreConsumedQuota))
 	} else {
-		model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, quota)
+		RecordUserConsumption(relayInfo, quota)
 		model.UpdateChannelUsedQuota(relayInfo.ChannelId, quota)
 	}
 
@@ -355,7 +363,7 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 		logger.LogError(ctx, fmt.Sprintf("total tokens is 0, cannot consume quota, userId %d, channelId %d, "+
 			"tokenId %d, model %s， pre-consumed quota %d", relayInfo.UserId, relayInfo.ChannelId, relayInfo.TokenId, billingModelName, relayInfo.FinalPreConsumedQuota))
 	} else {
-		model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, quota)
+		RecordUserConsumption(relayInfo, quota)
 		model.UpdateChannelUsedQuota(relayInfo.ChannelId, quota)
 	}
 
@@ -363,7 +371,7 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 		logger.LogError(ctx, "error settling billing: "+err.Error())
 	}
 
-	logModel := billingModelName
+	logModel := naming_setting.WithTier(billingModelName, relayInfo.OriginModelName)
 	if extraContent != "" {
 		logContent += ", " + extraContent
 	}
@@ -425,7 +433,31 @@ func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQu
 func postConsumeQuotaWithResult(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQuota int, sendEmail bool) (result postConsumeQuotaResult, err error) {
 
 	// 1) Consume from wallet quota OR subscription item
-	if relayInfo != nil && relayInfo.BillingSource == BillingSourceSubscription {
+	if relayInfo != nil && relayInfo.TokenPlan {
+		if relayInfo.TokenPlanReservationId > 0 && quota > 0 {
+			// Additional known fees (for example an upstream violation fee)
+			// get their own hold after the normal request was settled/refunded.
+			// Preserve the original request week instead of debiting a new week.
+			requestTime := relayInfo.StartTime
+			if requestTime.IsZero() {
+				requestTime = time.Now()
+			}
+			reservation, err := model.ReserveTokenPlanRequest(relayInfo.UserId, relayInfo.TokenId, int64(quota), requestTime)
+			if err != nil {
+				return result, err
+			}
+			settled, err := model.SettleTokenPlanRequest(relayInfo.UserId, reservation.Id, int64(quota))
+			if err != nil {
+				if _, refundErr := model.SettleTokenPlanRequest(relayInfo.UserId, reservation.Id, 0); refundErr != nil {
+					common.SysError("Token Plan fee refund failed: " + refundErr.Error())
+				}
+				return result, err
+			}
+			relayInfo.TokenPlanWalletQuota = settled.WalletUsed
+		} else if err := model.AdjustTokenPlanQuota(relayInfo.UserId, relayInfo.TokenPlanWeekId, int64(quota), quota > 0 && relayInfo.FinalPreConsumedQuota == 0); err != nil {
+			return result, err
+		}
+	} else if relayInfo != nil && relayInfo.BillingSource == BillingSourceSubscription {
 		if relayInfo.SubscriptionId == 0 {
 			return result, errors.New("subscription id is missing")
 		}
@@ -461,7 +493,7 @@ func postConsumeQuotaWithResult(relayInfo *relaycommon.RelayInfo, quota int, pre
 		result.TokenApplied = true
 	}
 
-	if sendEmail {
+	if sendEmail && !relayInfo.TokenPlan {
 		if (quota + preConsumedQuota) != 0 {
 			checkAndSendQuotaNotify(relayInfo, quota, preConsumedQuota)
 		}

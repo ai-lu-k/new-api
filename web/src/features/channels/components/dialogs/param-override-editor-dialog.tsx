@@ -1939,7 +1939,7 @@ export function ParamOverrideEditorDialog(
                               }
                             }}
                             className={cn(
-                              'cursor-pointer rounded-lg border p-2.5 transition-colors',
+                              'cursor-pointer rounded-lg border p-2.5 transition-colors duration-(--motion-fast) ease-(--ease-out)',
                               isActive
                                 ? 'border-primary bg-primary/5'
                                 : 'hover:bg-muted/50',

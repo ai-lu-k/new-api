@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as authRouteRouteImport } from './routes/(auth)/route'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
+import { Route as CampaignRouteImport } from './routes/campaign'
 import { Route as PrivacyPolicyRouteImport } from './routes/privacy-policy'
 import { Route as UserAgreementRouteImport } from './routes/user-agreement'
 import { Route as authForgotPasswordRouteImport } from './routes/(auth)/forgot-password'
@@ -29,32 +30,47 @@ import { Route as errors503RouteImport } from './routes/(errors)/503'
 import { Route as AuthenticatedChat2linkRouteImport } from './routes/_authenticated/chat2link'
 import { Route as AuthenticatedSystemSettingsRouteRouteImport } from './routes/_authenticated/system-settings/route'
 import { Route as AboutIndexRouteImport } from './routes/about/index'
+import { Route as CheapIndexRouteImport } from './routes/cheap/index'
+import { Route as GuideIndexRouteImport } from './routes/guide/index'
 import { Route as OauthProviderRouteImport } from './routes/oauth/$provider'
 import { Route as PricingIndexRouteImport } from './routes/pricing/index'
 import { Route as RankingsIndexRouteImport } from './routes/rankings/index'
 import { Route as SetupIndexRouteImport } from './routes/setup/index'
+import { Route as TutorialIndexRouteImport } from './routes/tutorial/index'
 import { Route as authUserResetRouteImport } from './routes/(auth)/user/reset'
 import { Route as AuthenticatedChannelsIndexRouteImport } from './routes/_authenticated/channels/index'
 import { Route as AuthenticatedChatChatIdRouteImport } from './routes/_authenticated/chat/$chatId'
+import { Route as AuthenticatedCommandcodeIndexRouteImport } from './routes/_authenticated/commandcode/index'
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated/dashboard/index'
 import { Route as AuthenticatedDashboardSectionRouteImport } from './routes/_authenticated/dashboard/$section'
 import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenticated/errors/$error'
+import { Route as AuthenticatedExpensesIndexRouteImport } from './routes/_authenticated/expenses/index'
+import { Route as AuthenticatedFeedbackIndexRouteImport } from './routes/_authenticated/feedback/index'
+import { Route as AuthenticatedFinanceIndexRouteImport } from './routes/_authenticated/finance/index'
 import { Route as AuthenticatedKeysIndexRouteImport } from './routes/_authenticated/keys/index'
 import { Route as AuthenticatedModelsIndexRouteImport } from './routes/_authenticated/models/index'
 import { Route as AuthenticatedModelsSectionRouteImport } from './routes/_authenticated/models/$section'
 import { Route as AuthenticatedPlaygroundIndexRouteImport } from './routes/_authenticated/playground/index'
 import { Route as AuthenticatedProfileIndexRouteImport } from './routes/_authenticated/profile/index'
 import { Route as AuthenticatedRedemptionCodesIndexRouteImport } from './routes/_authenticated/redemption-codes/index'
+import { Route as AuthenticatedReferralIndexRouteImport } from './routes/_authenticated/referral/index'
+import { Route as AuthenticatedRelayFunnelIndexRouteImport } from './routes/_authenticated/relay-funnel/index'
+import { Route as AuthenticatedResetCouponsIndexRouteImport } from './routes/_authenticated/reset-coupons/index'
 import { Route as AuthenticatedSecurityIndexRouteImport } from './routes/_authenticated/security/index'
 import { Route as AuthenticatedSubscriptionsIndexRouteImport } from './routes/_authenticated/subscriptions/index'
 import { Route as AuthenticatedSystemInfoIndexRouteImport } from './routes/_authenticated/system-info/index'
 import { Route as AuthenticatedSystemSettingsIndexRouteImport } from './routes/_authenticated/system-settings/index'
 import { Route as AuthenticatedTaskPluginsIndexRouteImport } from './routes/_authenticated/task-plugins/index'
+import { Route as AuthenticatedTicketQueueIndexRouteImport } from './routes/_authenticated/ticket-queue/index'
+import { Route as AuthenticatedTicketsIndexRouteImport } from './routes/_authenticated/tickets/index'
+import { Route as AuthenticatedTokenPlanStatisticsIndexRouteImport } from './routes/_authenticated/token-plan-statistics/index'
+import { Route as AuthenticatedTokenPlanIndexRouteImport } from './routes/_authenticated/token-plan/index'
 import { Route as AuthenticatedUsageLogsIndexRouteImport } from './routes/_authenticated/usage-logs/index'
 import { Route as AuthenticatedUsageLogsSectionRouteImport } from './routes/_authenticated/usage-logs/$section'
 import { Route as AuthenticatedUsageLogsAuditRouteImport } from './routes/_authenticated/usage-logs/audit'
 import { Route as AuthenticatedUsersIndexRouteImport } from './routes/_authenticated/users/index'
 import { Route as AuthenticatedWalletIndexRouteImport } from './routes/_authenticated/wallet/index'
+import { Route as AuthenticatedWorkbuddyIndexRouteImport } from './routes/_authenticated/workbuddy/index'
 import { Route as PricingModelIdIndexRouteImport } from './routes/pricing/$modelId/index'
 import { Route as AuthenticatedSystemSettingsAuthIndexRouteImport } from './routes/_authenticated/system-settings/auth/index'
 import { Route as AuthenticatedSystemSettingsAuthSectionRouteImport } from './routes/_authenticated/system-settings/auth/$section'
@@ -84,6 +100,11 @@ const authRouteRoute = authRouteRouteImport.update({
 } as any)
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
   id: '/_authenticated',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CampaignRoute = CampaignRouteImport.update({
+  id: '/campaign',
+  path: '/campaign',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PrivacyPolicyRoute = PrivacyPolicyRouteImport.update({
@@ -172,6 +193,16 @@ const AboutIndexRoute = AboutIndexRouteImport.update({
   path: '/about/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CheapIndexRoute = CheapIndexRouteImport.update({
+  id: '/cheap/',
+  path: '/cheap/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GuideIndexRoute = GuideIndexRouteImport.update({
+  id: '/guide/',
+  path: '/guide/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OauthProviderRoute = OauthProviderRouteImport.update({
   id: '/oauth/$provider',
   path: '/oauth/$provider',
@@ -192,6 +223,11 @@ const SetupIndexRoute = SetupIndexRouteImport.update({
   path: '/setup/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TutorialIndexRoute = TutorialIndexRouteImport.update({
+  id: '/tutorial/',
+  path: '/tutorial/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const authUserResetRoute = authUserResetRouteImport.update({
   id: '/user/reset',
   path: '/user/reset',
@@ -208,6 +244,12 @@ const AuthenticatedChatChatIdRoute = AuthenticatedChatChatIdRouteImport.update({
   path: '/chat/$chatId',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedCommandcodeIndexRoute =
+  AuthenticatedCommandcodeIndexRouteImport.update({
+    id: '/commandcode/',
+    path: '/commandcode/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedDashboardIndexRoute =
   AuthenticatedDashboardIndexRouteImport.update({
     id: '/dashboard/',
@@ -224,6 +266,24 @@ const AuthenticatedErrorsErrorRoute =
   AuthenticatedErrorsErrorRouteImport.update({
     id: '/errors/$error',
     path: '/errors/$error',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedExpensesIndexRoute =
+  AuthenticatedExpensesIndexRouteImport.update({
+    id: '/expenses/',
+    path: '/expenses/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedFeedbackIndexRoute =
+  AuthenticatedFeedbackIndexRouteImport.update({
+    id: '/feedback/',
+    path: '/feedback/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedFinanceIndexRoute =
+  AuthenticatedFinanceIndexRouteImport.update({
+    id: '/finance/',
+    path: '/finance/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedKeysIndexRoute = AuthenticatedKeysIndexRouteImport.update({
@@ -261,6 +321,24 @@ const AuthenticatedRedemptionCodesIndexRoute =
     path: '/redemption-codes/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedReferralIndexRoute =
+  AuthenticatedReferralIndexRouteImport.update({
+    id: '/referral/',
+    path: '/referral/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedRelayFunnelIndexRoute =
+  AuthenticatedRelayFunnelIndexRouteImport.update({
+    id: '/relay-funnel/',
+    path: '/relay-funnel/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedResetCouponsIndexRoute =
+  AuthenticatedResetCouponsIndexRouteImport.update({
+    id: '/reset-coupons/',
+    path: '/reset-coupons/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedSecurityIndexRoute =
   AuthenticatedSecurityIndexRouteImport.update({
     id: '/security/',
@@ -291,6 +369,30 @@ const AuthenticatedTaskPluginsIndexRoute =
     path: '/task-plugins/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedTicketQueueIndexRoute =
+  AuthenticatedTicketQueueIndexRouteImport.update({
+    id: '/ticket-queue/',
+    path: '/ticket-queue/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedTicketsIndexRoute =
+  AuthenticatedTicketsIndexRouteImport.update({
+    id: '/tickets/',
+    path: '/tickets/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedTokenPlanStatisticsIndexRoute =
+  AuthenticatedTokenPlanStatisticsIndexRouteImport.update({
+    id: '/token-plan-statistics/',
+    path: '/token-plan-statistics/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedTokenPlanIndexRoute =
+  AuthenticatedTokenPlanIndexRouteImport.update({
+    id: '/token-plan/',
+    path: '/token-plan/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedUsageLogsIndexRoute =
   AuthenticatedUsageLogsIndexRouteImport.update({
     id: '/usage-logs/',
@@ -318,6 +420,12 @@ const AuthenticatedWalletIndexRoute =
   AuthenticatedWalletIndexRouteImport.update({
     id: '/wallet/',
     path: '/wallet/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedWorkbuddyIndexRoute =
+  AuthenticatedWorkbuddyIndexRouteImport.update({
+    id: '/workbuddy/',
+    path: '/workbuddy/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const PricingModelIdIndexRoute = PricingModelIdIndexRouteImport.update({
@@ -424,6 +532,7 @@ const AuthenticatedSystemSettingsSiteSectionRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/campaign': typeof CampaignRoute
   '/privacy-policy': typeof PrivacyPolicyRoute
   '/user-agreement': typeof UserAgreementRoute
   '/system-settings': typeof AuthenticatedSystemSettingsRouteRouteWithChildren
@@ -442,9 +551,12 @@ export interface FileRoutesByFullPath {
   '/chat2link': typeof AuthenticatedChat2linkRoute
   '/oauth/$provider': typeof OauthProviderRoute
   '/about/': typeof AboutIndexRoute
+  '/cheap/': typeof CheapIndexRoute
+  '/guide/': typeof GuideIndexRoute
   '/pricing/': typeof PricingIndexRoute
   '/rankings/': typeof RankingsIndexRoute
   '/setup/': typeof SetupIndexRoute
+  '/tutorial/': typeof TutorialIndexRoute
   '/user/reset': typeof authUserResetRoute
   '/chat/$chatId': typeof AuthenticatedChatChatIdRoute
   '/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
@@ -453,20 +565,32 @@ export interface FileRoutesByFullPath {
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/usage-logs/audit': typeof AuthenticatedUsageLogsAuditRoute
   '/channels/': typeof AuthenticatedChannelsIndexRoute
+  '/commandcode/': typeof AuthenticatedCommandcodeIndexRoute
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
+  '/expenses/': typeof AuthenticatedExpensesIndexRoute
+  '/feedback/': typeof AuthenticatedFeedbackIndexRoute
+  '/finance/': typeof AuthenticatedFinanceIndexRoute
   '/keys/': typeof AuthenticatedKeysIndexRoute
   '/models/': typeof AuthenticatedModelsIndexRoute
   '/playground/': typeof AuthenticatedPlaygroundIndexRoute
   '/profile/': typeof AuthenticatedProfileIndexRoute
   '/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
+  '/referral/': typeof AuthenticatedReferralIndexRoute
+  '/relay-funnel/': typeof AuthenticatedRelayFunnelIndexRoute
+  '/reset-coupons/': typeof AuthenticatedResetCouponsIndexRoute
   '/security/': typeof AuthenticatedSecurityIndexRoute
   '/subscriptions/': typeof AuthenticatedSubscriptionsIndexRoute
   '/system-info/': typeof AuthenticatedSystemInfoIndexRoute
   '/system-settings/': typeof AuthenticatedSystemSettingsIndexRoute
   '/task-plugins/': typeof AuthenticatedTaskPluginsIndexRoute
+  '/ticket-queue/': typeof AuthenticatedTicketQueueIndexRoute
+  '/tickets/': typeof AuthenticatedTicketsIndexRoute
+  '/token-plan-statistics/': typeof AuthenticatedTokenPlanStatisticsIndexRoute
+  '/token-plan/': typeof AuthenticatedTokenPlanIndexRoute
   '/usage-logs/': typeof AuthenticatedUsageLogsIndexRoute
   '/users/': typeof AuthenticatedUsersIndexRoute
   '/wallet/': typeof AuthenticatedWalletIndexRoute
+  '/workbuddy/': typeof AuthenticatedWorkbuddyIndexRoute
   '/pricing/$modelId/': typeof PricingModelIdIndexRoute
   '/system-settings/auth/$section': typeof AuthenticatedSystemSettingsAuthSectionRoute
   '/system-settings/billing/$section': typeof AuthenticatedSystemSettingsBillingSectionRoute
@@ -487,6 +611,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/campaign': typeof CampaignRoute
   '/privacy-policy': typeof PrivacyPolicyRoute
   '/user-agreement': typeof UserAgreementRoute
   '/forgot-password': typeof authForgotPasswordRoute
@@ -504,9 +629,12 @@ export interface FileRoutesByTo {
   '/chat2link': typeof AuthenticatedChat2linkRoute
   '/oauth/$provider': typeof OauthProviderRoute
   '/about': typeof AboutIndexRoute
+  '/cheap': typeof CheapIndexRoute
+  '/guide': typeof GuideIndexRoute
   '/pricing': typeof PricingIndexRoute
   '/rankings': typeof RankingsIndexRoute
   '/setup': typeof SetupIndexRoute
+  '/tutorial': typeof TutorialIndexRoute
   '/user/reset': typeof authUserResetRoute
   '/chat/$chatId': typeof AuthenticatedChatChatIdRoute
   '/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
@@ -515,20 +643,32 @@ export interface FileRoutesByTo {
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/usage-logs/audit': typeof AuthenticatedUsageLogsAuditRoute
   '/channels': typeof AuthenticatedChannelsIndexRoute
+  '/commandcode': typeof AuthenticatedCommandcodeIndexRoute
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
+  '/expenses': typeof AuthenticatedExpensesIndexRoute
+  '/feedback': typeof AuthenticatedFeedbackIndexRoute
+  '/finance': typeof AuthenticatedFinanceIndexRoute
   '/keys': typeof AuthenticatedKeysIndexRoute
   '/models': typeof AuthenticatedModelsIndexRoute
   '/playground': typeof AuthenticatedPlaygroundIndexRoute
   '/profile': typeof AuthenticatedProfileIndexRoute
   '/redemption-codes': typeof AuthenticatedRedemptionCodesIndexRoute
+  '/referral': typeof AuthenticatedReferralIndexRoute
+  '/relay-funnel': typeof AuthenticatedRelayFunnelIndexRoute
+  '/reset-coupons': typeof AuthenticatedResetCouponsIndexRoute
   '/security': typeof AuthenticatedSecurityIndexRoute
   '/subscriptions': typeof AuthenticatedSubscriptionsIndexRoute
   '/system-info': typeof AuthenticatedSystemInfoIndexRoute
   '/system-settings': typeof AuthenticatedSystemSettingsIndexRoute
   '/task-plugins': typeof AuthenticatedTaskPluginsIndexRoute
+  '/ticket-queue': typeof AuthenticatedTicketQueueIndexRoute
+  '/tickets': typeof AuthenticatedTicketsIndexRoute
+  '/token-plan-statistics': typeof AuthenticatedTokenPlanStatisticsIndexRoute
+  '/token-plan': typeof AuthenticatedTokenPlanIndexRoute
   '/usage-logs': typeof AuthenticatedUsageLogsIndexRoute
   '/users': typeof AuthenticatedUsersIndexRoute
   '/wallet': typeof AuthenticatedWalletIndexRoute
+  '/workbuddy': typeof AuthenticatedWorkbuddyIndexRoute
   '/pricing/$modelId': typeof PricingModelIdIndexRoute
   '/system-settings/auth/$section': typeof AuthenticatedSystemSettingsAuthSectionRoute
   '/system-settings/billing/$section': typeof AuthenticatedSystemSettingsBillingSectionRoute
@@ -552,6 +692,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/(auth)': typeof authRouteRouteWithChildren
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
+  '/campaign': typeof CampaignRoute
   '/privacy-policy': typeof PrivacyPolicyRoute
   '/user-agreement': typeof UserAgreementRoute
   '/_authenticated/system-settings': typeof AuthenticatedSystemSettingsRouteRouteWithChildren
@@ -570,9 +711,12 @@ export interface FileRoutesById {
   '/_authenticated/chat2link': typeof AuthenticatedChat2linkRoute
   '/oauth/$provider': typeof OauthProviderRoute
   '/about/': typeof AboutIndexRoute
+  '/cheap/': typeof CheapIndexRoute
+  '/guide/': typeof GuideIndexRoute
   '/pricing/': typeof PricingIndexRoute
   '/rankings/': typeof RankingsIndexRoute
   '/setup/': typeof SetupIndexRoute
+  '/tutorial/': typeof TutorialIndexRoute
   '/(auth)/user/reset': typeof authUserResetRoute
   '/_authenticated/chat/$chatId': typeof AuthenticatedChatChatIdRoute
   '/_authenticated/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
@@ -581,20 +725,32 @@ export interface FileRoutesById {
   '/_authenticated/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/_authenticated/usage-logs/audit': typeof AuthenticatedUsageLogsAuditRoute
   '/_authenticated/channels/': typeof AuthenticatedChannelsIndexRoute
+  '/_authenticated/commandcode/': typeof AuthenticatedCommandcodeIndexRoute
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
+  '/_authenticated/expenses/': typeof AuthenticatedExpensesIndexRoute
+  '/_authenticated/feedback/': typeof AuthenticatedFeedbackIndexRoute
+  '/_authenticated/finance/': typeof AuthenticatedFinanceIndexRoute
   '/_authenticated/keys/': typeof AuthenticatedKeysIndexRoute
   '/_authenticated/models/': typeof AuthenticatedModelsIndexRoute
   '/_authenticated/playground/': typeof AuthenticatedPlaygroundIndexRoute
   '/_authenticated/profile/': typeof AuthenticatedProfileIndexRoute
   '/_authenticated/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
+  '/_authenticated/referral/': typeof AuthenticatedReferralIndexRoute
+  '/_authenticated/relay-funnel/': typeof AuthenticatedRelayFunnelIndexRoute
+  '/_authenticated/reset-coupons/': typeof AuthenticatedResetCouponsIndexRoute
   '/_authenticated/security/': typeof AuthenticatedSecurityIndexRoute
   '/_authenticated/subscriptions/': typeof AuthenticatedSubscriptionsIndexRoute
   '/_authenticated/system-info/': typeof AuthenticatedSystemInfoIndexRoute
   '/_authenticated/system-settings/': typeof AuthenticatedSystemSettingsIndexRoute
   '/_authenticated/task-plugins/': typeof AuthenticatedTaskPluginsIndexRoute
+  '/_authenticated/ticket-queue/': typeof AuthenticatedTicketQueueIndexRoute
+  '/_authenticated/tickets/': typeof AuthenticatedTicketsIndexRoute
+  '/_authenticated/token-plan-statistics/': typeof AuthenticatedTokenPlanStatisticsIndexRoute
+  '/_authenticated/token-plan/': typeof AuthenticatedTokenPlanIndexRoute
   '/_authenticated/usage-logs/': typeof AuthenticatedUsageLogsIndexRoute
   '/_authenticated/users/': typeof AuthenticatedUsersIndexRoute
   '/_authenticated/wallet/': typeof AuthenticatedWalletIndexRoute
+  '/_authenticated/workbuddy/': typeof AuthenticatedWorkbuddyIndexRoute
   '/pricing/$modelId/': typeof PricingModelIdIndexRoute
   '/_authenticated/system-settings/auth/$section': typeof AuthenticatedSystemSettingsAuthSectionRoute
   '/_authenticated/system-settings/billing/$section': typeof AuthenticatedSystemSettingsBillingSectionRoute
@@ -617,6 +773,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/campaign'
     | '/privacy-policy'
     | '/user-agreement'
     | '/system-settings'
@@ -635,9 +792,12 @@ export interface FileRouteTypes {
     | '/chat2link'
     | '/oauth/$provider'
     | '/about/'
+    | '/cheap/'
+    | '/guide/'
     | '/pricing/'
     | '/rankings/'
     | '/setup/'
+    | '/tutorial/'
     | '/user/reset'
     | '/chat/$chatId'
     | '/dashboard/$section'
@@ -646,20 +806,32 @@ export interface FileRouteTypes {
     | '/usage-logs/$section'
     | '/usage-logs/audit'
     | '/channels/'
+    | '/commandcode/'
     | '/dashboard/'
+    | '/expenses/'
+    | '/feedback/'
+    | '/finance/'
     | '/keys/'
     | '/models/'
     | '/playground/'
     | '/profile/'
     | '/redemption-codes/'
+    | '/referral/'
+    | '/relay-funnel/'
+    | '/reset-coupons/'
     | '/security/'
     | '/subscriptions/'
     | '/system-info/'
     | '/system-settings/'
     | '/task-plugins/'
+    | '/ticket-queue/'
+    | '/tickets/'
+    | '/token-plan-statistics/'
+    | '/token-plan/'
     | '/usage-logs/'
     | '/users/'
     | '/wallet/'
+    | '/workbuddy/'
     | '/pricing/$modelId/'
     | '/system-settings/auth/$section'
     | '/system-settings/billing/$section'
@@ -680,6 +852,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/campaign'
     | '/privacy-policy'
     | '/user-agreement'
     | '/forgot-password'
@@ -697,9 +870,12 @@ export interface FileRouteTypes {
     | '/chat2link'
     | '/oauth/$provider'
     | '/about'
+    | '/cheap'
+    | '/guide'
     | '/pricing'
     | '/rankings'
     | '/setup'
+    | '/tutorial'
     | '/user/reset'
     | '/chat/$chatId'
     | '/dashboard/$section'
@@ -708,20 +884,32 @@ export interface FileRouteTypes {
     | '/usage-logs/$section'
     | '/usage-logs/audit'
     | '/channels'
+    | '/commandcode'
     | '/dashboard'
+    | '/expenses'
+    | '/feedback'
+    | '/finance'
     | '/keys'
     | '/models'
     | '/playground'
     | '/profile'
     | '/redemption-codes'
+    | '/referral'
+    | '/relay-funnel'
+    | '/reset-coupons'
     | '/security'
     | '/subscriptions'
     | '/system-info'
     | '/system-settings'
     | '/task-plugins'
+    | '/ticket-queue'
+    | '/tickets'
+    | '/token-plan-statistics'
+    | '/token-plan'
     | '/usage-logs'
     | '/users'
     | '/wallet'
+    | '/workbuddy'
     | '/pricing/$modelId'
     | '/system-settings/auth/$section'
     | '/system-settings/billing/$section'
@@ -744,6 +932,7 @@ export interface FileRouteTypes {
     | '/'
     | '/(auth)'
     | '/_authenticated'
+    | '/campaign'
     | '/privacy-policy'
     | '/user-agreement'
     | '/_authenticated/system-settings'
@@ -762,9 +951,12 @@ export interface FileRouteTypes {
     | '/_authenticated/chat2link'
     | '/oauth/$provider'
     | '/about/'
+    | '/cheap/'
+    | '/guide/'
     | '/pricing/'
     | '/rankings/'
     | '/setup/'
+    | '/tutorial/'
     | '/(auth)/user/reset'
     | '/_authenticated/chat/$chatId'
     | '/_authenticated/dashboard/$section'
@@ -773,20 +965,32 @@ export interface FileRouteTypes {
     | '/_authenticated/usage-logs/$section'
     | '/_authenticated/usage-logs/audit'
     | '/_authenticated/channels/'
+    | '/_authenticated/commandcode/'
     | '/_authenticated/dashboard/'
+    | '/_authenticated/expenses/'
+    | '/_authenticated/feedback/'
+    | '/_authenticated/finance/'
     | '/_authenticated/keys/'
     | '/_authenticated/models/'
     | '/_authenticated/playground/'
     | '/_authenticated/profile/'
     | '/_authenticated/redemption-codes/'
+    | '/_authenticated/referral/'
+    | '/_authenticated/relay-funnel/'
+    | '/_authenticated/reset-coupons/'
     | '/_authenticated/security/'
     | '/_authenticated/subscriptions/'
     | '/_authenticated/system-info/'
     | '/_authenticated/system-settings/'
     | '/_authenticated/task-plugins/'
+    | '/_authenticated/ticket-queue/'
+    | '/_authenticated/tickets/'
+    | '/_authenticated/token-plan-statistics/'
+    | '/_authenticated/token-plan/'
     | '/_authenticated/usage-logs/'
     | '/_authenticated/users/'
     | '/_authenticated/wallet/'
+    | '/_authenticated/workbuddy/'
     | '/pricing/$modelId/'
     | '/_authenticated/system-settings/auth/$section'
     | '/_authenticated/system-settings/billing/$section'
@@ -810,6 +1014,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   authRouteRoute: typeof authRouteRouteWithChildren
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
+  CampaignRoute: typeof CampaignRoute
   PrivacyPolicyRoute: typeof PrivacyPolicyRoute
   UserAgreementRoute: typeof UserAgreementRoute
   errors401Route: typeof errors401Route
@@ -819,9 +1024,12 @@ export interface RootRouteChildren {
   errors503Route: typeof errors503Route
   OauthProviderRoute: typeof OauthProviderRoute
   AboutIndexRoute: typeof AboutIndexRoute
+  CheapIndexRoute: typeof CheapIndexRoute
+  GuideIndexRoute: typeof GuideIndexRoute
   PricingIndexRoute: typeof PricingIndexRoute
   RankingsIndexRoute: typeof RankingsIndexRoute
   SetupIndexRoute: typeof SetupIndexRoute
+  TutorialIndexRoute: typeof TutorialIndexRoute
   PricingModelIdIndexRoute: typeof PricingModelIdIndexRoute
 }
 
@@ -846,6 +1054,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof AuthenticatedRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/campaign': {
+      id: '/campaign'
+      path: '/campaign'
+      fullPath: '/campaign'
+      preLoaderRoute: typeof CampaignRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/privacy-policy': {
@@ -967,6 +1182,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AboutIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/cheap/': {
+      id: '/cheap/'
+      path: '/cheap'
+      fullPath: '/cheap/'
+      preLoaderRoute: typeof CheapIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/guide/': {
+      id: '/guide/'
+      path: '/guide'
+      fullPath: '/guide/'
+      preLoaderRoute: typeof GuideIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/oauth/$provider': {
       id: '/oauth/$provider'
       path: '/oauth/$provider'
@@ -995,6 +1224,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SetupIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/tutorial/': {
+      id: '/tutorial/'
+      path: '/tutorial'
+      fullPath: '/tutorial/'
+      preLoaderRoute: typeof TutorialIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/(auth)/user/reset': {
       id: '/(auth)/user/reset'
       path: '/user/reset'
@@ -1016,6 +1252,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedChatChatIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/commandcode/': {
+      id: '/_authenticated/commandcode/'
+      path: '/commandcode'
+      fullPath: '/commandcode/'
+      preLoaderRoute: typeof AuthenticatedCommandcodeIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/dashboard/': {
       id: '/_authenticated/dashboard/'
       path: '/dashboard'
@@ -1035,6 +1278,27 @@ declare module '@tanstack/react-router' {
       path: '/errors/$error'
       fullPath: '/errors/$error'
       preLoaderRoute: typeof AuthenticatedErrorsErrorRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/expenses/': {
+      id: '/_authenticated/expenses/'
+      path: '/expenses'
+      fullPath: '/expenses/'
+      preLoaderRoute: typeof AuthenticatedExpensesIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/feedback/': {
+      id: '/_authenticated/feedback/'
+      path: '/feedback'
+      fullPath: '/feedback/'
+      preLoaderRoute: typeof AuthenticatedFeedbackIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/finance/': {
+      id: '/_authenticated/finance/'
+      path: '/finance'
+      fullPath: '/finance/'
+      preLoaderRoute: typeof AuthenticatedFinanceIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/keys/': {
@@ -1079,6 +1343,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRedemptionCodesIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/referral/': {
+      id: '/_authenticated/referral/'
+      path: '/referral'
+      fullPath: '/referral/'
+      preLoaderRoute: typeof AuthenticatedReferralIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/relay-funnel/': {
+      id: '/_authenticated/relay-funnel/'
+      path: '/relay-funnel'
+      fullPath: '/relay-funnel/'
+      preLoaderRoute: typeof AuthenticatedRelayFunnelIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/reset-coupons/': {
+      id: '/_authenticated/reset-coupons/'
+      path: '/reset-coupons'
+      fullPath: '/reset-coupons/'
+      preLoaderRoute: typeof AuthenticatedResetCouponsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/security/': {
       id: '/_authenticated/security/'
       path: '/security'
@@ -1114,6 +1399,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedTaskPluginsIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/ticket-queue/': {
+      id: '/_authenticated/ticket-queue/'
+      path: '/ticket-queue'
+      fullPath: '/ticket-queue/'
+      preLoaderRoute: typeof AuthenticatedTicketQueueIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/tickets/': {
+      id: '/_authenticated/tickets/'
+      path: '/tickets'
+      fullPath: '/tickets/'
+      preLoaderRoute: typeof AuthenticatedTicketsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/token-plan-statistics/': {
+      id: '/_authenticated/token-plan-statistics/'
+      path: '/token-plan-statistics'
+      fullPath: '/token-plan-statistics/'
+      preLoaderRoute: typeof AuthenticatedTokenPlanStatisticsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/token-plan/': {
+      id: '/_authenticated/token-plan/'
+      path: '/token-plan'
+      fullPath: '/token-plan/'
+      preLoaderRoute: typeof AuthenticatedTokenPlanIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/usage-logs/': {
       id: '/_authenticated/usage-logs/'
       path: '/usage-logs'
@@ -1147,6 +1460,13 @@ declare module '@tanstack/react-router' {
       path: '/wallet'
       fullPath: '/wallet/'
       preLoaderRoute: typeof AuthenticatedWalletIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/workbuddy/': {
+      id: '/_authenticated/workbuddy/'
+      path: '/workbuddy'
+      fullPath: '/workbuddy/'
+      preLoaderRoute: typeof AuthenticatedWorkbuddyIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/pricing/$modelId/': {
@@ -1370,19 +1690,31 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedUsageLogsSectionRoute: typeof AuthenticatedUsageLogsSectionRoute
   AuthenticatedUsageLogsAuditRoute: typeof AuthenticatedUsageLogsAuditRoute
   AuthenticatedChannelsIndexRoute: typeof AuthenticatedChannelsIndexRoute
+  AuthenticatedCommandcodeIndexRoute: typeof AuthenticatedCommandcodeIndexRoute
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
+  AuthenticatedExpensesIndexRoute: typeof AuthenticatedExpensesIndexRoute
+  AuthenticatedFeedbackIndexRoute: typeof AuthenticatedFeedbackIndexRoute
+  AuthenticatedFinanceIndexRoute: typeof AuthenticatedFinanceIndexRoute
   AuthenticatedKeysIndexRoute: typeof AuthenticatedKeysIndexRoute
   AuthenticatedModelsIndexRoute: typeof AuthenticatedModelsIndexRoute
   AuthenticatedPlaygroundIndexRoute: typeof AuthenticatedPlaygroundIndexRoute
   AuthenticatedProfileIndexRoute: typeof AuthenticatedProfileIndexRoute
   AuthenticatedRedemptionCodesIndexRoute: typeof AuthenticatedRedemptionCodesIndexRoute
+  AuthenticatedReferralIndexRoute: typeof AuthenticatedReferralIndexRoute
+  AuthenticatedRelayFunnelIndexRoute: typeof AuthenticatedRelayFunnelIndexRoute
+  AuthenticatedResetCouponsIndexRoute: typeof AuthenticatedResetCouponsIndexRoute
   AuthenticatedSecurityIndexRoute: typeof AuthenticatedSecurityIndexRoute
   AuthenticatedSubscriptionsIndexRoute: typeof AuthenticatedSubscriptionsIndexRoute
   AuthenticatedSystemInfoIndexRoute: typeof AuthenticatedSystemInfoIndexRoute
   AuthenticatedTaskPluginsIndexRoute: typeof AuthenticatedTaskPluginsIndexRoute
+  AuthenticatedTicketQueueIndexRoute: typeof AuthenticatedTicketQueueIndexRoute
+  AuthenticatedTicketsIndexRoute: typeof AuthenticatedTicketsIndexRoute
+  AuthenticatedTokenPlanStatisticsIndexRoute: typeof AuthenticatedTokenPlanStatisticsIndexRoute
+  AuthenticatedTokenPlanIndexRoute: typeof AuthenticatedTokenPlanIndexRoute
   AuthenticatedUsageLogsIndexRoute: typeof AuthenticatedUsageLogsIndexRoute
   AuthenticatedUsersIndexRoute: typeof AuthenticatedUsersIndexRoute
   AuthenticatedWalletIndexRoute: typeof AuthenticatedWalletIndexRoute
+  AuthenticatedWorkbuddyIndexRoute: typeof AuthenticatedWorkbuddyIndexRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -1396,20 +1728,33 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedUsageLogsSectionRoute: AuthenticatedUsageLogsSectionRoute,
   AuthenticatedUsageLogsAuditRoute: AuthenticatedUsageLogsAuditRoute,
   AuthenticatedChannelsIndexRoute: AuthenticatedChannelsIndexRoute,
+  AuthenticatedCommandcodeIndexRoute: AuthenticatedCommandcodeIndexRoute,
   AuthenticatedDashboardIndexRoute: AuthenticatedDashboardIndexRoute,
+  AuthenticatedExpensesIndexRoute: AuthenticatedExpensesIndexRoute,
+  AuthenticatedFeedbackIndexRoute: AuthenticatedFeedbackIndexRoute,
+  AuthenticatedFinanceIndexRoute: AuthenticatedFinanceIndexRoute,
   AuthenticatedKeysIndexRoute: AuthenticatedKeysIndexRoute,
   AuthenticatedModelsIndexRoute: AuthenticatedModelsIndexRoute,
   AuthenticatedPlaygroundIndexRoute: AuthenticatedPlaygroundIndexRoute,
   AuthenticatedProfileIndexRoute: AuthenticatedProfileIndexRoute,
   AuthenticatedRedemptionCodesIndexRoute:
     AuthenticatedRedemptionCodesIndexRoute,
+  AuthenticatedReferralIndexRoute: AuthenticatedReferralIndexRoute,
+  AuthenticatedRelayFunnelIndexRoute: AuthenticatedRelayFunnelIndexRoute,
+  AuthenticatedResetCouponsIndexRoute: AuthenticatedResetCouponsIndexRoute,
   AuthenticatedSecurityIndexRoute: AuthenticatedSecurityIndexRoute,
   AuthenticatedSubscriptionsIndexRoute: AuthenticatedSubscriptionsIndexRoute,
   AuthenticatedSystemInfoIndexRoute: AuthenticatedSystemInfoIndexRoute,
   AuthenticatedTaskPluginsIndexRoute: AuthenticatedTaskPluginsIndexRoute,
+  AuthenticatedTicketQueueIndexRoute: AuthenticatedTicketQueueIndexRoute,
+  AuthenticatedTicketsIndexRoute: AuthenticatedTicketsIndexRoute,
+  AuthenticatedTokenPlanStatisticsIndexRoute:
+    AuthenticatedTokenPlanStatisticsIndexRoute,
+  AuthenticatedTokenPlanIndexRoute: AuthenticatedTokenPlanIndexRoute,
   AuthenticatedUsageLogsIndexRoute: AuthenticatedUsageLogsIndexRoute,
   AuthenticatedUsersIndexRoute: AuthenticatedUsersIndexRoute,
   AuthenticatedWalletIndexRoute: AuthenticatedWalletIndexRoute,
+  AuthenticatedWorkbuddyIndexRoute: AuthenticatedWorkbuddyIndexRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
@@ -1419,6 +1764,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   authRouteRoute: authRouteRouteWithChildren,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
+  CampaignRoute: CampaignRoute,
   PrivacyPolicyRoute: PrivacyPolicyRoute,
   UserAgreementRoute: UserAgreementRoute,
   errors401Route: errors401Route,
@@ -1428,9 +1774,12 @@ const rootRouteChildren: RootRouteChildren = {
   errors503Route: errors503Route,
   OauthProviderRoute: OauthProviderRoute,
   AboutIndexRoute: AboutIndexRoute,
+  CheapIndexRoute: CheapIndexRoute,
+  GuideIndexRoute: GuideIndexRoute,
   PricingIndexRoute: PricingIndexRoute,
   RankingsIndexRoute: RankingsIndexRoute,
   SetupIndexRoute: SetupIndexRoute,
+  TutorialIndexRoute: TutorialIndexRoute,
   PricingModelIdIndexRoute: PricingModelIdIndexRoute,
 }
 export const routeTree = rootRouteImport

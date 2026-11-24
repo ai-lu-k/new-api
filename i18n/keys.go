@@ -62,6 +62,15 @@ const (
 	MsgTokenAutoGroupsInvalid    = "token.auto_groups_invalid"
 )
 
+// DSH setup related messages
+const (
+	MsgDshSetupDisabled             = "dsh_setup.disabled"
+	MsgDshSetupAutoGroupUnavailable = "dsh_setup.auto_group_unavailable"
+	MsgDshSetupNoModels             = "dsh_setup.no_models"
+	MsgDshSetupTokenLimit           = "dsh_setup.token_limit"
+	MsgDshSetupTokenUnavailable     = "dsh_setup.token_unavailable"
+)
+
 // Redemption related messages
 const (
 	MsgRedemptionNameLength        = "redemption.name_length"
@@ -113,6 +122,7 @@ const (
 	MsgUserRegisterFailed            = "user.register_failed"
 	MsgUserDefaultTokenFailed        = "user.default_token_failed"
 	MsgUserAffCodeEmpty              = "user.aff_code_empty"
+	MsgUserAffCodeInvalid            = "user.aff_code_invalid"
 	MsgUserEmailEmpty                = "user.email_empty"
 	MsgUserGitHubIdEmpty             = "user.github_id_empty"
 	MsgUserDiscordIdEmpty            = "user.discord_id_empty"
@@ -122,6 +132,11 @@ const (
 	MsgUserTelegramNotBound          = "user.telegram_not_bound"
 	MsgUserLinuxDOIdEmpty            = "user.linux_do_id_empty"
 	MsgUserQuotaChangeZero           = "user.quota_change_zero"
+	MsgUserQuotaReasonRequired       = "user.quota_reason_required"
+	MsgTicketContentInvalid          = "ticket.content_invalid"
+	MsgTicketAttachmentInvalid       = "ticket.attachment_invalid"
+	MsgTicketClosed                  = "ticket.closed"
+	MsgUserQuotaPaidAmountRequired   = "user.quota_paid_amount_required"
 )
 
 // Quota related messages
@@ -323,6 +338,7 @@ const (
 	MsgDistributorAffinityChannelDisabled      = "distributor.affinity_channel_disabled"
 	MsgDistributorTokenNoModelAccess           = "distributor.token_no_model_access"
 	MsgDistributorTokenModelForbidden          = "distributor.token_model_forbidden"
+	MsgDistributorModelLevelTooLow             = "distributor.model_level_too_low"
 	MsgDistributorModelNameRequired            = "distributor.model_name_required"
 	MsgDistributorInvalidPlayground            = "distributor.invalid_playground_request"
 	MsgDistributorGroupAccessDenied            = "distributor.group_access_denied"
@@ -331,6 +347,9 @@ const (
 	MsgDistributorNoAvailableChannelTaskPlugin = "distributor.no_available_channel_task_plugin"
 	MsgDistributorInvalidMidjourney            = "distributor.invalid_midjourney_request"
 	MsgDistributorInvalidParseModel            = "distributor.invalid_request_parse_model"
+	MsgChannelConcurrencyExceeded              = "distributor.channel_concurrency_exceeded"
+	MsgChannelCapacityExceeded                 = "distributor.channel_capacity_exceeded"
+	MsgChannelConcurrencyUnavailable           = "distributor.channel_concurrency_unavailable"
 )
 
 // Custom OAuth provider related messages
@@ -342,4 +361,33 @@ const (
 	MsgCustomOAuthHasBindings       = "custom_oauth.has_bindings"
 	MsgCustomOAuthBindingNotFound   = "custom_oauth.binding_not_found"
 	MsgCustomOAuthProviderIdInvalid = "custom_oauth.provider_id_field_invalid"
+)
+
+// Text of the public pages as served before the front end starts
+const (
+	MsgSitePageHome                = "site_page.home"
+	MsgSitePageModels              = "site_page.models"
+	MsgSitePageModelsDescription   = "site_page.models_description"
+	MsgSitePageCheap               = "site_page.cheap"
+	MsgSitePageCheapDescription    = "site_page.cheap_description"
+	MsgSitePageCheapEmpty          = "site_page.cheap_empty"
+	MsgSitePageCheapSkipped        = "site_page.cheap_skipped"
+	MsgSitePageModelDescription    = "site_page.model_description"
+	MsgSitePageModelPrice          = "site_page.model_price"
+	MsgSitePageModelVendor         = "site_page.model_vendor"
+	MsgSitePageModelCheaper        = "site_page.model_cheaper"
+	MsgSitePageRankings            = "site_page.rankings"
+	MsgSitePageRankingsDescription = "site_page.rankings_description"
+	MsgSitePageGuide               = "site_page.guide"
+	MsgSitePageGuideDescription    = "site_page.guide_description"
+	MsgSitePageAbout               = "site_page.about"
+)
+
+// Catalogue facts a model must carry when it is saved by hand
+const (
+	MsgModelCatalogInputModalities     = "model_catalog.input_modalities"
+	MsgModelCatalogContextLength       = "model_catalog.context_length"
+	MsgModelCatalogSupportedParameters = "model_catalog.supported_parameters"
+	MsgModelCatalogReleaseDate         = "model_catalog.release_date"
+	MsgModelCatalogSeries              = "model_catalog.series"
 )

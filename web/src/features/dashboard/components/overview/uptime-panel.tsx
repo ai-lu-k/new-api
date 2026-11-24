@@ -16,12 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Activity, RotateCw } from 'lucide-react'
+import { RotateCw } from 'lucide-react'
 import { memo, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import {
+  SectionPanel,
+  type SectionPanelStatus,
+} from '@/components/section-panel'
 import { Button } from '@/components/ui/button'
-import { IconBadge } from '@/components/ui/icon-badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { getUptimeStatus } from '@/features/dashboard/api'
 import type {
@@ -29,8 +32,6 @@ import type {
   UptimeMonitor,
 } from '@/features/dashboard/types'
 import { cn } from '@/lib/utils'
-
-import { PanelWrapper } from '../ui/panel-wrapper'
 
 const STATUS_COLOR_MAP: Record<number, string> = {
   1: 'bg-emerald-500',
@@ -94,23 +95,19 @@ export function UptimePanel() {
       })
   }
 
+  let status: SectionPanelStatus = 'ready'
+  if (loading) status = 'loading'
+  else if (!groups.length) status = 'empty'
+
   return (
-    <PanelWrapper
-      title={
-        <span className='flex items-center gap-2'>
-          <IconBadge tone='success' size='sm'>
-            <Activity />
-          </IconBadge>
-          {t('Uptime')}
-        </span>
-      }
+    <SectionPanel
+      title={t('Uptime')}
+      level='card'
       description={t('Grouped monitor status from Uptime Kuma')}
-      loading={loading}
-      empty={!groups.length}
+      status={status}
       emptyMessage={t('No uptime monitoring configured')}
-      height='h-80'
-      contentClassName='p-0'
-      headerActions={
+      placeholderClassName='h-24'
+      actions={
         <Button
           variant='ghost'
           size='sm'
@@ -172,6 +169,6 @@ export function UptimePanel() {
           ))}
         </div>
       </ScrollArea>
-    </PanelWrapper>
+    </SectionPanel>
   )
 }

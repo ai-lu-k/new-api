@@ -30,8 +30,10 @@ type listModelsResponse struct {
 }
 
 type userModelsResponse struct {
-	Success bool     `json:"success"`
-	Data    []string `json:"data"`
+	Success               bool     `json:"success"`
+	Data                  []string `json:"data"`
+	ImageGenerationModels []string `json:"image_generation_models"`
+	ImageOutputModels     []string `json:"image_output_models"`
 }
 
 func setupModelListControllerTestDB(t *testing.T) *gorm.DB {
@@ -179,6 +181,44 @@ func decodeUserModelsResponse(t *testing.T, recorder *httptest.ResponseRecorder)
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &payload))
 	require.True(t, payload.Success)
 	return payload.Data
+}
+
+func TestGetUserModelsReportsImageGenerationModels(t *testing.T) {
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.Create(&model.User{
+		Id:       1004,
+		Username: "playground-image-model-user",
+		Password: "password",
+		Group:    "default",
+		Status:   common.UserStatusEnabled,
+	}).Error)
+	require.NoError(t, db.Create(&[]model.Ability{
+		{Group: "default", Model: "gpt-image-2.5-flare", ChannelId: 1, Enabled: true},
+		{Group: "default", Model: "gemini-3-pro-image", ChannelId: 1, Enabled: true},
+		{Group: "default", Model: "zz-chat-model", ChannelId: 1, Enabled: true},
+	}).Error)
+	// gemini-3-pro-image emits images from chat completions, so only its
+	// catalogue metadata says so. zz-chat-model has no metadata at all.
+	require.NoError(t, db.Create(&[]model.Model{
+		{ModelName: "gemini-3-pro-image", OutputModalities: "text,image", Status: 1},
+		{ModelName: "zz-chat-model", OutputModalities: "", Status: 1},
+	}).Error)
+
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(http.MethodGet, "/api/user/models?group=default", nil)
+	context.Set("id", 1004)
+
+	GetUserModels(context)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var payload userModelsResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &payload))
+	require.True(t, payload.Success)
+	assert.ElementsMatch(t, []string{"gpt-image-2.5-flare", "gemini-3-pro-image", "zz-chat-model"}, payload.Data)
+	assert.Equal(t, []string{"gpt-image-2.5-flare"}, payload.ImageGenerationModels)
+	assert.ElementsMatch(t, []string{"gpt-image-2.5-flare", "gemini-3-pro-image"}, payload.ImageOutputModels)
+	assert.NotContains(t, payload.ImageOutputModels, "zz-chat-model")
 }
 
 func TestGetUserModelsFiltersByRequestedGroup(t *testing.T) {

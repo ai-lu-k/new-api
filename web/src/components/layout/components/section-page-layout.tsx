@@ -19,10 +19,13 @@ For commercial licensing, please contact support@quantumnous.com
 import {
   Children,
   isValidElement,
+  useEffect,
   useState,
   type ReactElement,
   type ReactNode,
 } from 'react'
+
+import { cn } from '@/lib/utils'
 
 import { Main } from './main'
 import { PageFooterProvider } from './page-footer'
@@ -33,6 +36,12 @@ function SectionPageLayoutTitle(_props: SlotProps) {
   return null
 }
 SectionPageLayoutTitle.displayName = 'SectionPageLayout.Title'
+
+/** One line under the title saying what the page is for. */
+function SectionPageLayoutDescription(_props: SlotProps) {
+  return null
+}
+SectionPageLayoutDescription.displayName = 'SectionPageLayout.Description'
 
 function SectionPageLayoutActions(_props: SlotProps) {
   return null
@@ -53,6 +62,7 @@ export type SectionPageLayoutProps = {
   children: ReactNode
   fixedContent?: boolean
   stackActionsOnMobile?: boolean
+  pageIndex?: ReactNode
 }
 
 export function SectionPageLayout(props: SectionPageLayoutProps) {
@@ -60,7 +70,28 @@ export function SectionPageLayout(props: SectionPageLayoutProps) {
     null
   )
 
+  // Publish the footer height so overlays anchored to the viewport bottom (the
+  // bulk-action bar) can clear it instead of covering the pagination.
+  useEffect(() => {
+    if (!footerContainer) return undefined
+    const root = document.documentElement
+    const publish = () => {
+      root.style.setProperty(
+        '--app-page-footer-height',
+        `${footerContainer.offsetHeight}px`
+      )
+    }
+    publish()
+    const observer = new ResizeObserver(publish)
+    observer.observe(footerContainer)
+    return () => {
+      observer.disconnect()
+      root.style.removeProperty('--app-page-footer-height')
+    }
+  }, [footerContainer])
+
   let title: ReactNode = null
+  let description: ReactNode = null
   let actions: ReactNode = null
   let content: ReactNode = null
   let breadcrumb: ReactNode = null
@@ -69,7 +100,9 @@ export function SectionPageLayout(props: SectionPageLayoutProps) {
     if (!isValidElement(node)) return
     const child = node as ReactElement<SlotProps>
     if (child.type === SectionPageLayoutTitle) title = child.props.children
-    else if (child.type === SectionPageLayoutActions) {
+    else if (child.type === SectionPageLayoutDescription) {
+      description = child.props.children
+    } else if (child.type === SectionPageLayoutActions) {
       actions = child.props.children
     } else if (child.type === SectionPageLayoutContent) {
       content = child.props.children
@@ -78,10 +111,15 @@ export function SectionPageLayout(props: SectionPageLayoutProps) {
     }
   })
 
+  const editorial = props.pageIndex != null && !props.fixedContent
+  const contentOverflow = props.fixedContent
+    ? 'overflow-hidden'
+    : 'overflow-auto'
+
   return (
     <PageFooterProvider container={footerContainer}>
-      <Main>
-        <div className='shrink-0 px-3 pt-3 pb-2.5 sm:px-4 sm:pt-5 sm:pb-3'>
+      <Main className={editorial ? 'overflow-y-auto' : undefined}>
+        <div className='shrink-0 px-(--app-page-gutter,1rem) pt-3 pb-3 sm:pt-4 sm:pb-4'>
           {breadcrumb != null && (
             <div className='mb-2 sm:mb-3'>{breadcrumb}</div>
           )}
@@ -93,38 +131,74 @@ export function SectionPageLayout(props: SectionPageLayoutProps) {
                   : 'min-w-0 flex-1'
               }
             >
-              <h2 className='truncate text-base font-bold tracking-tight sm:text-lg'>
+              {props.pageIndex != null && (
+                <p
+                  data-vt-name='page-eyebrow'
+                  className='text-destructive mb-0.5 text-[11px] font-semibold tracking-wide'
+                >
+                  {props.pageIndex}
+                </p>
+              )}
+              <h1
+                data-vt-name='page-title'
+                className='w-fit max-w-full text-xl leading-[1.15] font-bold tracking-tight [overflow-wrap:anywhere] sm:text-2xl'
+              >
                 {title}
-              </h2>
+              </h1>
+              {description != null && (
+                <p className='text-muted-foreground mt-1 text-[13px] leading-snug [overflow-wrap:anywhere]'>
+                  {description}
+                </p>
+              )}
             </div>
             {actions != null && (
-              <div className='flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-x-4'>
+              <div
+                data-vt-name='page-actions'
+                className={cn(
+                  'flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-x-4',
+                  editorial && 'lg:[&_button]:h-9 lg:[&_button]:px-4'
+                )}
+              >
                 {actions}
               </div>
             )}
           </div>
         </div>
 
+        {/*
+          The page body: everything that belongs to this page alone. The header
+          band above (breadcrumb, eyebrow, title, description, actions) keeps
+          its own identity across a navigation, so it must stay outside this
+          layer — a body that contained it would drag the chrome down with it
+          (see `.agents/design/ui-motion.md` §10.2).
+        */}
         <div
-          className={
-            props.fixedContent
-              ? 'min-h-0 flex-1 overflow-hidden px-3 pt-1 pb-3 sm:px-4 sm:pt-1.5 sm:pb-4'
-              : 'min-h-0 flex-1 overflow-auto px-3 pt-1 pb-3 sm:px-4 sm:pt-1.5 sm:pb-4'
-          }
+          data-vt-name='page-body'
+          className={editorial ? undefined : 'flex min-h-0 flex-1 flex-col'}
         >
-          {content}
-        </div>
+          <div
+            className={cn(
+              'px-(--app-page-gutter,1rem) pb-8',
+              editorial ? 'shrink-0' : 'min-h-0 flex-1 pt-1 pb-4 sm:pb-6',
+              !editorial && contentOverflow
+            )}
+          >
+            {content}
+          </div>
 
-        <div
-          ref={setFooterContainer}
-          className='bg-background shrink-0 border-t px-3 py-2.5 empty:hidden sm:px-4 sm:py-3'
-        />
+          <div
+            ref={setFooterContainer}
+            data-slot='page-footer'
+            className='bg-background shrink-0 border-t px-(--app-page-gutter,1rem) py-2.5 empty:hidden sm:py-3'
+          />
+        </div>
       </Main>
     </PageFooterProvider>
   )
 }
 
 SectionPageLayout.Title = SectionPageLayoutTitle
+SectionPageLayout.Description = SectionPageLayoutDescription
 SectionPageLayout.Actions = SectionPageLayoutActions
 SectionPageLayout.Content = SectionPageLayoutContent
 SectionPageLayout.Breadcrumb = SectionPageLayoutBreadcrumb

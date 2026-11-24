@@ -16,31 +16,27 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { memo, useMemo } from 'react'
+import { memo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
   formatLatency,
   formatThroughput,
-  getSuccessRateDotClass,
 } from '@/features/performance-metrics/lib/format'
-import type { SuccessRatePoint } from '@/features/performance-metrics/types'
 import { cn } from '@/lib/utils'
 
-export type ModelPerfBadgeData = {
-  window_start?: number
+import { SuccessRateBars, type SuccessRateSamples } from './success-rate-bars'
+
+export type ModelPerfBadgeData = SuccessRateSamples & {
   window_end?: number
   avg_latency_ms: number
   success_rate: number
   avg_tps: number
-  recent_success_series?: SuccessRatePoint[]
 }
 
 export interface ModelPerfBadgeProps extends React.HTMLAttributes<HTMLDivElement> {
   perf: ModelPerfBadgeData | undefined
 }
-
-const STATUS_SLOTS = Array.from({ length: 24 }, (_, slot) => slot)
 
 export const ModelPerfBadge = memo(function ModelPerfBadge(
   props: ModelPerfBadgeProps
@@ -57,21 +53,6 @@ export const ModelPerfBadge = memo(function ModelPerfBadge(
     Number.isFinite(successRate) &&
     successRate >= 0 &&
     successRate <= 100
-  // Hourly points use the server window, including the current partial hour.
-  // Hours without traffic stay gray. Slot 23 is the current, partial hour.
-  const statusRates = useMemo(() => {
-    const windowStart = props.perf?.window_start
-    if (windowStart == null) return STATUS_SLOTS.map(() => undefined)
-    const ratesByHour = new Map<number, number>()
-    for (const point of props.perf?.recent_success_series ?? []) {
-      ratesByHour.set(point.ts, point.success_rate)
-    }
-    return STATUS_SLOTS.map((slot) => {
-      const hourStart = windowStart + slot * 3600
-      return ratesByHour.get(hourStart)
-    })
-  }, [props.perf?.recent_success_series, props.perf?.window_start])
-
   return (
     <div
       aria-label={t('Performance metrics for the last 24 hours')}
@@ -93,34 +74,8 @@ export const ModelPerfBadge = memo(function ModelPerfBadge(
               {hasSuccessRate ? `${successRate.toFixed(2)}%` : '—'}
             </span>
           </dt>
-          <dd
-            role='img'
-            aria-label={t(
-              'Recent success-rate samples; gray bars indicate missing data.'
-            )}
-            title={t(
-              'Recent success-rate samples; gray bars indicate missing data.'
-            )}
-            className='mt-1 flex h-3 w-24 items-center gap-px'
-          >
-            {STATUS_SLOTS.map((slot) => {
-              const rate = statusRates[slot]
-              return (
-                <span
-                  key={slot}
-                  aria-hidden
-                  className={cn(
-                    'h-full w-[3px] shrink-0 rounded-xs',
-                    rate != null &&
-                      Number.isFinite(rate) &&
-                      rate >= 0 &&
-                      rate <= 100
-                      ? getSuccessRateDotClass(rate)
-                      : 'bg-muted-foreground/15'
-                  )}
-                />
-              )
-            })}
+          <dd className='mt-1'>
+            <SuccessRateBars samples={props.perf} className='h-3 w-24' />
           </dd>
         </div>
         <div title={t('Average latency')} className='shrink-0'>

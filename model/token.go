@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/bytedance/gopkg/util/gopool"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 type Token struct {
@@ -22,6 +23,7 @@ type Token struct {
 	ExpiredTime        int64          `json:"expired_time" gorm:"bigint;default:-1"` // -1 means never expired
 	RemainQuota        int            `json:"remain_quota" gorm:"default:0"`
 	UnlimitedQuota     bool           `json:"unlimited_quota"`
+	TokenPlan          bool           `json:"token_plan"`
 	ModelLimitsEnabled bool           `json:"model_limits_enabled"`
 	ModelLimits        string         `json:"model_limits" gorm:"type:text"`
 	AllowIps           *string        `json:"allow_ips" gorm:"default:''"`
@@ -106,7 +108,7 @@ func (token *Token) GetIpLimits() []string {
 func GetAllUserTokens(userId int, startIdx int, num int) ([]*Token, error) {
 	var tokens []*Token
 	var err error
-	err = DB.Where("user_id = ?", userId).Order("id desc").Limit(num).Offset(startIdx).Find(&tokens).Error
+	err = DB.Where("user_id = ?", userId).Where("token_plan = ? OR token_plan IS NULL", false).Order("id desc").Limit(num).Offset(startIdx).Find(&tokens).Error
 	return tokens, err
 }
 
@@ -183,7 +185,7 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 		}
 	}
 
-	baseQuery := DB.Model(&Token{}).Where("user_id = ?", userId)
+	baseQuery := DB.Model(&Token{}).Where("user_id = ?", userId).Where("token_plan = ? OR token_plan IS NULL", false)
 
 	// 非空才加 LIKE 条件，空则跳过（不过滤该字段）
 	if keyword != "" {
@@ -220,6 +222,9 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 func ValidateUserToken(key string) (token *Token, err error) {
 	if key == "" {
 		return nil, ErrTokenNotProvided
+	}
+	if strings.HasPrefix(key, "tp_hash_") {
+		return nil, ErrTokenInvalid
 	}
 	token, err = GetTokenByKey(key, false)
 	if err == nil {
@@ -278,8 +283,16 @@ func GetTokenById(id int) (*Token, error) {
 }
 
 func GetTokenByKey(key string, fromDB bool) (token *Token, err error) {
+	// A Token Plan key must resolve both before and after it becomes an ordinary
+	// key: a converted row already holds the plaintext, a row not converted yet
+	// still holds its tp_hash_ digest. Both candidates go into one indexed
+	// lookup, so the hot path stays a single query either way.
+	storedKeys := []string{key}
+	if strings.HasPrefix(key, "tp_") && !strings.HasPrefix(key, "tp_hash_") {
+		storedKeys = append(storedKeys, TokenPlanKeyDigest(key))
+	}
 	if !fromDB && common.RedisEnabled {
-		// Try Redis first
+		// Try Redis first, keyed by the credential the client sent.
 		token, err := cacheGetTokenByKey(key)
 		if err == nil {
 			return token, nil
@@ -287,7 +300,11 @@ func GetTokenByKey(key string, fromDB bool) (token *Token, err error) {
 		// Don't return error - fall through to DB
 	}
 	token = &Token{}
-	if err = DB.Where(commonKeyCol+" = ?", key).First(token).Error; err != nil {
+	query := DB.Where(commonKeyCol+" = ?", key)
+	if len(storedKeys) > 1 {
+		query = DB.Where(commonKeyCol+" IN ?", storedKeys)
+	}
+	if err = query.First(token).Error; err != nil {
 		return nil, err
 	}
 	if common.RedisEnabled {
@@ -374,6 +391,67 @@ func DeleteTokenById(id int, userId int) (err error) {
 	return token.Delete()
 }
 
+// TokenPlanKeyMigrationDefaultName is the name a converted Token Plan key gets:
+// an ordinary key its owner is free to rename.
+const TokenPlanKeyMigrationDefaultName = "默认 Key"
+
+// TokenPlanKeyMigrationReport summarises one MigrateTokenPlanKeysToOrdinaryKeys run.
+type TokenPlanKeyMigrationReport struct {
+	Migrated int
+	Skipped  int
+	Failed   int
+}
+
+// MigrateTokenPlanKeysToOrdinaryKeys turns every Token Plan credential into an
+// ordinary API key: the decrypted plaintext replaces the tp_hash_ digest in
+// tokens.key, token_plan is cleared so billing falls back to the wallet, and
+// unlimited_quota keeps its current value. A row whose key no longer carries the
+// digest was converted by an earlier run and is skipped, so re-running is safe.
+func MigrateTokenPlanKeysToOrdinaryKeys() (report TokenPlanKeyMigrationReport, err error) {
+	var accounts []TokenPlanAccount
+	if err = DB.Find(&accounts).Error; err != nil {
+		return report, err
+	}
+	for i := range accounts {
+		account := accounts[i]
+		var token Token
+		if findErr := DB.Where("id = ? AND user_id = ?", account.TokenId, account.UserId).First(&token).Error; findErr != nil {
+			if !errors.Is(findErr, gorm.ErrRecordNotFound) {
+				return report, findErr
+			}
+			report.Skipped++
+			continue
+		}
+		if !strings.HasPrefix(token.Key, "tp_hash_") {
+			report.Skipped++
+			continue
+		}
+		// ReadTokenPlanCredential decrypts the credential and proves it still
+		// hashes to the stored digest, so a wrong key can never be written back.
+		// It requires token_plan to still be set, hence reading before the update.
+		plaintext, readErr := ReadTokenPlanCredential(account.UserId)
+		if readErr != nil {
+			report.Failed++
+			common.SysError(fmt.Sprintf("token plan key migration: cannot read credential of user %d: %v", account.UserId, readErr))
+			continue
+		}
+		// Select carries token_plan so its zero value false is written; a plain
+		// struct update would leave the column alone.
+		// Database error statements and duplicate-key errors can contain the
+		// usable credential. Report only the non-secret row identity here.
+		if updateErr := DB.Session(&gorm.Session{Logger: DB.Logger.LogMode(logger.Silent)}).Model(&Token{}).Where("id = ?", token.Id).
+			Select("key", "token_plan", "name").
+			Updates(Token{Key: plaintext, Name: TokenPlanKeyMigrationDefaultName}).Error; updateErr != nil {
+			report.Failed++
+			common.SysError(fmt.Sprintf("token plan key migration: cannot update token %d of user %d", token.Id, account.UserId))
+			continue
+		}
+		common.SysLog(fmt.Sprintf("token plan key migration: converted token %d of user %d", token.Id, account.UserId))
+		report.Migrated++
+	}
+	return report, nil
+}
+
 func IncreaseTokenQuota(tokenId int, key string, quota int) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")
@@ -437,7 +515,7 @@ func decreaseTokenQuota(id int, quota int) (err error) {
 // CountUserTokens returns total number of tokens for the given user, used for pagination
 func CountUserTokens(userId int) (int64, error) {
 	var total int64
-	err := DB.Model(&Token{}).Where("user_id = ?", userId).Count(&total).Error
+	err := DB.Model(&Token{}).Where("user_id = ?", userId).Where("token_plan = ? OR token_plan IS NULL", false).Count(&total).Error
 	return total, err
 }
 
@@ -474,6 +552,7 @@ func GetTokenKeysByIds(ids []int, userId int) ([]Token, error) {
 	var tokens []Token
 	err := DB.Select("id", commonKeyCol).
 		Where("user_id = ? AND id IN (?)", userId, ids).
+		Where("token_plan = ? OR token_plan IS NULL", false).
 		Find(&tokens).Error
 	return tokens, err
 }

@@ -24,9 +24,13 @@ import { formatQuotaWithCurrency, getCurrencyDisplay } from '@/lib/currency'
 import { cn } from '@/lib/utils'
 import { useSystemConfigStore } from '@/stores/system-config-store'
 
+import type { User } from '../types'
+
 type UserQuotaCellProps = {
   remaining: number
   used: number
+  /** Lifetime totals split by funding source; absent while the page loads. */
+  usageSource?: User['usage_source']
 }
 
 export function UserQuotaCell(props: UserQuotaCellProps) {
@@ -42,6 +46,26 @@ export function UserQuotaCell(props: UserQuotaCellProps) {
   const formattedUsed = formatQuotaWithCurrency(props.used, {
     showSymbol: false,
   })
+  // Gift consumption is a number only when the funding records explain the
+  // wallet usage; otherwise it stays untraceable instead of reading as zero.
+  const giftUsed =
+    props.usageSource?.gift_known === true
+      ? formatQuotaWithCurrency(props.usageSource.gift_used, {
+          showSymbol: false,
+        })
+      : t('Not tracked')
+  const tokenPlanUsed = props.usageSource
+    ? formatQuotaWithCurrency(props.usageSource.token_plan_used, {
+        showSymbol: false,
+      })
+    : t('Not tracked')
+  // The combined free total contains the gift part, so it is untraceable with it.
+  const giftPlanUsed =
+    props.usageSource?.gift_known === true
+      ? formatQuotaWithCurrency(props.usageSource.gift_plan_used, {
+          showSymbol: false,
+        })
+      : t('Not tracked')
 
   return (
     <QuotaDetailsPopover
@@ -54,6 +78,9 @@ export function UserQuotaCell(props: UserQuotaCellProps) {
       details={[
         { label: t('Available Balance'), value: formattedRemaining },
         { label: t('Total Used'), value: formattedUsed },
+        { label: t('Gift used'), value: giftUsed },
+        { label: t('Token Plan used'), value: tokenPlanUsed },
+        { label: t('Gift + Token Plan used'), value: giftPlanUsed },
       ]}
     >
       {hasQuota ? (

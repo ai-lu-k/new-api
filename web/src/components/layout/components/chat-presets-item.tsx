@@ -269,7 +269,7 @@ export function ChatPresetsItem({ item }: { item: NavChatPresets }) {
       >
         {item.icon && <item.icon className='shrink-0' />}
         <span className='min-w-0 flex-1 truncate'>{item.title}</span>
-        <ChevronRight className='ms-auto size-4 shrink-0 transition-transform duration-200 group-data-[panel-open]/collapsible-trigger:rotate-90' />
+        <ChevronRight className='ms-auto size-4 shrink-0 transition-transform duration-(--motion-fast) ease-(--ease-out) group-data-[panel-open]/collapsible-trigger:rotate-90' />
       </CollapsibleTrigger>
       <CollapsibleContent className='CollapsibleContent'>
         <SidebarMenuSub>

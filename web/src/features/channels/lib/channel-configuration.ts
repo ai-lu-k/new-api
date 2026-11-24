@@ -78,6 +78,14 @@ const CONFIGURATION_BLOCKS = {
       'claude_beta_query',
     ],
   },
+  concurrencyCapacity: {
+    section: 'other',
+    fields: [
+      'concurrency_limit',
+      'concurrency_total_url',
+      'concurrency_total_per_account',
+    ],
+  },
   extraSettings: {
     section: 'other',
     fields: [
@@ -171,6 +179,10 @@ export function getChannelConfigurationState(
         (values.allow_speed ||
           (values.type === 14 && values.claude_beta_query)))
     ),
+    concurrencyCapacity:
+      (values.concurrency_limit ?? 0) > 0 ||
+      Boolean(values.concurrency_total_url?.trim()) ||
+      (values.concurrency_total_per_account ?? 0) > 0,
     extraSettings: Boolean(
       values.proxy?.trim() ||
       (values.http_protocol && values.http_protocol !== 'auto') ||

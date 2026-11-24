@@ -25,10 +25,20 @@ export function getPreviewText(
 ): string {
   if (!content) return ''
   const plainText = content
-    .replace(/<[^>]*>/g, '') // Remove HTML tags
-    .replace(/[#*_]/g, '') // Remove Markdown formatting symbols
+    .replaceAll(/<[^>]*>/g, '') // Remove HTML tags
+    .replaceAll(/[#*_]/g, '') // Remove Markdown formatting symbols
     .trim()
   return plainText.length > maxLength
     ? plainText.substring(0, maxLength) + '...'
     : plainText
+}
+
+/**
+ * Joins a localized "Total:" label with its value. A full-width colon already
+ * carries its own trailing gap, so a half-width space after it reads as a
+ * stray gap in Chinese; other labels keep the space.
+ */
+export function joinLabelValue(label: string, value: string): string {
+  const separator = label.endsWith('：') ? '' : ' '
+  return `${label}${separator}${value}`
 }

@@ -37,12 +37,16 @@ import {
   isUnconfiguredTaskUsageModel,
 } from '../lib/dynamic-price'
 import { parseTags } from '../lib/filters'
-import { isTokenBasedModel } from '../lib/model-helpers'
+import { isFreeModel, isTokenBasedModel } from '../lib/model-helpers'
 import { formatPrice, formatRequestPrice } from '../lib/price'
 import { taskPriceLabel, taskUsageUnitLabel } from '../lib/task-price-display'
 import type { PricingModel, PriceType, TokenUnit } from '../types'
 import { ModelBillingModeBadge } from './model-billing-mode-badge'
+import { ModelFreeBadge } from './model-free-badge'
 import { ModelPerfBadge, type ModelPerfBadgeData } from './model-perf-badge'
+import { ModelSharedName } from './model-shared-name'
+import { PriceTierBadge } from './price-tier-badge'
+import { PromoCountdown } from './promo-countdown'
 
 export interface ModelCardProps {
   model: PricingModel
@@ -52,6 +56,8 @@ export interface ModelCardProps {
   tokenUnit?: TokenUnit
   showRechargePrice?: boolean
   selectedGroup?: string
+  /** False on a site with a single group, where groups are not shown. */
+  showGroups?: boolean
   perf?: ModelPerfBadgeData
 }
 
@@ -64,13 +70,15 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   const isTokenBased = isTokenBasedModel(props.model)
   const tokenUnitLabel = tokenUnit === 'K' ? '1K' : '1M'
   const tags = parseTags(props.model.tags)
-  const groups = props.model.enable_groups || []
+  const groups =
+    props.showGroups === false ? [] : props.model.enable_groups || []
   const endpoints = props.model.supported_endpoint_types || []
   const modelIconKey = props.model.icon || props.model.vendor_icon
   const modelIcon = modelIconKey ? getLobeIcon(modelIconKey, 28) : null
   const initial = props.model.model_name?.charAt(0).toUpperCase() || '?'
   const isUnconfiguredTaskUsage = isUnconfiguredTaskUsageModel(props.model)
   const billingTime = useBillingTime(props.model.billing_expr)
+  // The open card leaves its name to the details drawer (see ModelDetailsDrawer).
   const currency = useSystemConfigStore((state) => state.config.currency)
   const dynamicPriceOptions = useMemo(
     () => ({
@@ -254,7 +262,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   }
 
   return (
-    <Card className='hover:ring-foreground/20 h-full min-w-0 gap-3 transition-colors'>
+    <Card className='hover:ring-foreground/20 hover:bg-muted/25 h-full min-w-0 gap-3 transition-colors duration-(--motion-fast)'>
       <CardHeader className='flex flex-row items-start gap-3'>
         <div
           aria-hidden
@@ -271,15 +279,34 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
             className='line-clamp-2 font-mono text-[15px] leading-snug font-semibold [overflow-wrap:anywhere]'
             title={props.model.model_name}
           >
-            {props.model.model_name}
+            <ModelSharedName
+              modelName={props.model.model_name}
+              className='[overflow-wrap:anywhere]'
+            />
           </h3>
-          {props.model.vendor_name && (
-            <p
-              className='text-muted-foreground mt-1 truncate text-xs'
-              title={props.model.vendor_name}
-            >
-              {props.model.vendor_name}
-            </p>
+          {(props.model.vendor_name ||
+            props.model.price_multiplier !== undefined ||
+            props.model.promo_ends_at ||
+            isFreeModel(props.model)) && (
+            <div className='mt-1 flex min-w-0 items-center gap-2'>
+              {props.model.vendor_name && (
+                <p
+                  className='text-muted-foreground truncate text-xs'
+                  title={props.model.vendor_name}
+                >
+                  {props.model.vendor_name}
+                </p>
+              )}
+              <ModelFreeBadge model={props.model} className='shrink-0' />
+              <PriceTierBadge
+                multiplier={props.model.price_multiplier}
+                className='shrink-0'
+              />
+              <PromoCountdown
+                endsAt={props.model.promo_ends_at}
+                className='shrink-0'
+              />
+            </div>
           )}
         </div>
         <CopyButton

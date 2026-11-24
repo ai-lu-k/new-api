@@ -27,7 +27,8 @@ func containsPricingMarker(node ast.Node) bool {
 }
 
 func isRequestPriceMultiplier(node ast.Node) bool {
-	if identifier, ok := node.(*ast.IdentifierNode); ok && identifier.Value == "image_count" {
+	if identifier, ok := node.(*ast.IdentifierNode); ok &&
+		(identifier.Value == "image_count" || identifier.Value == "chars") {
 		return true
 	}
 	conditional, ok := node.(*ast.ConditionalNode)

@@ -16,45 +16,72 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useLayoutEffect } from 'react'
+
 import { AnimatedOutlet } from '@/components/page-transition'
 import { SkipToMain } from '@/components/skip-to-main'
-import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
-import { LayoutProvider } from '@/context/layout-provider'
+import {
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+} from '@/components/ui/sidebar'
 import { SearchProvider } from '@/context/search-provider'
-import { getCookie } from '@/lib/cookies'
+import { LegalGate } from '@/features/legal/legal-gate'
+import { CouponArrivalDialog } from '@/features/token-plan/components/coupon-arrival-dialog'
 import { cn } from '@/lib/utils'
 
-import { AppHeader } from './app-header'
+import { clearPageFrame } from '../lib/page-handoff'
 import { AppSidebar } from './app-sidebar'
+import { PublicHeader } from './public-header'
 
 type AuthenticatedLayoutProps = {
   children?: React.ReactNode
 }
 
+/** The sidebar stays open: there is nothing to remember or to toggle. */
+function keepSidebarOpen() {}
+
 export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
-  const defaultOpen = getCookie('sidebar_state') !== 'false'
+  // A public page left its last frame for the next public page; a console page
+  // is not that page, so the frame must not surface on a later public visit.
+  useLayoutEffect(() => clearPageFrame(), [])
 
   return (
-    <LayoutProvider>
-      <SearchProvider>
-        <SidebarProvider defaultOpen={defaultOpen} className='flex-col'>
-          <SkipToMain />
-          <AppHeader />
-          <div className='flex min-h-0 w-full flex-1'>
-            <AppSidebar />
-            <SidebarInset
-              className={cn(
-                '@container/content',
-                'h-[calc(100svh-var(--app-header-height,0px))]',
-                'min-h-0 overflow-hidden',
-                'peer-data-[variant=inset]:h-[calc(100svh-var(--app-header-height,0px)-(var(--spacing)*4))]'
-              )}
-            >
-              {props.children ?? <AnimatedOutlet />}
-            </SidebarInset>
-          </div>
-        </SidebarProvider>
-      </SearchProvider>
-    </LayoutProvider>
+    <SearchProvider>
+      <SidebarProvider
+        open
+        onOpenChange={keepSidebarOpen}
+        className='flex-col'
+        style={{ '--sidebar-width': '13.5rem' } as React.CSSProperties}
+      >
+        <SkipToMain />
+        {/* The same header as the public pages. On a narrow screen the
+            sidebar is a drawer, opened from the button before the logo — the
+            one thing this bar adds. */}
+        <PublicHeader
+          pageControl={<SidebarTrigger className='ms-1 size-8 md:hidden' />}
+        />
+        <div
+          data-slot='header-spacer'
+          className='h-(--app-header-height,3.5rem) shrink-0'
+          aria-hidden='true'
+        />
+        <div className='flex min-h-0 w-full flex-1'>
+          <AppSidebar />
+          <SidebarInset
+            className={cn(
+              '@container/content',
+              'h-[calc(100svh-var(--app-header-height,0px))]',
+              'min-h-0 overflow-hidden'
+            )}
+          >
+            <LegalGate>{props.children ?? <AnimatedOutlet />}</LegalGate>
+          </SidebarInset>
+        </div>
+      </SidebarProvider>
+      {/* Sealed vouchers the account still owns announce themselves once the
+          console is open, on whatever page the owner landed on. */}
+      <CouponArrivalDialog />
+    </SearchProvider>
   )
 }

@@ -2,9 +2,16 @@ package channel
 
 import (
 	"context"
+	"fmt"
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/pkg/relaytrace"
+	"github.com/QuantumNous/new-api/service"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/gin-gonic/gin"
@@ -19,6 +26,21 @@ func TestNewTaskAPIRequestInheritsClientCancellation(t *testing.T) {
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil).WithContext(requestContext)
 
 	upstream, err := newTaskAPIRequest(c, "https://provider.example/tasks", nil)
+	require.NoError(t, err)
+	cancel()
+
+	require.ErrorIs(t, upstream.Context().Err(), context.Canceled)
+}
+
+// A dropped client must stop the in-flight generation, otherwise the account
+// keeps a concurrency slot for output nobody can receive.
+func TestNewClientAPIRequestInheritsClientCancellation(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	requestContext, cancel := context.WithCancel(context.Background())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil).WithContext(requestContext)
+
+	upstream, err := newClientAPIRequest(c, "https://provider.example/v1/chat/completions", nil)
 	require.NoError(t, err)
 	cancel()
 
@@ -216,4 +238,72 @@ func TestToWebSocketURL(t *testing.T) {
 	} {
 		assert.Equal(t, want, toWebSocketURL(input), input)
 	}
+}
+
+func TestRelayHTTPRequestCancellationAndFirstTimeoutEvidence(t *testing.T) {
+	previousWindows := relaytrace.Windows
+	relaytrace.Windows = relaytrace.NewRegistry()
+	t.Cleanup(func() { relaytrace.Windows = previousWindows })
+	service.InitHttpClient()
+	for _, status := range []int{http.StatusOK, 524} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(status)
+				_, _ = io.WriteString(w, `{"error":"secret-provider-text"}`)
+			}))
+			defer upstream.Close()
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses?api_key=secret", strings.NewReader(`{}`))
+			req, err := http.NewRequest(http.MethodPost, upstream.URL+"?secret=query", strings.NewReader(`{}`))
+			require.NoError(t, err)
+			req.Header.Set("Authorization", "Bearer secret-token")
+			info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 18, UpstreamModelName: "model"}, StartTime: time.Now()}
+			response, err := DoRequest(c, req, info)
+			require.NoError(t, err)
+			_, err = io.ReadAll(response.Body)
+			require.NoError(t, err)
+			require.NoError(t, response.Body.Close())
+			require.NotNil(t, info.TransportTrace)
+			summary := info.TransportTrace.Snapshot()
+			assert.Equal(t, status, summary.Status)
+			require.NotNil(t, summary.HeadersMS)
+			require.NotNil(t, summary.FirstByteMS)
+			data, err := common.Marshal(summary)
+			require.NoError(t, err)
+			assert.NotContains(t, string(data), "secret")
+			windows, _, _ := relaytrace.Windows.Status(time.Now())
+			if status == 524 {
+				assert.Equal(t, "upstream_timeout_status", summary.End)
+				require.Len(t, windows, 1)
+			} else {
+				assert.Equal(t, "eof", summary.End)
+				assert.Empty(t, windows)
+			}
+		})
+	}
+	t.Run("client cancels before headers", func(t *testing.T) {
+		entered := make(chan struct{})
+		cancelled := make(chan struct{})
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = io.Copy(io.Discard, r.Body)
+			close(entered)
+			<-r.Context().Done()
+			close(cancelled)
+		}))
+		defer server.Close()
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{}`)).WithContext(ctx)
+		req, err := http.NewRequest(http.MethodPost, server.URL, strings.NewReader(`{}`))
+		require.NoError(t, err)
+		info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 18, UpstreamModelName: "model"}, StartTime: time.Now()}
+		finished := make(chan error, 1)
+		go func() { _, err := DoRequest(c, req, info); finished <- err }()
+		<-entered
+		cancel()
+		require.Error(t, <-finished)
+		<-cancelled
+		assert.Equal(t, "client_cancelled", info.TransportTrace.Snapshot().End)
+	})
 }

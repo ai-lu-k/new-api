@@ -23,7 +23,11 @@ type UserQuotaAdjustment struct {
 	After    int
 }
 
-func AdjustUserQuota(userID, operatorRole int, mode string, value int) (*UserQuotaAdjustment, error) {
+// AdjustUserQuota applies one manual balance change. reason decides whether an
+// addition is money received outside the checkout (a top-up, paid reason) or a
+// gift: a gift only increases the wallet and the gift ledger, never the level
+// ledger.
+func AdjustUserQuota(userID, operatorRole int, mode string, value int, reason string) (*UserQuotaAdjustment, error) {
 	if userID <= 0 || (mode != "add" && mode != "subtract" && mode != "override") {
 		return nil, ErrInvalidUserQuotaAdjustment
 	}
@@ -57,10 +61,28 @@ func AdjustUserQuota(userID, operatorRole int, mode string, value int) (*UserQuo
 		if err != nil {
 			return ErrWalletQuotaLimitExceeded
 		}
+		updates := map[string]any{}
 		// An unchanged override is a successful operation, including on MySQL
 		// configurations that count only changed rows in RowsAffected.
 		if after != user.Quota {
-			result := tx.Model(&User{}).Where("id = ?", userID).Update("quota", after)
+			updates["quota"] = after
+		}
+		switch {
+		case mode == "add" && !IsPaidQuotaAddReason(reason):
+			updates["bonus_quota"] = gorm.Expr("bonus_quota + ?", value)
+		case mode == "override" && after > user.Quota:
+			// Raising the balance through an override hands out money without a
+			// recorded payment, exactly like a gift addition, so it must not buy
+			// level progress either.
+			updates["bonus_quota"] = gorm.Expr("bonus_quota + ?", after-user.Quota)
+		case after < user.Quota:
+			// A deduction leaves less of the balance than before, so the gift
+			// side shrinks by what was taken away and never below zero.
+			taken := user.Quota - after
+			updates["bonus_quota"] = gorm.Expr("CASE WHEN bonus_quota >= ? THEN bonus_quota - ? ELSE 0 END", taken, taken)
+		}
+		if len(updates) > 0 {
+			result := tx.Model(&User{}).Where("id = ?", userID).Updates(updates)
 			if result.Error != nil {
 				return result.Error
 			}

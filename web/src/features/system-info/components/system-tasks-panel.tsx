@@ -17,13 +17,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
-import { ListChecks, RefreshCw } from 'lucide-react'
+import { RefreshCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { ErrorState } from '@/components/error-state'
+import {
+  SectionPanel,
+  type SectionPanelStatus,
+} from '@/components/section-panel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Skeleton } from '@/components/ui/skeleton'
 import { listSystemTasks } from '@/features/system-settings/api'
 import { createServerError } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
@@ -55,24 +57,20 @@ export function SystemTasksPanel() {
   const refreshing = tasksQuery.isFetching && !loading
   const hasActiveTasks = activeTasks.length > 0
 
+  let panelStatus: SectionPanelStatus = 'ready'
+  if (loading) panelStatus = 'loading'
+  else if (tasksQuery.isError) panelStatus = 'error'
+
+  const errorDescription =
+    tasksQuery.error instanceof Error ? tasksQuery.error.message : undefined
+
   return (
-    <section className='bg-card overflow-hidden rounded-lg border shadow-xs'>
-      <div className='flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5'>
-        <div className='min-w-0'>
-          <div className='flex items-center gap-2'>
-            <span className='bg-muted text-muted-foreground inline-flex size-7 items-center justify-center rounded-md'>
-              <ListChecks className='size-4' aria-hidden='true' />
-            </span>
-            <div className='min-w-0'>
-              <h3 className='text-sm font-semibold'>{t('System Tasks')}</h3>
-              <p className='text-muted-foreground mt-0.5 text-xs'>
-                {t(
-                  'Recent maintenance tasks running across instances and their execution status.'
-                )}
-              </p>
-            </div>
-          </div>
-        </div>
+    <SectionPanel
+      title={t('System Tasks')}
+      description={t(
+        'Recent maintenance tasks running across instances and their execution status.'
+      )}
+      actions={
         <div className='flex shrink-0 items-center gap-3'>
           <span
             className='text-muted-foreground inline-flex items-center gap-1.5 text-xs'
@@ -107,57 +105,37 @@ export function SystemTasksPanel() {
             {refreshing ? t('Refreshing...') : t('Refresh')}
           </Button>
         </div>
-      </div>
-
+      }
+      status={panelStatus}
+      errorMessage={errorDescription}
+      onRetry={() => void tasksQuery.refetch()}
+      placeholderClassName='h-40'
+    >
       <div aria-busy={tasksQuery.isFetching}>
-        {loading && (
-          <div className='space-y-2 p-4 sm:p-5'>
-            <Skeleton className='h-9 w-full rounded-md' />
-            <Skeleton className='h-9 w-full rounded-md' />
-            <Skeleton className='h-9 w-full rounded-md' />
-            <Skeleton className='h-9 w-full rounded-md' />
-          </div>
-        )}
-        {!loading && tasksQuery.isError && (
-          <ErrorState
-            title={t('We could not load system tasks.')}
-            description={
-              tasksQuery.error instanceof Error
-                ? tasksQuery.error.message
-                : undefined
-            }
-            onRetry={() => {
-              void tasksQuery.refetch()
-            }}
-            className='min-h-[260px]'
-          />
-        )}
-        {!loading && !tasksQuery.isError && (
-          <div className='space-y-4 p-4 sm:p-5'>
+        <div>
+          <div className='mb-2 flex items-center justify-between gap-3'>
             <div>
-              <div className='mb-2 flex items-center justify-between gap-3'>
-                <div>
-                  <h4 className='text-sm font-medium'>{t('Active Tasks')}</h4>
-                  <p className='text-muted-foreground mt-0.5 text-xs'>
-                    {t('Tasks currently pending or running.')}
-                  </p>
-                </div>
-                <Badge variant='outline'>{activeTasks.length}</Badge>
-              </div>
-              {activeTasks.length > 0 ? (
-                <SystemTasksTable tasks={activeTasks} />
-              ) : (
-                <div className='text-muted-foreground rounded-md border border-dashed px-4 py-6 text-center text-sm'>
-                  {t('No active system tasks.')}
-                </div>
-              )}
+              <h4 className='text-sm font-medium'>{t('Active Tasks')}</h4>
+              <p className='text-muted-foreground mt-0.5 text-xs'>
+                {t('Tasks currently pending or running.')}
+              </p>
             </div>
+            <Badge variant='outline'>{activeTasks.length}</Badge>
           </div>
-        )}
+          {activeTasks.length > 0 ? (
+            <SystemTasksTable tasks={activeTasks} />
+          ) : (
+            <div className='flex items-center py-6'>
+              <p className='text-muted-foreground text-[13px] leading-snug'>
+                {t('No active system tasks.')}
+              </p>
+            </div>
+          )}
+        </div>
       </div>
-      <div className='p-4 pt-0 sm:p-5 sm:pt-0'>
+      <div className='pt-4'>
         <SystemTaskHistory activeRefreshAt={tasksQuery.dataUpdatedAt} />
       </div>
-    </section>
+    </SectionPanel>
   )
 }

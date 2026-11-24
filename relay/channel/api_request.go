@@ -13,6 +13,7 @@ import (
 
 	common2 "github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/pkg/relaytrace"
 	"github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
@@ -316,7 +317,7 @@ func DoApiRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 		return nil, fmt.Errorf("get request url failed: %w", err)
 	}
 	logger.LogDebug(c, "fullRequestURL: %s", common.SanitizeURLForLog(fullRequestURL))
-	req, err := http.NewRequest(c.Request.Method, fullRequestURL, requestBody)
+	req, err := newClientAPIRequest(c, fullRequestURL, requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
 	}
@@ -346,7 +347,7 @@ func DoFormRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBod
 		return nil, fmt.Errorf("get request url failed: %w", err)
 	}
 	logger.LogDebug(c, "fullRequestURL: %s", common.SanitizeURLForLog(fullRequestURL))
-	req, err := http.NewRequest(c.Request.Method, fullRequestURL, requestBody)
+	req, err := newClientAPIRequest(c, fullRequestURL, requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
 	}
@@ -432,7 +433,7 @@ func toWebSocketURL(raw string) string {
 	}
 }
 
-func startPingKeepAlive(c *gin.Context, pingInterval time.Duration) (context.CancelFunc, <-chan struct{}) {
+func startPingKeepAlive(c *gin.Context, pingInterval time.Duration, trace *relaytrace.Attempt) (context.CancelFunc, <-chan struct{}) {
 	pingerCtx, stopPinger := context.WithCancel(context.Background())
 	done := make(chan struct{})
 
@@ -473,7 +474,8 @@ func startPingKeepAlive(c *gin.Context, pingInterval time.Duration) (context.Can
 					logger.LogDebug(c, "SSE ping error, stopping goroutine: %s", err.Error())
 					return
 				}
-			// 收到退出信号
+				trace.Mark("ping", "downstream", 0)
+				// 收到退出信号
 			case <-pingerCtx.Done():
 				return
 			// request 结束
@@ -518,7 +520,12 @@ func keepUpstreamRedirectResponse(_ *http.Request, _ []*http.Request) error {
 }
 
 func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http.Response, error) {
-	client, err := service.GetHttpClientWithProxySettings(info.ChannelSetting.Proxy, info.ChannelSetting)
+	getClient := service.GetHttpClientWithProxySettings
+	cfg := relaytrace.CurrentConfig()
+	if cfg.Enabled {
+		getClient = service.GetPhaseRelayHTTPClient
+	}
+	client, err := getClient(info.ChannelSetting.Proxy, info.ChannelSetting)
 	if err != nil {
 		return nil, fmt.Errorf("new proxy http client failed: %w", err)
 	}
@@ -539,15 +546,44 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 		))
 	}
 
+	path := c.Request.URL.Path
+	if strings.HasPrefix(path, "/v1beta/") || strings.HasPrefix(path, "/v1/models/") {
+		path = "/v1/gemini"
+	}
+	scope := relaytrace.Scope{Channel: info.GetChannelID(), Model: info.UpstreamModelName, Path: path}
+	summary := relaytrace.Summary{Retry: info.RetryIndex, Attempt: len(info.TransportAttempts) + 1, Scope: scope, Effort: info.GetReasoningEffort(), Streaming: info.IsStream, Format: string(info.GetFinalRequestRelayFormat()), Budgets: cfg.Select(scope.Channel, scope.Model, info.GetReasoningEffort())}
+	if !cfg.Enabled && !info.IsStream {
+		summary.Budgets.Idle = 0
+	}
+	latencyInputTokens := service.UpstreamLatencyInputTokens(info)
+	if tokens := latencyInputTokens; tokens > 0 {
+		summary.InputTokens = &tokens
+	}
+	if info.IsStream && (path == "/v1/chat/completions" || path == "/v1/messages" || path == "/v1/responses" || path == "/v1/gemini") {
+		summary.RetryAllUpstreamErrors = info.ChannelSetting.RetryAllUpstreamErrors
+		summary.LatencyBudget = service.SelectUpstreamLatency(scope.Channel, scope.Model, info.GetReasoningEffort(), latencyInputTokens, c.GetString(common2.RequestIdKey))
+	}
+	trace := relaytrace.NewAttempt(relaytrace.Windows, summary, c.GetString(common2.RequestIdKey), time.Now())
+
+	info.TransportTrace = trace
+	if len(info.TransportAttempts) < relaytrace.MaxAttempts {
+		info.TransportAttempts = append(info.TransportAttempts, trace)
+	} else {
+		info.TransportAttemptsTruncated = true
+	}
+	req = trace.Prepare(req, info.StartTime, cfg.Enabled, c.Request.Context())
 	var stopPinger context.CancelFunc
 	var pingerDone <-chan struct{}
 	if info.IsStream {
 		helper.SetEventStreamHeaders(c)
 		// 处理流式请求的 ping 保活
 		generalSettings := operation_setting.GetGeneralSetting()
-		if generalSettings.PingIntervalEnabled && !info.DisablePing {
+		if (generalSettings.PingIntervalEnabled || trace.KeepaliveInterval() > 0) && !info.DisablePing {
 			pingInterval := time.Duration(generalSettings.PingIntervalSeconds) * time.Second
-			stopPinger, pingerDone = startPingKeepAlive(c, pingInterval)
+			if interval := trace.KeepaliveInterval(); interval > 0 && (!generalSettings.PingIntervalEnabled || pingInterval <= 0 || interval < pingInterval) {
+				pingInterval = interval
+			}
+			stopPinger, pingerDone = startPingKeepAlive(c, pingInterval, trace)
 			// 使用defer确保在任何情况下都能停止ping goroutine
 			defer func() {
 				if stopPinger != nil {
@@ -561,12 +597,22 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 
 	resp, err := relayClient.Do(req)
 	if err != nil {
-		logger.LogError(c, "do request failed: "+err.Error())
+		trace.Finish("transport_error", err)
+		snapshot := trace.Snapshot()
+		if clientErr := c.Request.Context().Err(); clientErr != nil {
+			// The caller is gone; retrying another channel would spend quota on
+			// a response nobody can receive.
+			logger.LogInfo(c, fmt.Sprintf("upstream request aborted with the client request: %s user=%d model=%s end=%s phase=%s", clientErr, info.UserId, info.OriginModelName, snapshot.End, snapshot.TimeoutPhase))
+			return nil, types.NewError(clientErr, types.ErrorCodeDoRequestFailed, types.ErrOptionWithSkipRetry(), types.ErrOptionWithHideErrMsg("client closed the request"))
+		}
+		logger.LogError(c, fmt.Sprintf("relay HTTP request failed: end=%s phase=%s: %s", snapshot.End, snapshot.TimeoutPhase, err.Error()))
 		return nil, types.NewError(err, types.ErrorCodeDoRequestFailed, types.ErrOptionWithHideErrMsg("upstream error: do request failed"))
 	}
 	if resp == nil {
+		trace.Finish("transport_error", nil)
 		return nil, errors.New("resp is nil")
 	}
+	trace.Headers(resp, cfg.Enabled)
 	if common2.DebugEnabled {
 		policy := service.NormalizeHTTPTransportPolicy(info.ChannelSetting)
 		logger.LogDebug(c, fmt.Sprintf(
@@ -621,6 +667,16 @@ func DoTaskApiRequest(a TaskAdaptor, c *gin.Context, info *common.RelayInfo, req
 func newTaskAPIRequest(c *gin.Context, fullRequestURL string, requestBody io.Reader) (*http.Request, error) {
 	if c == nil || c.Request == nil {
 		return nil, errors.New("task client request is missing")
+	}
+	return http.NewRequestWithContext(c.Request.Context(), c.Request.Method, fullRequestURL, requestBody)
+}
+
+// newClientAPIRequest binds upstream work to the caller's request. A disconnected
+// client therefore stops the generation upstream instead of consuming quota for a
+// response nobody reads, and the account's concurrency slot is released at once.
+func newClientAPIRequest(c *gin.Context, fullRequestURL string, requestBody io.Reader) (*http.Request, error) {
+	if c == nil || c.Request == nil {
+		return nil, errors.New("client request is missing")
 	}
 	return http.NewRequestWithContext(c.Request.Context(), c.Request.Method, fullRequestURL, requestBody)
 }

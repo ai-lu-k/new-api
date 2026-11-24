@@ -16,9 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { formatBillingCurrencyFromUSD } from '@/lib/currency'
 
-import { TOKEN_UNIT_DIVISORS } from '../constants'
 import type {
   BillingUsageSchema,
   BillingUsageUnit,
@@ -38,6 +36,7 @@ import {
 import { compileBillingExpression } from './billing-expression/parser'
 import { getDisplayGroupRatio } from './model-helpers'
 import { withPluginPricing } from './plugin-pricing'
+import { formatPricingAmount } from './price'
 import {
   evaluateTaskVisualConfig,
   getTaskNumberFields,
@@ -70,7 +69,7 @@ export type DynamicPriceEntry = {
   formattedRange?: string
   minValue?: number
   maxValue?: number
-  unit: 'token' | BillingUsageUnit | 'request' | 'image'
+  unit: 'token' | BillingUsageUnit | 'request' | 'image' | '10k_chars'
   unitLabel?: string | Record<string, string>
   variable?: BillingVar
   description?: string | Record<string, string>
@@ -128,6 +127,7 @@ export function getDynamicPriceUnitLabelKey(
   if (entry.unit === 'token' && !entry.variable) return '1M token'
   if (entry.unit === 'request') return 'request'
   if (entry.unit === 'image') return 'image'
+  if (entry.unit === '10k_chars') return '10k characters'
   return null
 }
 
@@ -204,9 +204,7 @@ export function formatDynamicUnitPrice(
   const groupRatio = options.groupRatioMultiplier ?? 1
   const priceRate = options.priceRate ?? 1
   const usdExchangeRate = options.usdExchangeRate ?? 1
-  const priceUSD =
-    (valuePerMillionTokens * groupRatio) /
-    TOKEN_UNIT_DIVISORS[options.tokenUnit]
+  const priceUSD = valuePerMillionTokens * groupRatio
   const displayPrice = applyRechargeRate(
     priceUSD,
     options.showRechargePrice ?? false,
@@ -214,11 +212,9 @@ export function formatDynamicUnitPrice(
     usdExchangeRate
   )
 
-  return formatBillingCurrencyFromUSD(displayPrice, {
+  return formatPricingAmount(displayPrice, {
     showSymbol: options.showCurrencySymbol ?? true,
-    digitsLarge: 4,
-    digitsSmall: 6,
-    abbreviate: false,
+    tokenUnit: options.tokenUnit,
   })
 }
 
@@ -237,11 +233,8 @@ export function formatTaskUsageUnitPrice(
     usdExchangeRate
   )
 
-  return formatBillingCurrencyFromUSD(displayPrice, {
+  return formatPricingAmount(displayPrice, {
     showSymbol: options.showCurrencySymbol ?? true,
-    digitsLarge: 4,
-    digitsSmall: 6,
-    abbreviate: false,
   })
 }
 
@@ -288,6 +281,21 @@ export function getDynamicPriceEntries(
     tier.billingUnit === 'request' &&
     typeof tier.fixedPrice === 'number'
   ) {
+    if (tier.chars) {
+      const per10k = tier.fixedPrice * 10_000
+      return [
+        {
+          key: 'fixed',
+          field: 'fixedPrice',
+          label: 'Price per 10k characters',
+          shortLabel: 'Per 10k chars',
+          labelKind: 'i18n',
+          value: per10k,
+          formatted: formatTaskUsageUnitPrice(per10k, options),
+          unit: '10k_chars',
+        },
+      ]
+    }
     return [
       {
         key: 'fixed',
@@ -526,6 +534,33 @@ export function getDynamicPricingSummary(
       ]
     }
   }
+  if (
+    !isTaskUsage &&
+    summaryTiers.length > 0 &&
+    summaryTiers.every(
+      (item) =>
+        !isTaskPricingTier(item) &&
+        item.requestConditional === true &&
+        typeof item.fixedPrice === 'number'
+    )
+  ) {
+    const prices = summaryTiers.flatMap((item) =>
+      isTaskPricingTier(item) ? [] : [Number(item.fixedPrice)]
+    )
+    const min = Math.min(...prices)
+    const max = Math.max(...prices)
+    entries = entries.map((entry) => ({
+      ...entry,
+      value: min,
+      minValue: min,
+      maxValue: max,
+      formatted: formatTaskUsageUnitPrice(min, options),
+      formattedRange:
+        min === max
+          ? undefined
+          : `${formatTaskUsageUnitPrice(min, options)} – ${formatTaskUsageUnitPrice(max, options)}`,
+    }))
+  }
   if (isTaskUsage) {
     const priceRanges = new Map<string, { min: number; max: number }>()
     for (const [field] of getTaskNumberFields(model.billing_usage_schema)) {
@@ -574,6 +609,7 @@ export function getDynamicPricingSummary(
           (entry) =>
             entry.unit === 'request' ||
             entry.unit === 'image' ||
+            entry.unit === '10k_chars' ||
             PRIMARY_DYNAMIC_FIELDS.has(entry.field)
         ),
     secondaryEntries: isTaskUsage

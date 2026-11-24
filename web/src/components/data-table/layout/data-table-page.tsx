@@ -60,6 +60,7 @@ import {
 import { DataTableToolbar } from '../toolbar/toolbar'
 import { DataTableViewModeToggle } from '../toolbar/view-mode-toggle'
 import { DataTableCardGrid } from './card-grid'
+import { DataTableFetchingMask } from './data-table-fetching-mask'
 import { MobileCardList } from './mobile-card-list'
 
 /**
@@ -105,7 +106,6 @@ export type DataTablePageProps<TData> = {
   /**
    * Empty-state icon override (desktop only; mobile uses default Database icon).
    */
-  emptyIcon?: React.ReactNode
 
   /**
    * Empty-state extra content — e.g. a "Create" button below the message.
@@ -118,6 +118,8 @@ export type DataTablePageProps<TData> = {
    * If provided, `toolbarProps` is ignored.
    */
   toolbar?: React.ReactNode
+  /** Optional section heading between the filters and the list. */
+  tableHeading?: React.ReactNode
 
   /**
    * Pass-through props for the default {@link DataTableToolbar}.
@@ -351,6 +353,7 @@ export function DataTablePage<TData>(props: DataTablePageProps<TData>) {
         )}
       >
         {toolbarNode}
+        {props.tableHeading}
         {mobileNode}
         {desktopNode}
         {props.afterTable}
@@ -419,7 +422,7 @@ function renderMobile<TData>(
     return null
   }
 
-  const isFetchingOnly = props.isFetching && !props.isLoading
+  const isFetchingOnly = Boolean(props.isFetching) && !props.isLoading
   const ownGetRowClassName = props.getRowClassName
   const mobileGetRowClassName =
     props.mobileProps?.getRowClassName ??
@@ -436,7 +439,6 @@ function renderMobile<TData>(
           isLoading={props.isLoading}
           emptyTitle={props.emptyTitle}
           emptyDescription={props.emptyDescription}
-          emptyIcon={props.emptyIcon}
           emptyAction={props.emptyAction}
           skeletonKeyPrefix={props.skeletonKeyPrefix}
           renderRow={props.renderRow}
@@ -447,11 +449,7 @@ function renderMobile<TData>(
           )}
           getColumnClassName={props.getColumnClassName}
           pinnedColumns={props.pinnedColumns}
-          containerClassName={cn(
-            'transition-opacity duration-150',
-            isFetchingOnly && 'pointer-events-none opacity-60',
-            props.tableClassName
-          )}
+          containerClassName={props.tableClassName}
           getRowClassName={(row) =>
             props.getRowClassName?.(row, { isMobile: false })
           }
@@ -464,7 +462,6 @@ function renderMobile<TData>(
           isLoading={props.isLoading}
           emptyTitle={props.emptyTitle}
           emptyDescription={props.emptyDescription}
-          emptyIcon={props.emptyIcon}
           renderCard={props.renderCard}
           gridClassName={props.cardGridClassName ?? 'grid grid-cols-1 gap-3'}
           skeletonKeyPrefix={props.skeletonKeyPrefix}
@@ -487,7 +484,11 @@ function renderMobile<TData>(
     }
   }
 
-  return <div className='min-h-0 flex-1 overflow-y-auto'>{mobileContent}</div>
+  return (
+    <DataTableFetchingMask active={isFetchingOnly} className='min-h-0 flex-1'>
+      <div className='min-h-0 flex-1 overflow-y-auto'>{mobileContent}</div>
+    </DataTableFetchingMask>
+  )
 }
 
 function renderDesktop<TData>(
@@ -500,63 +501,63 @@ function renderDesktop<TData>(
     return null
   }
 
-  const isFetchingOnly = props.isFetching && !props.isLoading
+  const isFetchingOnly = Boolean(props.isFetching) && !props.isLoading
   const fixedHeight = props.fixedHeight !== false
 
   if (cardViewActive && viewMode === DATA_TABLE_VIEW_MODES.CARD) {
     return (
-      <div
-        className={cn(
-          fixedHeight && 'min-h-0 flex-1 overflow-y-auto',
-          'transition-opacity duration-150',
-          isFetchingOnly && 'pointer-events-none opacity-60'
-        )}
+      <DataTableFetchingMask
+        active={isFetchingOnly}
+        className={cn(fixedHeight && 'min-h-0 flex-1')}
       >
-        <DataTableCardGrid
-          table={props.table}
-          isLoading={props.isLoading}
-          emptyTitle={props.emptyTitle}
-          emptyDescription={props.emptyDescription}
-          emptyIcon={props.emptyIcon}
-          renderCard={props.renderCard}
-          gridClassName={props.cardGridClassName}
-          skeletonKeyPrefix={props.skeletonKeyPrefix}
-          getRowClassName={(row) =>
-            props.getRowClassName?.(row, { isMobile: false })
-          }
-        />
-      </div>
+        <div className='min-h-0 flex-1 overflow-y-auto'>
+          <DataTableCardGrid
+            table={props.table}
+            isLoading={props.isLoading}
+            emptyTitle={props.emptyTitle}
+            emptyDescription={props.emptyDescription}
+            renderCard={props.renderCard}
+            gridClassName={props.cardGridClassName}
+            skeletonKeyPrefix={props.skeletonKeyPrefix}
+            getRowClassName={(row) =>
+              props.getRowClassName?.(row, { isMobile: false })
+            }
+          />
+        </div>
+      </DataTableFetchingMask>
     )
   }
 
   return (
-    <DataTableView
-      table={props.table}
-      isLoading={props.isLoading}
-      emptyTitle={props.emptyTitle}
-      emptyDescription={props.emptyDescription}
-      emptyIcon={props.emptyIcon}
-      emptyAction={props.emptyAction}
-      skeletonKeyPrefix={props.skeletonKeyPrefix}
-      renderRow={props.renderRow}
-      applyHeaderSize={props.applyHeaderSize}
-      splitHeader={fixedHeight}
-      tableContainerClassName={fixedHeight ? 'h-full min-h-0' : undefined}
-      tableHeaderClassName={cn(
-        fixedHeight && '[background-color:var(--table-header)]',
-        props.tableHeaderClassName
-      )}
-      getColumnClassName={props.getColumnClassName}
-      pinnedColumns={props.pinnedColumns}
-      containerClassName={cn(
-        fixedHeight && 'min-h-0 flex-1',
-        'transition-opacity duration-150',
-        isFetchingOnly && 'pointer-events-none opacity-60',
-        props.tableClassName
-      )}
-      getRowClassName={(row) =>
-        props.getRowClassName?.(row, { isMobile: false })
-      }
-    />
+    <DataTableFetchingMask
+      active={isFetchingOnly}
+      className={cn(fixedHeight && 'min-h-0 flex-1')}
+    >
+      <DataTableView
+        table={props.table}
+        isLoading={props.isLoading}
+        emptyTitle={props.emptyTitle}
+        emptyDescription={props.emptyDescription}
+        emptyAction={props.emptyAction}
+        skeletonKeyPrefix={props.skeletonKeyPrefix}
+        renderRow={props.renderRow}
+        applyHeaderSize={props.applyHeaderSize}
+        splitHeader={fixedHeight}
+        tableContainerClassName={fixedHeight ? 'h-full min-h-0' : undefined}
+        tableHeaderClassName={cn(
+          fixedHeight && '[background-color:var(--table-header)]',
+          props.tableHeaderClassName
+        )}
+        getColumnClassName={props.getColumnClassName}
+        pinnedColumns={props.pinnedColumns}
+        containerClassName={cn(
+          fixedHeight && 'min-h-0 flex-1',
+          props.tableClassName
+        )}
+        getRowClassName={(row) =>
+          props.getRowClassName?.(row, { isMobile: false })
+        }
+      />
+    </DataTableFetchingMask>
   )
 }

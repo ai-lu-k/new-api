@@ -51,6 +51,7 @@ func requestPolicyDefaultOptions() map[string]string {
 			defaults[prefix+field] = value
 		}
 	}
+	defaults[ModelDailyTokenLimitsOption] = DefaultModelDailyTokenLimits
 	defaults["RetryTimes"] = strconv.Itoa(common.RetryTimes)
 	defaults["AutomaticRetryStatusCodes"] = operation_setting.AutomaticRetryStatusCodesToString()
 	defaults["AutomaticDisableStatusCodes"] = operation_setting.AutomaticDisableStatusCodesToString()
@@ -69,7 +70,7 @@ func IsRequestPolicyOption(key string) bool {
 		return true
 	}
 	switch key {
-	case "CheckSensitiveEnabled", "CheckSensitiveOnPromptEnabled", "SensitiveWords", "AutomaticEnableChannelEnabled", "ChannelDisableThreshold", "monitor_setting.auto_test_channel_enabled", "monitor_setting.auto_test_channel_minutes", "monitor_setting.channel_test_concurrency", "monitor_setting.channel_test_mode", "RetryTimes", "AutomaticRetryStatusCodes", "AutomaticDisableChannelEnabled", "AutomaticDisableStatusCodes", "AutomaticDisableKeywords":
+	case ModelDailyTokenLimitsOption, "CheckSensitiveEnabled", "CheckSensitiveOnPromptEnabled", "SensitiveWords", "AutomaticEnableChannelEnabled", "ChannelDisableThreshold", "monitor_setting.auto_test_channel_enabled", "monitor_setting.auto_test_channel_minutes", "monitor_setting.channel_test_concurrency", "monitor_setting.channel_test_mode", "RetryTimes", "AutomaticRetryStatusCodes", "AutomaticDisableChannelEnabled", "AutomaticDisableStatusCodes", "AutomaticDisableKeywords":
 		return true
 	}
 	return false
@@ -98,6 +99,13 @@ func BuildRequestPolicy(options map[string]string) (*RequestPolicySnapshot, erro
 	}
 	maps.Copy(raw, options)
 	snapshot := &RequestPolicySnapshot{Options: raw}
+	var tokenLimits ModelTokenLimits
+	if err := common.UnmarshalJsonStr(raw[ModelDailyTokenLimitsOption], &tokenLimits); err != nil {
+		return nil, err
+	}
+	if err := ValidateModelTokenLimits(tokenLimits, false); err != nil {
+		return nil, err
+	}
 	affinityFields := map[string]string{}
 	for key, value := range raw {
 		if field, ok := strings.CutPrefix(key, "channel_affinity_setting."); ok {

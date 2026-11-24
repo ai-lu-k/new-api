@@ -5,10 +5,12 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Calcium-Ion/go-epay/epay"
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -101,11 +103,14 @@ func SubscriptionRequestEpay(c *gin.Context) {
 	uri, params, err := client.Purchase(&epay.PurchaseArgs{
 		Type:           req.PaymentMethod,
 		ServiceTradeNo: tradeNo,
-		Name:           fmt.Sprintf("SUB:%s", plan.Title),
-		Money:          strconv.FormatFloat(plan.PriceAmount, 'f', 2, 64),
-		Device:         epay.PC,
-		NotifyUrl:      notifyUrl,
-		ReturnUrl:      returnUrl,
+		// The gateway signs the item name verbatim; a title carrying "&" would
+		// let the value be split back into another parameter, so strip it here
+		// and reject such callbacks below.
+		Name:      "SUB:" + strings.NewReplacer("&", "", "=", "").Replace(plan.Title),
+		Money:     strconv.FormatFloat(plan.PriceAmount, 'f', 2, 64),
+		Device:    epay.PC,
+		NotifyUrl: notifyUrl,
+		ReturnUrl: returnUrl,
 	})
 	if err != nil {
 		_ = model.ExpireSubscriptionOrder(tradeNo, model.PaymentProviderEpay)
@@ -137,6 +142,11 @@ func SubscriptionEpayNotify(c *gin.Context) {
 	}
 
 	if len(params) == 0 {
+		_, _ = c.Writer.Write([]byte("fail"))
+		return
+	}
+	if key, unsafe := epayNotificationHasSplittableValue(params); unsafe {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付订阅 webhook 参数含可拆分字符 path=%q client_ip=%s field=%s", c.Request.RequestURI, c.ClientIP(), key))
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
 	}

@@ -51,6 +51,7 @@ import { getMessageContentStyles } from '../../lib/message/message-styles'
 import type { Message } from '../../types'
 import { MessageError } from './message-error'
 import { MessageMetadata } from './message-metadata'
+import { PlaygroundMessageImages } from './playground-message-images'
 
 type PlaygroundMessageContentProps = {
   actions: ReactNode
@@ -83,6 +84,31 @@ export function PlaygroundMessageContent({
   const isMessageFinal =
     message.status !== MESSAGE_STATUS.LOADING &&
     message.status !== MESSAGE_STATUS.STREAMING
+  const images = message.images ?? []
+  const hasImages = images.length > 0
+
+  let textContent: ReactNode = null
+  if (showMessageContent) {
+    textContent = isSourceVisible ? (
+      <CodeBlock
+        code={versionContent}
+        className='my-0 group-[.is-assistant]:w-full group-[.is-assistant]:max-w-[78ch]'
+        collapsedLines={24}
+        defaultCollapsed={false}
+        language='markdown'
+        maxExpandedLines={48}
+        showLineNumbers
+        showToolbar
+        title={t('Raw response')}
+      >
+        <CodeBlockCopyButton />
+      </CodeBlock>
+    ) : (
+      <MessageContent variant='flat' className={cn(getMessageContentStyles())}>
+        <Response final={isMessageFinal}>{displayContent}</Response>
+      </MessageContent>
+    )
+  }
 
   return (
     <div
@@ -134,30 +160,12 @@ export function PlaygroundMessageContent({
         </>
       )}
 
-      {!isError && showMessageContent && (
+      {!isError && (showMessageContent || hasImages) && (
         <>
-          {isSourceVisible ? (
-            <CodeBlock
-              code={versionContent}
-              className='my-0 group-[.is-assistant]:w-full group-[.is-assistant]:max-w-[78ch]'
-              collapsedLines={24}
-              defaultCollapsed={false}
-              language='markdown'
-              maxExpandedLines={48}
-              showLineNumbers
-              showToolbar
-              title={t('Raw response')}
-            >
-              <CodeBlockCopyButton />
-            </CodeBlock>
-          ) : (
-            <MessageContent
-              variant='flat'
-              className={cn(getMessageContentStyles())}
-            >
-              <Response final={isMessageFinal}>{displayContent}</Response>
-            </MessageContent>
+          {hasImages && (
+            <PlaygroundMessageImages className='mb-2' images={images} />
           )}
+          {textContent}
           <MessageMetadata alignment={alignment} message={message} />
           {actions}
         </>

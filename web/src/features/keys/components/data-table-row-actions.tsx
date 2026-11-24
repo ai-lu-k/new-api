@@ -23,7 +23,6 @@ import {
   Power,
   PowerOff,
   ExternalLink,
-  ArrowRightLeft,
   Copy,
   Link,
   Loader2,
@@ -53,6 +52,7 @@ import { sendToFluent } from '@/features/chat/lib/send-to-fluent'
 import { encodeChannelConnectionInfo } from '@/lib/channel-connection-info'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
 import { handleServerError } from '@/lib/handle-server-error'
+import { withViewTransition } from '@/lib/view-transition'
 
 import { updateApiKeyStatus } from '../api'
 import { API_KEY_STATUS, ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
@@ -174,6 +174,23 @@ export function DataTableRowActions<TData>({
 
   return (
     <div className='-ml-1.5 flex items-center gap-1'>
+      {/* The way into a coding client: CC Switch, or the configuration to
+          paste by hand, for this key. */}
+      <Button
+        variant='outline'
+        size='sm'
+        className='me-1 h-7'
+        disabled={isRealKeyLoading || !isEnabled}
+        onClick={async () => {
+          const realKey = await resolveRealKey(apiKey.id)
+          if (!realKey) return
+          setResolvedKey(realKey)
+          setCurrentRow(apiKey)
+          setOpen('quick-import')
+        }}
+      >
+        {t('Quick import')}
+      </Button>
       <Tooltip>
         <TooltipTrigger
           render={
@@ -203,8 +220,12 @@ export function DataTableRowActions<TData>({
               variant='ghost'
               size='icon-sm'
               onClick={() => {
-                setCurrentRow(apiKey)
-                setOpen('update')
+                // The name has to travel from this row into the drawer, so the
+                // state change happens inside one view transition.
+                withViewTransition(() => {
+                  setCurrentRow(apiKey)
+                  setOpen('update')
+                })
               }}
               aria-label={t('Edit')}
             />
@@ -252,21 +273,7 @@ export function DataTableRowActions<TData>({
             <Link size={16} />
           </DropdownMenuShortcut>
         </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onClick={async () => {
-            const realKey = await resolveRealKey(apiKey.id)
-            if (!realKey) return
-            setResolvedKey(realKey)
-            setCurrentRow(apiKey)
-            setOpen('cc-switch')
-          }}
-        >
-          {t('CC Switch')}
-          <DropdownMenuShortcut>
-            <ArrowRightLeft size={16} />
-          </DropdownMenuShortcut>
-        </DropdownMenuItem>
+        {hasChatPresets && <DropdownMenuSeparator />}
         {hasChatPresets && (
           <DropdownMenuSub>
             <DropdownMenuSubTrigger>{t('Chat')}</DropdownMenuSubTrigger>

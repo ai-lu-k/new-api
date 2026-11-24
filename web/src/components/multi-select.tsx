@@ -23,6 +23,7 @@ import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { Button } from '@/components/ui/button'
 import {
   Combobox,
   ComboboxChip,
@@ -32,6 +33,10 @@ import {
   ComboboxContent,
   ComboboxEmpty,
   ComboboxItem,
+  ComboboxGroup,
+  ComboboxLabel,
+  ComboboxInput,
+  ComboboxTrigger,
   ComboboxList,
   ComboboxValue,
   useComboboxAnchor,
@@ -40,6 +45,8 @@ import { copyToClipboard } from '@/lib/copy-to-clipboard'
 import { cn } from '@/lib/utils'
 
 export type Option = {
+  group?: string
+  description?: string
   label: string
   value: string
   /**
@@ -55,6 +62,11 @@ export type Option = {
 }
 
 interface MultiSelectProps {
+  /** Compact button with search inside the popup; chips remain the default. */
+  variant?: 'chips' | 'dropdown'
+  triggerLabel?: string
+  popupFooter?: React.ReactNode | ((close: () => void) => React.ReactNode)
+  popupClassName?: string
   options: Option[]
   selected: string[]
   onChange: (values: string[]) => void
@@ -291,10 +303,98 @@ export function MultiSelect(props: MultiSelectProps) {
     }
   }
 
+  const matchesSearch = (item: string, query: string) => {
+    const option = props.options.find((option) => option.value === item)
+    const text = [
+      item,
+      option?.label,
+      option?.hint,
+      option?.description,
+      option?.group,
+    ]
+      .join(' ')
+      .toLowerCase()
+    return text.includes(query.trim().toLowerCase())
+  }
+  const groups = new Map<string, string[]>()
+  if (props.options.some((option) => option.group)) {
+    for (const item of items) {
+      if (!matchesSearch(item, inputValue)) continue
+      const group =
+        props.options.find((option) => option.value === item)?.group ?? ''
+      const values = groups.get(group) ?? []
+      values.push(item)
+      groups.set(group, values)
+    }
+  }
+
+  const renderOption = (item: string) => {
+    const isCreate = canCreate && item === trimmedInput
+    const label = labelMap.get(item) ?? item
+    const hint = hintMap.get(item)
+    const description = props.options.find(
+      (option) => option.value === item
+    )?.description
+    const icon = iconMap.get(item)
+    return (
+      <ComboboxItem
+        key={item}
+        value={item}
+        className={cn(
+          isCreate && 'text-foreground',
+          description && 'py-2 data-selected:bg-primary/5'
+        )}
+        aria-label={description ? label : undefined}
+        aria-description={description ?? hint}
+      >
+        {isCreate ? (
+          <>
+            <HugeiconsIcon
+              icon={Add01Icon}
+              strokeWidth={2}
+              className='text-muted-foreground'
+              aria-hidden='true'
+            />
+            <span className='truncate'>
+              {props.createLabel
+                ? t(props.createLabel, { value: item })
+                : t('Add "{{value}}"', { value: item })}
+            </span>
+          </>
+        ) : (
+          <>
+            {icon && (
+              <span aria-hidden='true' className='inline-flex shrink-0'>
+                {icon}
+              </span>
+            )}
+            <span className='min-w-0 flex-1'>
+              <span className='block truncate'>{label}</span>
+              {description && (
+                <span className='text-muted-foreground mt-0.5 block text-xs leading-5 whitespace-normal'>
+                  {description}
+                </span>
+              )}
+            </span>
+            {hint && (
+              <span
+                aria-hidden='true'
+                className='text-muted-foreground ml-auto max-w-40 shrink-0 truncate text-xs'
+              >
+                {hint}
+              </span>
+            )}
+          </>
+        )}
+      </ComboboxItem>
+    )
+  }
+
   return (
     <Combobox
       multiple
       items={items}
+      filter={matchesSearch}
       value={props.selected}
       onValueChange={handleValueChange}
       inputValue={inputValue}
@@ -303,177 +403,173 @@ export function MultiSelect(props: MultiSelectProps) {
       onOpenChange={setOpen}
       disabled={props.disabled}
     >
-      <ComboboxChips
-        ref={chipsAnchorRef}
-        className={cn('w-full', props.className)}
-      >
-        <ComboboxValue>
-          {(values: string[]) => {
-            if (props.renderSelectedSummary) {
+      {props.variant === 'dropdown' ? (
+        <ComboboxTrigger
+          id={props.id}
+          render={<Button variant='outline' size='sm' />}
+          aria-label={props.triggerLabel ?? placeholder}
+          className={props.className}
+        >
+          {props.renderSelectedSummary?.(props.selected) ??
+            props.triggerLabel ??
+            placeholder}
+        </ComboboxTrigger>
+      ) : (
+        <ComboboxChips
+          ref={chipsAnchorRef}
+          className={cn('w-full', props.className)}
+        >
+          <ComboboxValue>
+            {(values: string[]) => {
+              if (props.renderSelectedSummary) {
+                return (
+                  <span className='bg-muted text-muted-foreground flex h-[calc(--spacing(5.25))] w-fit items-center justify-center rounded-sm px-1.5 font-mono text-xs font-medium whitespace-nowrap'>
+                    {props.renderSelectedSummary(values)}
+                  </span>
+                )
+              }
+
+              const shouldLimit =
+                typeof props.maxVisibleChips === 'number' && !expanded
+              const visibleValues = shouldLimit
+                ? values.slice(0, props.maxVisibleChips)
+                : values
+              const hiddenCount = values.length - visibleValues.length
+
               return (
-                <span className='bg-muted text-muted-foreground flex h-[calc(--spacing(5.25))] w-fit items-center justify-center rounded-sm px-1.5 font-mono text-xs font-medium whitespace-nowrap'>
-                  {props.renderSelectedSummary(values)}
-                </span>
-              )
-            }
-
-            const shouldLimit =
-              typeof props.maxVisibleChips === 'number' && !expanded
-            const visibleValues = shouldLimit
-              ? values.slice(0, props.maxVisibleChips)
-              : values
-            const hiddenCount = values.length - visibleValues.length
-
-            return (
-              <>
-                {visibleValues.map((value) => {
-                  const label = labelMap.get(value) ?? value
-                  const hint = hintMap.get(value)
-                  const icon = iconMap.get(value)
-                  return (
-                    <ComboboxChip key={value}>
-                      {icon && (
-                        <span
-                          aria-hidden='true'
-                          className='inline-flex shrink-0'
-                        >
-                          {icon}
-                        </span>
-                      )}
-                      {props.copyChipOnClick ? (
-                        <button
-                          type='button'
-                          onClick={(event) =>
-                            handleCopyChip(event, value, label)
-                          }
-                          onPointerDown={(event) => event.stopPropagation()}
-                          title={t('Click to copy')}
-                          className='max-w-[16rem] cursor-pointer truncate rounded-sm hover:underline'
-                        >
-                          {label}
-                        </button>
-                      ) : (
-                        <span className='max-w-[16rem] truncate'>{label}</span>
-                      )}
-                      {hint && (
-                        <span
-                          title={hint}
-                          aria-hidden='true'
-                          className='text-muted-foreground inline-flex shrink-0'
-                        >
-                          <ArrowRightLeft className='size-3' />
-                        </span>
-                      )}
-                    </ComboboxChip>
-                  )
-                })}
-                {hiddenCount > 0 && (
-                  <button
-                    type='button'
-                    onClick={(event) => {
-                      event.preventDefault()
-                      event.stopPropagation()
-                      setExpanded(true)
-                    }}
-                    onPointerDown={(event) => event.stopPropagation()}
-                    title={t('Show All')}
-                    className='bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground flex h-[calc(--spacing(5.25))] w-fit cursor-pointer items-center justify-center rounded-sm px-1.5 text-xs font-medium whitespace-nowrap transition-colors'
-                  >
-                    {t('+{{count}} more', { count: hiddenCount })}
-                  </button>
-                )}
-                {expanded &&
-                  typeof props.maxVisibleChips === 'number' &&
-                  values.length > props.maxVisibleChips && (
+                <>
+                  {visibleValues.map((value) => {
+                    const label = labelMap.get(value) ?? value
+                    const hint = hintMap.get(value)
+                    const icon = iconMap.get(value)
+                    return (
+                      <ComboboxChip key={value}>
+                        {icon && (
+                          <span
+                            aria-hidden='true'
+                            className='inline-flex shrink-0'
+                          >
+                            {icon}
+                          </span>
+                        )}
+                        {props.copyChipOnClick ? (
+                          <button
+                            type='button'
+                            onClick={(event) =>
+                              handleCopyChip(event, value, label)
+                            }
+                            onPointerDown={(event) => event.stopPropagation()}
+                            title={t('Click to copy')}
+                            className='max-w-[16rem] cursor-pointer truncate rounded-sm hover:underline'
+                          >
+                            {label}
+                          </button>
+                        ) : (
+                          <span className='max-w-[16rem] truncate'>
+                            {label}
+                          </span>
+                        )}
+                        {hint && (
+                          <span
+                            title={hint}
+                            aria-hidden='true'
+                            className='text-muted-foreground inline-flex shrink-0'
+                          >
+                            <ArrowRightLeft className='size-3' />
+                          </span>
+                        )}
+                      </ComboboxChip>
+                    )
+                  })}
+                  {hiddenCount > 0 && (
                     <button
                       type='button'
                       onClick={(event) => {
                         event.preventDefault()
                         event.stopPropagation()
-                        setExpanded(false)
+                        setExpanded(true)
                       }}
                       onPointerDown={(event) => event.stopPropagation()}
-                      title={t('Collapse')}
+                      title={t('Show All')}
                       className='bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground flex h-[calc(--spacing(5.25))] w-fit cursor-pointer items-center justify-center rounded-sm px-1.5 text-xs font-medium whitespace-nowrap transition-colors'
                     >
-                      {t('Collapse')}
+                      {t('+{{count}} more', { count: hiddenCount })}
                     </button>
                   )}
-              </>
-            )
-          }}
-        </ComboboxValue>
-        <ComboboxChipsInput
-          id={props.id}
-          placeholder={
-            props.selected.length === 0 && !props.renderSelectedSummary
-              ? placeholder
-              : undefined
-          }
-          onKeyDown={handleKeyDown}
-          onPaste={handlePaste}
-          aria-label={placeholder}
-        />
-      </ComboboxChips>
-
-      <ComboboxContent anchor={chipsAnchorRef}>
-        <ComboboxList>
-          <ComboboxCollection>
-            {(item: string) => {
-              const isCreate = canCreate && item === trimmedInput
-              const label = labelMap.get(item) ?? item
-              const hint = hintMap.get(item)
-              const icon = iconMap.get(item)
-              return (
-                <ComboboxItem
-                  key={item}
-                  value={item}
-                  className={isCreate ? 'text-foreground' : undefined}
-                  aria-description={hint}
-                >
-                  {isCreate ? (
-                    <>
-                      <HugeiconsIcon
-                        icon={Add01Icon}
-                        strokeWidth={2}
-                        className='text-muted-foreground'
-                        aria-hidden='true'
-                      />
-                      <span className='truncate'>
-                        {props.createLabel
-                          ? t(props.createLabel, { value: item })
-                          : t('Add "{{value}}"', { value: item })}
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      {icon && (
-                        <span
-                          aria-hidden='true'
-                          className='inline-flex shrink-0'
-                        >
-                          {icon}
-                        </span>
-                      )}
-                      <span className='truncate'>{label}</span>
-                      {hint && (
-                        <span
-                          aria-hidden='true'
-                          className='text-muted-foreground ml-auto max-w-40 shrink-0 truncate text-xs'
-                        >
-                          {hint}
-                        </span>
-                      )}
-                    </>
-                  )}
-                </ComboboxItem>
+                  {expanded &&
+                    typeof props.maxVisibleChips === 'number' &&
+                    values.length > props.maxVisibleChips && (
+                      <button
+                        type='button'
+                        onClick={(event) => {
+                          event.preventDefault()
+                          event.stopPropagation()
+                          setExpanded(false)
+                        }}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        title={t('Collapse')}
+                        className='bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground flex h-[calc(--spacing(5.25))] w-fit cursor-pointer items-center justify-center rounded-sm px-1.5 text-xs font-medium whitespace-nowrap transition-colors'
+                      >
+                        {t('Collapse')}
+                      </button>
+                    )}
+                </>
               )
             }}
-          </ComboboxCollection>
+          </ComboboxValue>
+          <ComboboxChipsInput
+            id={props.id}
+            placeholder={
+              props.selected.length === 0 && !props.renderSelectedSummary
+                ? placeholder
+                : undefined
+            }
+            onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
+            aria-label={placeholder}
+          />
+        </ComboboxChips>
+      )}
+
+      <ComboboxContent
+        anchor={props.variant === 'dropdown' ? undefined : chipsAnchorRef}
+        align={props.variant === 'dropdown' ? 'end' : 'start'}
+        className={cn(
+          props.variant === 'dropdown' && 'w-80 min-w-0',
+          props.popupClassName
+        )}
+      >
+        {props.variant === 'dropdown' && (
+          <ComboboxInput
+            aria-label={placeholder}
+            placeholder={placeholder}
+            showTrigger={false}
+            onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
+          />
+        )}
+        <ComboboxList>
+          {props.options.some((option) => option.group) ? (
+            [...groups].map(([group, values]) => (
+              <ComboboxGroup key={group}>
+                {group && <ComboboxLabel>{group}</ComboboxLabel>}
+                {values.map(renderOption)}
+              </ComboboxGroup>
+            ))
+          ) : (
+            <ComboboxCollection>{renderOption}</ComboboxCollection>
+          )}
         </ComboboxList>
         <ComboboxEmpty>
           {props.emptyText ?? t('No matching items')}
         </ComboboxEmpty>
+        {props.popupFooter && (
+          <div className='border-t p-2'>
+            {typeof props.popupFooter === 'function'
+              ? props.popupFooter(() => setOpen(false))
+              : props.popupFooter}
+          </div>
+        )}
       </ComboboxContent>
     </Combobox>
   )

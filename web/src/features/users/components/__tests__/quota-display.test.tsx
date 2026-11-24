@@ -45,7 +45,6 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import zh from '@/i18n/locales/zh.json'
 import { api } from '@/lib/api'
-import { formatTimestampToDate } from '@/lib/format'
 import { useAuthStore } from '@/stores/auth-store'
 import {
   DEFAULT_CURRENCY_CONFIG,
@@ -65,7 +64,11 @@ await i18n.init({
   initAsync: false,
 })
 
-function QuotaTable(props: { remaining: number; used: number }) {
+function QuotaTable(props: {
+  remaining: number
+  used: number
+  usageSource?: User['usage_source']
+}) {
   const columns = useUsersColumns().filter((column) =>
     ['quota', 'used_quota'].includes(
       column.id ?? ('accessorKey' in column ? String(column.accessorKey) : '')
@@ -82,6 +85,7 @@ function QuotaTable(props: { remaining: number; used: number }) {
         status: 1,
         quota: props.remaining,
         used_quota: props.used,
+        usage_source: props.usageSource,
         request_count: 0,
         group: 'default',
       } as User,
@@ -141,7 +145,7 @@ it('shows balance above secondary usage text and opens quota details on click', 
     </I18nextProvider>
   )
   expect(
-    screen.getByRole('columnheader', { name: 'Available Balance ($)' })
+    screen.getByRole('columnheader', { name: /Available Balance/ })
   ).toHaveAttribute('data-sortable', 'true')
   expect(screen.getAllByRole('columnheader')).toHaveLength(1)
   const cells = screen.getAllByRole('cell')
@@ -188,15 +192,15 @@ it.each([0, 500000])(
       expect(screen.queryByText('Used amount')).not.toBeInTheDocument()
       await userEvent.click(screen.getByRole('button', { name: 'No Quota' }))
       const detail = await screen.findByRole('dialog', { name: 'Quota ($)' })
-      expect(within(detail).getAllByText('0')).toHaveLength(2)
+      expect(within(detail).getAllByText('0.00')).toHaveLength(2)
       return
     }
     expect(screen.queryByText('No Quota')).not.toBeInTheDocument()
     expect(
-      within(screen.getAllByRole('cell')[0]).getByText('0')
+      within(screen.getAllByRole('cell')[0]).getByText('0.00')
     ).toBeInTheDocument()
     expect(
-      within(screen.getAllByRole('cell')[0]).getByText('1')
+      within(screen.getAllByRole('cell')[0]).getByText('1.00')
     ).toBeInTheDocument()
   }
 )
@@ -207,13 +211,25 @@ it('preserves negative balances in details opened with the keyboard', async () =
       <QuotaTable remaining={-500000} used={1000000} />
     </I18nextProvider>
   )
-  expect(screen.getByText('-1')).toHaveClass('text-destructive')
-  expect(screen.getByText('2')).toBeInTheDocument()
+  expect(screen.getByText('-1.00')).toHaveClass('text-destructive')
+  expect(screen.getByText('2.00')).toBeInTheDocument()
+  // The column heading owns the first tab stop; the balance cell follows it.
   await userEvent.tab()
+  expect(
+    screen.getByRole('button', { name: 'Available Balance' })
+  ).toHaveFocus()
+  await userEvent.tab()
+  expect(screen.getByRole('combobox', { name: 'Sort by' })).toHaveFocus()
+  await userEvent.tab()
+  expect(
+    screen.getByRole('button', {
+      name: 'Available Balance -1.00; Used amount 2.00',
+    })
+  ).toHaveFocus()
   await userEvent.keyboard('{Enter}')
   const detail = await screen.findByRole('dialog')
-  expect(within(detail).getByText('-1')).toBeInTheDocument()
-  expect(within(detail).getByText('2')).toBeInTheDocument()
+  expect(within(detail).getByText('-1.00')).toBeInTheDocument()
+  expect(within(detail).getByText('2.00')).toBeInTheDocument()
 })
 
 it('shows the custom symbol only in the column header', () => {
@@ -231,7 +247,7 @@ it('shows the custom symbol only in the column header', () => {
     </I18nextProvider>
   )
   expect(
-    screen.getByRole('columnheader', { name: 'Available Balance (🐱)' })
+    screen.getByRole('columnheader', { name: /Available Balance/ })
   ).toBeInTheDocument()
   for (const cell of screen.getAllByRole('cell')) {
     expect(cell).not.toHaveTextContent('🐱')
@@ -269,6 +285,12 @@ async function renderUsersList(emptyInvitation = false) {
             status: 1,
             quota: 1900,
             used_quota: 1100,
+            usage_source: {
+              gift_used: 600,
+              token_plan_used: 400,
+              gift_plan_used: 1000,
+              gift_known: true,
+            },
             request_count: 0,
             created_at: Math.floor(Date.now() / 1000) - 86400,
             last_login_at: Math.floor(Date.now() / 1000) - 20,
@@ -309,25 +331,58 @@ async function renderUsersList(emptyInvitation = false) {
   return get
 }
 
-it('sends balance sorting to the server and keeps invitation details on two lines', async () => {
+it('sorts the balance column from its heading and reverses on the next click', async () => {
   const get = await renderUsersList()
+  // The current instance only has the default group, so no group column is
+  // rendered at all.
   expect(
-    screen.getByRole('columnheader', { name: 'User Group' })
-  ).toBeInTheDocument()
+    screen.queryByRole('columnheader', { name: 'User Group' })
+  ).not.toBeInTheDocument()
+  // Like the model list, the first click sorts by the column's own figures.
   await userEvent.click(
-    screen.getByRole('button', { name: 'Available Balance ($)' })
+    screen.getByRole('button', { name: 'Available Balance' })
   )
-  await userEvent.click(screen.getByRole('menuitem', { name: 'Desc' }))
   await waitFor(() =>
     expect(get).toHaveBeenCalledWith('/api/user/', {
       params: expect.objectContaining({ sort_by: 'quota', sort_order: 'desc' }),
     })
   )
+  // The same heading then reverses the direction.
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Available Balance Desc' })
+  )
+  await waitFor(() =>
+    expect(get).toHaveBeenCalledWith('/api/user/', {
+      params: expect.objectContaining({ sort_by: 'quota', sort_order: 'asc' }),
+    })
+  )
+  // Invite details stay out of the default table; the column menu brings them
+  // back without spending width on every row.
+  expect(screen.queryByText('Inviter ID: 42')).not.toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Toggle columns' }))
+  await userEvent.click(
+    screen.getByRole('menuitemcheckbox', { name: 'Invite Info' })
+  )
   expect(
-    screen.queryByRole('button', { name: 'Total Used' })
-  ).not.toBeInTheDocument()
+    screen.getByRole('columnheader', { name: 'Invite Info' })
+  ).toBeInTheDocument()
   expect(screen.getByText('Inviter ID: 42')).toBeInTheDocument()
   expect(screen.getByText(/Invited 2 users · Earnings:/)).toBeInTheDocument()
+})
+
+it('renders no selection column while the page has no batch action', async () => {
+  await renderUsersList()
+  expect(screen.queryAllByRole('checkbox')).toHaveLength(0)
+  expect(screen.queryByText(/selected/i)).not.toBeInTheDocument()
+})
+
+it('drops the usage level column while levels are offline', async () => {
+  await renderUsersList()
+
+  // Sorting on a level column that no longer renders would be a dead control.
+  expect(
+    screen.queryByRole('button', { name: 'Usage level' })
+  ).not.toBeInTheDocument()
 })
 
 it('shows balance above usage on mobile cards in Chinese', async () => {
@@ -357,34 +412,36 @@ it('shows balance above usage on mobile cards in Chinese', async () => {
   }
 })
 
-it('combines creation and last login into one column with full dates visible directly', async () => {
+it('shows creation and last login inside the name cell instead of a time column', async () => {
   vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 8, 8, 12))
   await renderUsersList(true)
-  expect(screen.getByRole('columnheader', { name: /Time/ })).toBeInTheDocument()
+  // The dedicated time column is gone: the dates travel with the identity.
+  expect(
+    screen.queryByRole('columnheader', { name: /Time/ })
+  ).not.toBeInTheDocument()
   expect(
     screen.queryByRole('columnheader', { name: /Last Login/ })
   ).not.toBeInTheDocument()
   const row = screen.getByRole('row', {
     name: /long-user-name-for-table-layout/,
   })
-  expect(within(row).getByText('—')).toBeInTheDocument()
   const times = within(row).getAllByRole('time')
   expect(times).toHaveLength(2)
-  expect(times[0]).toHaveTextContent(
-    formatTimestampToDate(Math.floor(Date.now() / 1000) - 86400)
+  // The cell shows short relative labels, so the row stays two lines; the exact
+  // timestamps remain on the elements themselves for the tooltip.
+  expect(times[0]).toHaveAttribute(
+    'datetime',
+    new Date((Math.floor(Date.now() / 1000) - 86400) * 1000).toISOString()
   )
-  expect(times[1]).toHaveTextContent(
-    formatTimestampToDate(Math.floor(Date.now() / 1000) - 20)
+  expect(times[1]).toHaveAttribute(
+    'datetime',
+    new Date((Math.floor(Date.now() / 1000) - 20) * 1000).toISOString()
   )
-  expect(within(row).queryByText('Just now')).not.toBeInTheDocument()
+  expect(times[0]).toHaveTextContent(/1/)
+  expect(within(row).getByText('Just now')).toBeInTheDocument()
   expect(within(row).getByText('Created')).toBeInTheDocument()
   expect(within(row).getByText('Last Login')).toBeInTheDocument()
   expect(screen.queryByText('No Inviter')).not.toBeInTheDocument()
-  await userEvent.click(screen.getByRole('button', { name: 'View' }))
-  await userEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Time' }))
-  expect(
-    screen.queryByRole('columnheader', { name: /Time/ })
-  ).not.toBeInTheDocument()
 })
 
 it('updates the header unit and converted amounts together when currency settings change', () => {
@@ -403,13 +460,13 @@ it('updates the header unit and converted amounts together when currency setting
     })
   )
   expect(
-    screen.getByRole('columnheader', { name: 'Available Balance (¥)' })
+    screen.getByRole('columnheader', { name: /Available Balance/ })
   ).toBeInTheDocument()
   expect(
-    within(screen.getAllByRole('cell')[0]).getByText('7')
+    within(screen.getAllByRole('cell')[0]).getByText('7.00')
   ).toBeInTheDocument()
   expect(
-    within(screen.getAllByRole('cell')[0]).getByText('14')
+    within(screen.getAllByRole('cell')[0]).getByText('14.00')
   ).toBeInTheDocument()
   for (const cell of screen.getAllByRole('cell')) {
     expect(cell).not.toHaveTextContent('¥')
@@ -426,7 +483,7 @@ it('labels raw quota mode as tokens without introducing a currency symbol', () =
     </I18nextProvider>
   )
   expect(
-    screen.getByRole('columnheader', { name: 'Available Balance (Tokens)' })
+    screen.getByRole('columnheader', { name: /Available Balance/ })
   ).toBeInTheDocument()
   expect(
     within(screen.getAllByRole('cell')[0]).getByText('100')
@@ -434,4 +491,105 @@ it('labels raw quota mode as tokens without introducing a currency symbol', () =
   expect(
     within(screen.getAllByRole('cell')[0]).getByText('200')
   ).toBeInTheDocument()
+})
+
+it('shows the lifetime gift and Token Plan usage inside the balance details', async () => {
+  await renderUsersList()
+  await userEvent.click(
+    screen.getByRole('button', {
+      name: 'Available Balance 0.0038; Used amount 0.0022',
+    })
+  )
+  const detail = await screen.findByRole('dialog', { name: 'Quota ($)' })
+  expect(within(detail).getByText('Gift used')).toBeInTheDocument()
+  expect(within(detail).getByText('Token Plan used')).toBeInTheDocument()
+  expect(within(detail).getByText('Gift + Token Plan used')).toBeInTheDocument()
+  expect(within(detail).getByText('0.0012')).toBeInTheDocument()
+  expect(within(detail).getByText('0.0008')).toBeInTheDocument()
+  // The combined free total adds the two sources up (1000 quota).
+  expect(within(detail).getByText('0.002')).toBeInTheDocument()
+  expect(within(detail).queryByText('Not tracked')).not.toBeInTheDocument()
+})
+
+it('reports gift usage as untracked when the funding records cannot explain it', () => {
+  render(
+    <I18nextProvider i18n={i18n}>
+      <QuotaTable
+        remaining={1900}
+        used={1100}
+        usageSource={{
+          gift_used: 0,
+          token_plan_used: 300,
+          gift_plan_used: 300,
+          gift_known: false,
+        }}
+      />
+    </I18nextProvider>
+  )
+  return userEvent
+    .click(
+      screen.getByRole('button', {
+        name: 'Available Balance 0.0038; Used amount 0.0022',
+      })
+    )
+    .then(() => screen.findByRole('dialog', { name: 'Quota ($)' }))
+    .then((detail) => {
+      // An untraceable gift figure is never shown as a zero, and the combined
+      // free total contains it, so that is untracked as well.
+      expect(within(detail).getAllByText('Not tracked')).toHaveLength(2)
+      expect(within(detail).getByText('0.0006')).toBeInTheDocument()
+    })
+})
+
+it('switches the balance column to the lifetime metrics and keeps the direction', async () => {
+  const get = await renderUsersList()
+  // The metric menu lists every figure the column can sort by.
+  await userEvent.click(screen.getByRole('combobox', { name: 'Sort by' }))
+  const options = await screen.findAllByRole('option')
+  expect(options.map((option) => option.textContent)).toEqual([
+    'Available Balance',
+    'Total Used',
+    'Gift used',
+    'Token Plan used',
+    'Gift + Token Plan used',
+  ])
+  await userEvent.click(screen.getByRole('option', { name: 'Gift used' }))
+  await waitFor(() =>
+    expect(get).toHaveBeenCalledWith('/api/user/', {
+      params: expect.objectContaining({
+        sort_by: 'gift_used',
+        sort_order: 'desc',
+      }),
+    })
+  )
+  expect(screen.getByRole('combobox', { name: 'Sort by' })).toHaveTextContent(
+    'Gift used ($)'
+  )
+
+  // Choosing another figure keeps the direction already in use.
+  await userEvent.click(screen.getByRole('combobox', { name: 'Sort by' }))
+  await userEvent.click(
+    await screen.findByRole('option', { name: 'Gift + Token Plan used' })
+  )
+  await waitFor(() =>
+    expect(get).toHaveBeenCalledWith('/api/user/', {
+      params: expect.objectContaining({
+        sort_by: 'gift_plan_used',
+        sort_order: 'desc',
+      }),
+    })
+  )
+
+  // The heading's button flips the direction of the chosen figure.
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Gift + Token Plan used Desc' })
+  )
+  await waitFor(() =>
+    expect(get).toHaveBeenCalledWith('/api/user/', {
+      params: expect.objectContaining({
+        sort_by: 'gift_plan_used',
+        sort_order: 'asc',
+      }),
+    })
+  )
 })

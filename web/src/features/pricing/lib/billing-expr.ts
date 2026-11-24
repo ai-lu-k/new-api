@@ -30,6 +30,7 @@ For commercial licensing, please contact support@quantumnous.com
 import type { BillingUsageSchema } from '../types'
 import {
   readTokenTierChain,
+  readRequestFixedTierChain,
   readTaskTierChain,
   readTimeTokenPricing,
   type TokenTier,
@@ -289,7 +290,9 @@ function mapTokenTier(
 ): ParsedTier {
   return {
     label: tier.label,
+    ...(tier.requestConditional ? { requestConditional: true } : {}),
     ...(tier.imageCount ? { imageCount: true } : {}),
+    ...(tier.chars ? { chars: true } : {}),
     conditions: tier.conditions,
     ...(tier.billingUnit === 'request'
       ? { billingUnit: tier.billingUnit, fixedPrice: tier.fixedPrice }
@@ -310,6 +313,8 @@ export function parseTiersFromExpr(exprStr: string): ParsedTier[] {
   if (compiled.status !== 'ready') return []
   const canonical = readTokenTierChain(compiled.ast)
   if (canonical) return canonical.map(mapTokenTier)
+  const requestPrices = readRequestFixedTierChain(compiled.ast)
+  if (requestPrices) return requestPrices.map(mapTokenTier)
   return readTimeTokenPricing(exprStr)?.tiers.map(mapTokenTier) ?? []
 }
 

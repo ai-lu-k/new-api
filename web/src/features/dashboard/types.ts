@@ -33,6 +33,26 @@ export interface QuotaDataItem {
   quota?: number
 }
 
+export interface DailyQuotaItem {
+  date: string
+  token_used?: number
+  quota?: number
+}
+
+/**
+ * Lifetime usage split by funding source, in the same quota unit as
+ * `used_quota`. `gift_known` is false when the funding records start after the
+ * account did: the gift figure is then unknown, not zero.
+ */
+export interface UsageSource {
+  gift_used: number
+  token_plan_used: number
+  gift_plan_used: number
+  gift_quota?: number
+  gift_remaining?: number
+  gift_known: boolean
+}
+
 export interface FlowQuotaDataItem {
   user_id?: number
   username?: string

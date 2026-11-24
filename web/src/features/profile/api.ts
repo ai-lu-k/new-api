@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import type { GeeTestSolution } from '@/features/auth/hooks/use-geetest'
 import { api } from '@/lib/api'
 import type { CustomOAuthBinding } from '@/lib/oauth'
 import { authRequestOptions, authResult } from '@/lib/secure-verification'
@@ -297,11 +298,12 @@ export async function getCheckinStatus(
  * Perform daily checkin
  */
 export async function performCheckin(
+  captcha?: GeeTestSolution,
   turnstileToken?: string
 ): Promise<ApiResponse<CheckinResponse>> {
   const url = turnstileToken
     ? `/api/user/checkin?turnstile=${encodeURIComponent(turnstileToken)}`
     : '/api/user/checkin'
-  const res = await api.post(url)
+  const res = captcha ? await api.post(url, { captcha }) : await api.post(url)
   return res.data
 }

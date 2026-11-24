@@ -22,7 +22,6 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { IconBadge } from '@/components/ui/icon-badge'
 
 import { ChangePasswordDialog } from './dialogs/change-password-dialog'
 import { DeleteAccountDialog } from './dialogs/delete-account-dialog'
@@ -63,9 +62,7 @@ export function AccountActionCard(props: AccountActionCardProps) {
         className={`gap-0 py-0 ${props.action === 'delete' ? 'ring-destructive/30' : ''}`}
       >
         <div className='flex items-center gap-3 px-3 py-2.5 sm:px-4'>
-          <IconBadge tone='neutral' size='sm'>
-            <action.icon />
-          </IconBadge>
+          <action.icon aria-hidden='true' className='size-4 shrink-0' />
           <div className='min-w-0 flex-1 space-y-0.5'>
             <p className='text-sm font-medium'>{action.title}</p>
             <p className='text-muted-foreground text-xs'>
@@ -76,6 +73,7 @@ export function AccountActionCard(props: AccountActionCardProps) {
             type='button'
             size='sm'
             variant={props.action === 'delete' ? 'destructive' : 'outline'}
+            className='min-h-11 sm:min-h-8'
             onClick={() => setOpen(true)}
           >
             {action.title}

@@ -32,12 +32,21 @@ function Fixture(props: {
   initialSelected?: string[]
   allowCreate?: boolean
   disabled?: boolean
+  variant?: 'chips' | 'dropdown'
 }) {
   const [selected, setSelected] = useState(props.initialSelected ?? [])
 
   return (
     <>
       <MultiSelect
+        variant={props.variant}
+        triggerLabel='Choose models'
+        placeholder='Search models'
+        renderSelectedSummary={
+          props.variant === 'dropdown'
+            ? (values) => `${values.length} selected`
+            : undefined
+        }
         options={options}
         selected={selected}
         onChange={setSelected}
@@ -155,5 +164,28 @@ describe('multi-select batch paste', () => {
     expect(input).toBeDisabled()
     expect(screen.getByLabelText('Selected values')).toBeEmptyDOMElement()
     expect(input).toHaveValue('')
+  })
+})
+
+describe('multi-select compact dropdown', () => {
+  it('opens by keyboard, searches inside the popup and removes selected options', async () => {
+    const user = userEvent.setup()
+    render(
+      <Fixture variant='dropdown' allowCreate={false} initialSelected={['a']} />
+    )
+    const trigger = screen.getByRole('combobox', { name: 'Choose models' })
+    expect(trigger).toHaveTextContent('1 selected')
+    expect(screen.queryByRole('combobox', { name: 'Search models' })).toBeNull()
+    trigger.focus()
+    await user.keyboard('{Enter}')
+    expect(trigger).toHaveAttribute('aria-expanded', 'true')
+    const input = screen.getByRole('combobox', { name: 'Search models' })
+    await user.type(input, 'c')
+    await user.click(screen.getByRole('option', { name: 'c' }))
+    expect(trigger).toHaveTextContent('2 selected')
+    await user.click(screen.getByRole('option', { name: 'a' }))
+    expect(screen.getByLabelText('Selected values')).toHaveTextContent(/^c$/)
+    await user.keyboard('{Escape}')
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
   })
 })

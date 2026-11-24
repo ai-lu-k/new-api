@@ -46,6 +46,7 @@ afterEach(() => {
   api.defaults.adapter = originalAdapter
   vi.restoreAllMocks()
   useAuthStore.getState().auth.reset()
+  document.cookie = 'new_api_has_session=; Max-Age=0; path=/'
   window.history.replaceState({}, '', '/')
 })
 
@@ -367,6 +368,69 @@ it.each([200, 401])(
     client.clear()
   }
 )
+
+it('sends an anonymous single-use request without reporting an expired session', async () => {
+  document.cookie = 'new_api_has_session=; Max-Age=0; path=/'
+  const send = vi.spyOn(XMLHttpRequest.prototype, 'send')
+  const adapter = vi.fn<AxiosAdapter>(async (config) => ({
+    data: { success: true },
+    status: 200,
+    statusText: 'OK',
+    headers: {},
+    config,
+  }))
+  api.defaults.adapter = adapter
+  const notify = vi.spyOn(toast, 'error').mockReturnValue('anonymous-error')
+
+  await api.post(
+    '/api/user/registration-verification/code',
+    { email: 'user@example.com' },
+    { singleUseAuthorization: true }
+  )
+
+  expect(adapter).toHaveBeenCalledTimes(1)
+  expect(adapter.mock.calls[0][0].url).toBe(
+    '/api/user/registration-verification/code'
+  )
+  expect(adapter.mock.calls[0][0].headers.get('Authorization')).toBeFalsy()
+  expect(send).not.toHaveBeenCalled()
+  expect(notify).not.toHaveBeenCalled()
+})
+
+it('still sends a single-use request when a stale session hint refreshes to 401', async () => {
+  document.cookie = 'new_api_has_session=1; path=/'
+  vi.spyOn(XMLHttpRequest.prototype, 'open')
+  vi.spyOn(XMLHttpRequest.prototype, 'send').mockImplementation(
+    function (this: XMLHttpRequest) {
+      Object.defineProperties(this, {
+        status: { value: 401, configurable: true },
+        statusText: { value: 'Unauthorized', configurable: true },
+        responseText: { value: '{"success":false}', configurable: true },
+        readyState: { value: 4, configurable: true },
+      })
+      this.onloadend?.(new ProgressEvent('loadend'))
+    }
+  )
+  const adapter = vi.fn<AxiosAdapter>(async (config) => ({
+    data: { success: true },
+    status: 200,
+    statusText: 'OK',
+    headers: {},
+    config,
+  }))
+  api.defaults.adapter = adapter
+  const notify = vi.spyOn(toast, 'error').mockReturnValue('stale-error')
+
+  await api.post(
+    '/api/user/registration-verification/code',
+    { email: 'user@example.com' },
+    { singleUseAuthorization: true }
+  )
+
+  expect(adapter).toHaveBeenCalledTimes(1)
+  expect(adapter.mock.calls[0][0].headers.get('Authorization')).toBeFalsy()
+  expect(notify).not.toHaveBeenCalled()
+})
 
 it('never refreshes or replays a failed single-use authorization request', async () => {
   useAuthStore.getState().auth.setBundle({

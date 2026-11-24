@@ -16,10 +16,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Link } from '@tanstack/react-router'
 import { Loader2, Send, Shield, UserRound, type LucideIcon } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { SiGithub, SiLinux, SiWechat } from 'react-icons/si'
+
+import { textActionClass } from '@/lib/text-action'
+import { cn } from '@/lib/utils'
 
 import { AuthLayout } from '../auth-layout'
 
@@ -99,11 +103,11 @@ export function OAuthCallbackScreen({
 
   return (
     <AuthLayout>
-      <div className='w-full space-y-8'>
-        <div className='flex flex-col items-center space-y-4 text-center'>
-          <div className='bg-muted flex h-16 w-16 items-center justify-center rounded-2xl'>
-            <Icon className='h-8 w-8' />
-          </div>
+      <div className='w-full space-y-6'>
+        <div className='flex flex-col items-center space-y-3 text-center'>
+          {/* No plate behind the mark: the site's corner radius is 2 px and a
+              64 px rounded square read as a different product. */}
+          <Icon className='text-muted-foreground size-6' aria-hidden='true' />
           <div className='space-y-2'>
             <h2 className='text-center text-2xl font-semibold tracking-tight'>
               {headline}
@@ -125,6 +129,21 @@ export function OAuthCallbackScreen({
               'This may take a few moments while we validate the request and update your session.'
             )}
           </p>
+          {/* A way out when the redirect never happens. */}
+          <div className='flex flex-wrap items-center justify-center gap-x-4 gap-y-2 pt-1'>
+            <Link
+              to='/sign-in'
+              className={cn(textActionClass, 'text-[13px] font-medium')}
+            >
+              {t('Back to login')}
+            </Link>
+            <Link
+              to='/dashboard'
+              className={cn(textActionClass, 'text-[13px] font-medium')}
+            >
+              {t('Back to Dashboard')}
+            </Link>
+          </div>
         </div>
       </div>
     </AuthLayout>

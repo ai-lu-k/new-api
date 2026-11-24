@@ -272,7 +272,7 @@ export function TierPriceFields(props: TierPriceFieldsProps) {
         >
           <ChevronDown
             className={cn(
-              'mr-1 h-3 w-3 transition-transform',
+              'mr-1 h-3 w-3 transition-transform duration-(--motion-fast) ease-(--ease-out)',
               mediaOpen && 'rotate-180'
             )}
           />

@@ -17,7 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
-import { useState, useEffect, useMemo } from 'react'
+import { motion, useReducedMotion } from 'motion/react'
+import { useState, useEffect, useId, useMemo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -28,66 +29,99 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { getUserModels } from '@/lib/api'
+import { MOTION_DURATION, MOTION_SHIFT, MOTION_TRANSITION } from '@/lib/motion'
 import { requireServerSuccess } from '@/lib/server-error-message'
 
-const APP_CONFIGS = {
-  claude: {
-    label: 'Claude',
-    defaultName: 'My Claude',
-    modelFields: [
-      { key: 'model', labelKey: 'Primary Model', required: true },
-      { key: 'haikuModel', labelKey: 'Haiku Model', required: false },
-      { key: 'sonnetModel', labelKey: 'Sonnet Model', required: false },
-      { key: 'opusModel', labelKey: 'Opus Model', required: false },
-    ],
-  },
-  codex: {
-    label: 'Codex',
-    defaultName: 'My Codex',
-    modelFields: [{ key: 'model', labelKey: 'Primary Model', required: true }],
-  },
-  gemini: {
-    label: 'Gemini',
-    defaultName: 'My Gemini',
-    modelFields: [{ key: 'model', labelKey: 'Primary Model', required: true }],
-  },
-} as const
+import {
+  buildCCSwitchURL,
+  CC_SWITCH_APPS,
+  type CCSwitchApp,
+} from '../../lib/cc-switch'
 
-type AppType = keyof typeof APP_CONFIGS
+const APP_CONFIGS = CC_SWITCH_APPS
+type AppType = CCSwitchApp
 
-function getServerAddress(): string {
-  try {
-    const raw = localStorage.getItem('status')
-    if (raw) {
-      const status = JSON.parse(raw)
-      if (status.server_address) return status.server_address
-    }
-  } catch {
-    /* empty */
-  }
-  return window.location.origin
+/**
+ * One step of the dialog body. The panel itself arrives on the overlay rules
+ * (220ms, 8px); the two blocks inside it follow the same movement one step
+ * apart instead of landing as a single slab, and no chain is longer than that.
+ */
+const SEGMENT_STEP = MOTION_DURATION.fast / 3.5
+
+const SEGMENT_VARIANTS = {
+  hidden: { opacity: 0.65, y: MOTION_SHIFT.control },
+  show: { opacity: 1, y: 0 },
 }
 
-function buildCCSwitchURL(
-  app: string,
-  name: string,
-  models: Record<string, string>,
-  apiKey: string
-): string {
-  const serverAddress = getServerAddress()
-  const endpoint = app === 'codex' ? `${serverAddress}/v1` : serverAddress
-  const params = new URLSearchParams()
-  params.set('resource', 'provider')
-  params.set('app', app)
-  params.set('name', name)
-  params.set('endpoint', endpoint)
-  params.set('apiKey', apiKey)
-  for (const [k, v] of Object.entries(models)) {
-    if (v) params.set(k, v)
+function DialogSegment(props: { step: number; children: ReactNode }) {
+  const shouldReduce = useReducedMotion()
+  if (shouldReduce) {
+    return props.children
   }
-  params.set('homepage', serverAddress)
-  params.set('enabled', 'true')
-  return `ccswitch://v1/import?${params.toString()}`
+  return (
+    <motion.div
+      variants={SEGMENT_VARIANTS}
+      transition={{
+        ...MOTION_TRANSITION.base,
+        delay: props.step * SEGMENT_STEP,
+      }}
+    >
+      {props.children}
+    </motion.div>
+  )
+}
+
+/**
+ * The fields of a CC Switch import: the provider name and the models the
+ * application asks for. The dialog shows them, and so does any page that puts
+ * the form in place.
+ */
+export function CCSwitchFields(props: {
+  app: AppType
+  name: string
+  onNameChange: (name: string) => void
+  models: Record<string, string>
+  onModelChange: (field: string, model: string) => void
+  modelOptions: readonly string[]
+}) {
+  const { t } = useTranslation()
+  const id = useId()
+  const config = APP_CONFIGS[props.app]
+  const options = useMemo(
+    () => props.modelOptions.map((m) => ({ value: m, label: m })),
+    [props.modelOptions]
+  )
+
+  return (
+    <>
+      <div className='space-y-2'>
+        <Label htmlFor={`${id}-name`}>{t('Name')}</Label>
+        <Input
+          id={`${id}-name`}
+          value={props.name}
+          onChange={(event) => props.onNameChange(event.target.value)}
+          placeholder={config.defaultName}
+        />
+      </div>
+
+      {config.modelFields.map((field) => (
+        <div key={field.key} className='space-y-2'>
+          <Label htmlFor={`${id}-${field.key}`} required={field.required}>
+            {t(field.labelKey)}
+          </Label>
+          <Combobox
+            id={`${id}-${field.key}`}
+            aria-label={t(field.labelKey)}
+            options={options}
+            value={props.models[field.key] || ''}
+            onValueChange={(v) => props.onModelChange(field.key, v ?? '')}
+            placeholder={t('Select or enter model name')}
+            emptyText={t('No models found')}
+          />
+        </div>
+      ))}
+    </>
+  )
 }
 
 interface Props {
@@ -98,6 +132,7 @@ interface Props {
 
 export function CCSwitchDialog(props: Props) {
   const { t } = useTranslation()
+  const shouldReduce = useReducedMotion()
   const [app, setApp] = useState<AppType>('claude')
   const [name, setName] = useState<string>(APP_CONFIGS.claude.defaultName)
   const [models, setModels] = useState<Record<string, string>>({})
@@ -109,10 +144,7 @@ export function CCSwitchDialog(props: Props) {
     staleTime: 5 * 60 * 1000,
   })
 
-  const modelOptions = useMemo(() => {
-    const items = modelsData?.data ?? []
-    return items.map((m) => ({ value: m, label: m }))
-  }, [modelsData?.data])
+  const modelOptions = useMemo(() => modelsData?.data ?? [], [modelsData?.data])
 
   useEffect(() => {
     if (props.open) {
@@ -124,8 +156,6 @@ export function CCSwitchDialog(props: Props) {
       setName(APP_CONFIGS.claude.defaultName)
     }
   }, [props.open])
-
-  const currentConfig = APP_CONFIGS[app]
 
   const handleAppChange = (val: string) => {
     const appVal = val as AppType
@@ -164,59 +194,49 @@ export function CCSwitchDialog(props: Props) {
         </>
       }
     >
-      <div className='space-y-4'>
-        <div className='space-y-2'>
-          <Label>{t('Application')}</Label>
-          <RadioGroup
-            value={app}
-            onValueChange={handleAppChange}
-            className='flex gap-4'
-          >
-            {(
-              Object.entries(APP_CONFIGS) as [
-                AppType,
-                (typeof APP_CONFIGS)[AppType],
-              ][]
-            ).map(([key, cfg]) => (
-              <div key={key} className='flex items-center gap-2'>
-                <RadioGroupItem value={key} id={`app-${key}`} />
-                <Label htmlFor={`app-${key}`} className='cursor-pointer'>
-                  {cfg.label}
-                </Label>
-              </div>
-            ))}
-          </RadioGroup>
-        </div>
-
-        <div className='space-y-2'>
-          <Label htmlFor='cc-switch-name'>{t('Name')}</Label>
-          <Input
-            id='cc-switch-name'
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder={currentConfig.defaultName}
-          />
-        </div>
-
-        {currentConfig.modelFields.map((field) => (
-          <div key={field.key} className='space-y-2'>
-            <Label htmlFor={`cc-switch-${field.key}`} required={field.required}>
-              {t(field.labelKey)}
-            </Label>
-            <Combobox
-              id={`cc-switch-${field.key}`}
-              aria-label={t(field.labelKey)}
-              options={modelOptions}
-              value={models[field.key] || ''}
-              onValueChange={(v) =>
-                setModels((prev) => ({ ...prev, [field.key]: v ?? '' }))
-              }
-              placeholder={t('Select or enter model name')}
-              emptyText={t('No models found')}
-            />
+      <motion.div
+        className='space-y-4'
+        initial={shouldReduce ? false : 'hidden'}
+        animate='show'
+      >
+        <DialogSegment step={0}>
+          <div className='space-y-2'>
+            <Label>{t('Application')}</Label>
+            <RadioGroup
+              value={app}
+              onValueChange={handleAppChange}
+              className='flex flex-wrap gap-x-4 gap-y-2'
+            >
+              {(
+                Object.entries(APP_CONFIGS) as [
+                  AppType,
+                  (typeof APP_CONFIGS)[AppType],
+                ][]
+              ).map(([key, cfg]) => (
+                <div key={key} className='flex items-center gap-2'>
+                  <RadioGroupItem value={key} id={`app-${key}`} />
+                  <Label htmlFor={`app-${key}`} className='cursor-pointer'>
+                    {cfg.label}
+                  </Label>
+                </div>
+              ))}
+            </RadioGroup>
           </div>
-        ))}
-      </div>
+        </DialogSegment>
+
+        <DialogSegment step={1}>
+          <CCSwitchFields
+            app={app}
+            name={name}
+            onNameChange={setName}
+            models={models}
+            onModelChange={(field, model) =>
+              setModels((prev) => ({ ...prev, [field]: model }))
+            }
+            modelOptions={modelOptions}
+          />
+        </DialogSegment>
+      </motion.div>
     </Dialog>
   )
 }

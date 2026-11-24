@@ -39,6 +39,10 @@ const (
 	FilterRequestPath        ChannelFilterKind = "request_path"
 	FilterTaskPluginIdentity ChannelFilterKind = "task_plugin_identity"
 	FilterResponsesWebSocket ChannelFilterKind = "responses_websocket"
+	// FilterExcludedChannels drops channels this request already ruled out
+	// (for example a failed upstream attempt). It only narrows random
+	// selection; pinned and affinity resolution keep their own semantics.
+	FilterExcludedChannels ChannelFilterKind = "excluded_channels"
 )
 
 type ChannelFilter struct {
@@ -47,6 +51,7 @@ type ChannelFilter struct {
 	TaskPluginKey          string
 	TaskPluginKeys         []string
 	TaskPluginChannelTypes []int
+	ExcludedChannelIds     map[int]struct{}
 }
 
 type ChannelConstraints struct {
@@ -66,6 +71,30 @@ func (cc *ChannelConstraints) AddFilter(f ChannelFilter) {
 		return
 	}
 	cc.Filters = append(cc.Filters, f)
+}
+
+// ExcludeChannel narrows later random selection in this request. A failed
+// attempt must not keep re-picking the channel it just used, and the exclusion
+// map is shared with the filter snapshot already handed to selection so
+// appending is enough.
+func (cc *ChannelConstraints) ExcludeChannel(id int) {
+	if cc == nil || id <= 0 {
+		return
+	}
+	for i := range cc.Filters {
+		if cc.Filters[i].Kind != FilterExcludedChannels {
+			continue
+		}
+		if cc.Filters[i].ExcludedChannelIds == nil {
+			cc.Filters[i].ExcludedChannelIds = make(map[int]struct{}, 1)
+		}
+		cc.Filters[i].ExcludedChannelIds[id] = struct{}{}
+		return
+	}
+	cc.Filters = append(cc.Filters, ChannelFilter{
+		Kind:               FilterExcludedChannels,
+		ExcludedChannelIds: map[int]struct{}{id: {}},
+	})
 }
 
 // ResolvedPin returns the winning pin after priority resolution.

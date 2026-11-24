@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 
@@ -136,6 +137,61 @@ func increaseQuotaData(quotaData *QuotaData) {
 	if err != nil {
 		common.SysLog(fmt.Sprintf("increaseQuotaData error: %s", err))
 	}
+}
+
+// DailyQuotaData is one calendar day of aggregated account usage.
+// The day boundary is Asia/Shanghai so every viewer sees the same dates.
+type DailyQuotaData struct {
+	Date      string `json:"date"`
+	TokenUsed int    `json:"token_used"`
+	Quota     int    `json:"quota"`
+}
+
+var dailyUsageLocation = time.FixedZone("Asia/Shanghai", 8*60*60)
+
+// GetUserDailyQuotaData returns the user's usage folded into Asia/Shanghai
+// calendar days. Hourly rows are summed in SQL so the result set stays small,
+// and the day boundary is applied in Go so the query behaves the same on
+// SQLite, MySQL and PostgreSQL.
+func GetUserDailyQuotaData(userId int, startTime int64, endTime int64) ([]*DailyQuotaData, error) {
+	var rows []*QuotaData
+	err := DB.Table("quota_data").
+		Select("created_at, sum(token_used) as token_used, sum(quota) as quota").
+		Where("user_id = ? and created_at >= ? and created_at <= ?", userId, startTime, endTime).
+		Group("created_at").
+		Order("created_at").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return summarizeDailyQuota(rows), nil
+}
+
+// summarizeDailyQuota folds hourly rows into Asia/Shanghai calendar days.
+func summarizeDailyQuota(rows []*QuotaData) []*DailyQuotaData {
+	byDate := make(map[string]*DailyQuotaData, len(rows))
+	for _, row := range rows {
+		date := time.Unix(row.CreatedAt, 0).In(dailyUsageLocation).Format("2006-01-02")
+		day, ok := byDate[date]
+		if !ok {
+			day = &DailyQuotaData{Date: date}
+			byDate[date] = day
+		}
+		day.TokenUsed += row.TokenUsed
+		day.Quota += row.Quota
+	}
+
+	dates := make([]string, 0, len(byDate))
+	for date := range byDate {
+		dates = append(dates, date)
+	}
+	slices.Sort(dates)
+
+	days := make([]*DailyQuotaData, 0, len(dates))
+	for _, date := range dates {
+		days = append(days, byDate[date])
+	}
+	return days
 }
 
 func GetQuotaDataByUsername(username string, startTime int64, endTime int64) (quotaData []*QuotaData, err error) {

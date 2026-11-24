@@ -23,6 +23,12 @@ import i18next from 'i18next'
 export const safeServerErrorMessage = Symbol('safeServerErrorMessage')
 
 const serverErrorMessageKeys = {
+  REGISTRATION_VERIFICATION_FAILED:
+    'Registration verification failed or expired. Request a new code and try again.',
+  REGISTRATION_VERIFICATION_RESEND_WAIT:
+    'Please wait one minute before requesting another verification code.',
+  REGISTRATION_VERIFICATION_REQUIRED:
+    'Complete email and human verification before registering. Open the sign-up page to continue.',
   TELEGRAM_OAUTH_NOT_CONFIGURED:
     'Telegram OAuth is not configured or enabled. Please contact your administrator.',
   TELEGRAM_OAUTH_CONFLICT:

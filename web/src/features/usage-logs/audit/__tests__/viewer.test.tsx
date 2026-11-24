@@ -55,7 +55,7 @@ it.each([
       failure_reason: 'invalid_parameters',
     },
     'Adjust user quota',
-    'Requested quota: $1 · Invalid adjustment parameters',
+    'Requested quota: $1.00 · Invalid adjustment parameters',
   ],
   [
     'user.quota_add',
@@ -68,7 +68,7 @@ it.each([
       to: 1000000,
     },
     'Increase quota for user “quota-owner”',
-    'Requested quota: $1 · $1 → $2',
+    'Requested quota: $1.00 · $1.00 → $2.00',
   ],
   [
     'user.quota_subtract',
@@ -81,7 +81,7 @@ it.each([
       to: 500000,
     },
     'Decrease quota for user “quota-owner”',
-    'Requested quota: $1 · $2 → $1',
+    'Requested quota: $1.00 · $2.00 → $1.00',
   ],
   [
     'user.quota_override',
@@ -93,7 +93,7 @@ it.each([
       to: 0,
     },
     'Override quota for user “quota-owner”',
-    'Requested quota: $0 · $1 → $0',
+    'Requested quota: $0.00 · $1.00 → $0.00',
   ],
   ['token.create', { id: 11, name: '1' }, 'Create API token “1”', ''],
   [
@@ -276,10 +276,23 @@ it('uses the shared log toolbar and opens details in a keyboard-accessible dialo
   ).toBeDisabled()
   const trigger = await screen.findByRole('button', { name: 'Details' })
   const row = screen.getByRole('row', { name: /127.0.0.1/ })
-  const clientCell = within(row).getByRole('cell', {
-    name: 'Browser client with a long version description',
-  })
-  expect(clientCell.querySelector('.truncate')).toBeInTheDocument()
+  // The request client is only shown in the details dialog, so the row keeps
+  // its room for the columns that stay visible.
+  expect(
+    within(row).queryByText('Browser client with a long version description')
+  ).not.toBeInTheDocument()
+  // The detail entry is the pinned right column, so it stays reachable at
+  // every table width.
+  expect(within(row).getByRole('cell', { name: 'Details' })).toHaveClass(
+    'sticky'
+  )
+  // Ten columns used to ask for 1448 px inside the 1128 px desktop content
+  // area, which pushed the detail entry out of view.
+  const requiredWidth = Number(
+    /(\d+)px/.exec(screen.getByRole('table').style.minWidth)?.[1] ?? 0
+  )
+  expect(requiredWidth).toBeGreaterThan(0)
+  expect(requiredWidth).toBeLessThanOrEqual(1128)
   expect(row.querySelector('details')).not.toBeInTheDocument()
   trigger.focus()
   await userEvent.keyboard('{Enter}')
@@ -478,9 +491,7 @@ it('a failed history query exposes retry and no empty history claim', async () =
       data: { success: true, data: { items: [], total: 0 } },
     })
   renderViewer()
-  expect(await screen.findByRole('alert')).toHaveTextContent(
-    'Failed to load audit records'
-  )
+  expect(await screen.findByText('Failed to load audit records')).toBeVisible()
   expect(screen.queryByText('No records')).not.toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'Retry' }))
   expect(await screen.findByText('No records')).toBeVisible()
@@ -491,7 +502,6 @@ it('administrator scope uses the admin endpoint and exposes the username filter'
     data: { success: true, data: { items: [], total: 0 } },
   })
   renderViewer('all')
-  await userEvent.click(screen.getByRole('button', { name: 'Expand' }))
   fireEvent.change(screen.getByLabelText('Username'), {
     target: { value: 'alice' },
   })

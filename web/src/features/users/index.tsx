@@ -32,8 +32,15 @@ function UsersContent() {
 
   return (
     <>
-      <SectionPageLayout fixedContent>
+      <SectionPageLayout
+        fixedContent
+        stackActionsOnMobile
+        pageIndex={<>{t('Admin area')} / 02</>}
+      >
         <SectionPageLayout.Title>{t('Users')}</SectionPageLayout.Title>
+        <SectionPageLayout.Description>
+          {t('Administer user accounts and roles.')}
+        </SectionPageLayout.Description>
         <SectionPageLayout.Actions>
           <UsersPrimaryButtons />
         </SectionPageLayout.Actions>

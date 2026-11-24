@@ -18,7 +18,7 @@ import (
 
 // DecideRelayRetry is the single retry decision for relay attempts. The reason
 // is recorded in the request policy decision events of the log details.
-func DecideRelayRetry(c *gin.Context, err *types.NewAPIError, retryTimes int) PolicyDecision {
+func DecideRelayRetry(c *gin.Context, err *types.NewAPIError, retryTimes int, infos ...*relaycommon.RelayInfo) PolicyDecision {
 	if err == nil {
 		return PolicyDecision{Action: "stop", Reason: "request_completed", Source: "system"}
 	}
@@ -31,6 +31,38 @@ func DecideRelayRetry(c *gin.Context, err *types.NewAPIError, retryTimes int) Po
 	}
 	if GetChannelConstraints(c).SuppressesRetry() {
 		return PolicyDecision{Action: "stop", Reason: "pinned_channel", Source: "channel_constraint"}
+	}
+	if len(infos) > 0 && infos[0] != nil && infos[0].ChannelMeta != nil && infos[0].ChannelSetting.RetryAllUpstreamErrors {
+		info := infos[0]
+		if c.Request != nil && c.Request.Context().Err() != nil {
+			return PolicyDecision{Action: "stop", Reason: "client_cancelled", Source: "system"}
+		}
+		if retryTimes <= 0 {
+			return PolicyDecision{Action: "stop", Reason: "attempt_budget_exhausted", Source: "global"}
+		}
+		if trace := info.TransportTrace; trace != nil && trace.Snapshot().Scope.Channel == c.GetInt("channel_id") {
+			s := trace.Snapshot()
+			if s.FirstContentMS != nil || s.FirstReasoningMS != nil || s.FirstUnclassifiedMS != nil || c.Writer.Written() && (!s.Streaming || !s.RetryAllUpstreamErrors || !trace.HoldingPrelude()) {
+				return PolicyDecision{Action: "stop", Reason: "response_committed", Source: "system"}
+			}
+			if s.TimeoutPhase == "total" {
+				return PolicyDecision{Action: "stop", Reason: "request_deadline_exceeded", Source: "system"}
+			}
+			// Provider errors can reuse local-looking error codes. The error
+			// type and an actual attempt distinguish them from local validation
+			// or settlement failures, which must never spend another generation.
+			upstream := err.GetErrorType() != types.ErrorTypeNewAPIError || types.IsChannelError(err)
+			switch err.GetErrorCode() {
+			case types.ErrorCodeDoRequestFailed, types.ErrorCodeReadResponseBodyFailed, types.ErrorCodeBadResponse, types.ErrorCodeBadResponseStatusCode, types.ErrorCodeBadResponseBody, types.ErrorCodeEmptyResponse, "upstream_first_output_timeout":
+				upstream = true
+			}
+			if !upstream {
+				return PolicyDecision{Action: "stop", Reason: "non_retryable_error", Source: "system"}
+			}
+			if _, pinned, _ := GetChannelConstraints(c).ResolvedPin(); upstream && !pinned {
+				return PolicyDecision{Action: "retry", Reason: "all_upstream_errors", Source: "channel"}
+			}
+		}
 	}
 	if types.IsChannelError(err) {
 		return PolicyDecision{Action: "retry", Reason: "channel_error", Source: "system"}
@@ -73,6 +105,9 @@ func ProcessChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		})
 	}
 
+	if QueueRelayTimeoutLog(c, relayInfo) {
+		return
+	}
 	if constant.ErrorLogEnabled && types.IsRecordErrorLog(err) {
 		userId := c.GetInt("id")
 		tokenName := c.GetString("token_name")

@@ -66,3 +66,11 @@ export const useUsers = () => {
 
   return usersContext
 }
+
+/**
+ * Same context without the guard. Cells that can also be rendered on their own
+ * (a column preview, a test fixture) only need to know whether a drawer is
+ * open; they must not require the provider just to read that.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export const useOptionalUsers = () => React.useContext(UsersContext)

@@ -279,7 +279,7 @@ function PricingRuleCard(
           </span>
           <ChevronDown
             aria-hidden='true'
-            className={`mt-1 size-4 shrink-0 transition-transform ${open || hasIssues ? 'rotate-180' : ''}`}
+            className={`mt-1 size-4 shrink-0 transition-transform duration-(--motion-fast) ease-(--ease-out) ${open || hasIssues ? 'rotate-180' : ''}`}
           />
         </CollapsibleTrigger>
         {node.kind === 'branch' && (

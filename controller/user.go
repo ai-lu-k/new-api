@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
@@ -209,47 +211,78 @@ func writeLoginResponse(c *gin.Context, user *model.User, bundle *service.AuthBu
 			"token_type":        bundle.TokenType,
 			"access_expires_at": bundle.AccessExpiresAt,
 			"session":           bundle.Session,
-			"user":              buildSelfUserData(user),
+			"user":              buildSelfUserData(user, middleware.DashboardRole(c, user.Role), middleware.PreviewModeActive(c)),
 		},
 	})
 }
 
 func Register(c *gin.Context) {
+	reason := "interrupted"
+	proofCookie, _ := c.Cookie(registrationProofCookie)
+	accountCreated, hasEmailCode := false, false
+	hasProof := proofCookie != ""
+	defer func() {
+		message := fmt.Sprintf("registration result: reason=%s status=%d account_created=%t has_proof=%t has_email_code=%t", reason, c.Writer.Status(), accountCreated, hasProof, hasEmailCode)
+		if reason == "account_created" {
+			logger.LogInfo(c.Request.Context(), message)
+			return
+		}
+		logger.LogWarn(c.Request.Context(), message)
+	}()
 	if !common.RegisterEnabled {
+		reason = "registration_disabled"
 		common.ApiErrorI18n(c, i18n.MsgUserRegisterDisabled)
 		return
 	}
 	if !common.PasswordRegisterEnabled {
+		reason = "password_registration_disabled"
 		common.ApiErrorI18n(c, i18n.MsgUserPasswordRegisterDisabled)
 		return
 	}
-	var user model.User
-	err := common.DecodeJson(c.Request.Body, &user)
+	var request struct {
+		model.User
+		LegalConsent *model.LegalAcceptance `json:"legal_consent"`
+	}
+	err := common.DecodeJson(c.Request.Body, &request)
+	user := request.User
 	if err != nil {
+		reason = "invalid_json"
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
 	user.Username = strings.TrimSpace(user.Username)
 	user.Email = model.NormalizeEmail(user.Email)
+	hasEmailCode = user.VerificationCode != ""
 	if user.Username == "" {
+		reason = "username_required"
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
 	if err := common.Validate.Struct(&user); err != nil {
+		reason = "invalid_input"
 		common.ApiErrorI18n(c, i18n.MsgUserInputInvalid, map[string]any{"Error": err.Error()})
 		return
 	}
-	if common.EmailVerificationEnabled {
+	risk := registrationRisk(c)
+	proof, proofErr := model.RegistrationProofWithTx(model.DB, risk, time.Now())
+	if proofErr == nil {
+		user.Email = proof.Email
+	}
+	if common.EmailVerificationEnabled && proofErr != nil {
 		if user.Email == "" || user.VerificationCode == "" {
+			reason = "email_verification_required"
 			common.ApiErrorI18n(c, i18n.MsgUserEmailVerificationRequired)
 			return
 		}
 		if !common.VerifyCodeWithKey(user.Email, user.VerificationCode, common.EmailVerificationPurpose) {
+			reason = "email_verification_invalid"
 			common.ApiErrorI18n(c, i18n.MsgUserVerificationCodeError)
 			return
 		}
 		if err := model.EnsureEmailAvailable(user.Email, 0); err != nil {
+			reason = "database_error"
 			if errors.Is(err, model.ErrEmailAlreadyTaken) {
+				reason = "email_taken"
 				common.ApiErrorI18n(c, i18n.MsgUserEmailAlreadyTaken)
 				return
 			}
@@ -258,43 +291,110 @@ func Register(c *gin.Context) {
 		}
 	}
 	emailForExistCheck := ""
-	if common.EmailVerificationEnabled {
+	if common.EmailVerificationEnabled || proofErr == nil {
 		emailForExistCheck = user.Email
 	}
 	exist, err := model.CheckUserExistOrDeleted(user.Username, emailForExistCheck)
 	if err != nil {
+		reason = "database_error"
 		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
-		common.SysLog(fmt.Sprintf("CheckUserExistOrDeleted error: %v", err))
 		return
 	}
 	if exist {
+		reason = "user_exists"
 		common.ApiErrorI18n(c, i18n.MsgUserExists)
 		return
 	}
-	affCode := user.AffCode // this code is the inviter's code, not the user's own code
-	inviterId, _ := model.GetUserIdByAffCode(affCode)
-	cleanUser := model.User{
-		Username:    user.Username,
-		Password:    user.Password,
-		DisplayName: user.Username,
-		InviterId:   inviterId,
-		Role:        common.RoleCommonUser, // 明确设置角色为普通用户
+	affCode := strings.TrimSpace(user.AffCode) // this code is the inviter's code, not the user's own code
+	inviterId := 0
+	if affCode != "" {
+		inviter, err := model.GetUserByAffCode(affCode)
+		if err != nil {
+			reason = "database_error"
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				reason = "invalid_referral_code"
+				common.ApiErrorI18n(c, i18n.MsgUserAffCodeInvalid)
+				return
+			}
+			common.ApiErrorI18n(c, i18n.MsgDatabaseError)
+			return
+		}
+		inviterId = inviter.Id
 	}
-	if common.EmailVerificationEnabled {
+	version, err := model.CurrentLegalVersion(model.DB, false)
+	if err != nil {
+		reason = "database_error"
+		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
+		return
+	}
+	if err := model.ValidateLegalAcceptance(version, request.LegalConsent); err != nil {
+		reason = "legal_consent_required"
+		if errors.Is(err, model.ErrLegalVersionChanged) {
+			reason = "legal_version_changed"
+		}
+		writeLegalError(c, err)
+		return
+	}
+	now := time.Now()
+	cleanUser := model.User{
+		RegistrationRisk: risk,
+		Username:         user.Username,
+		Password:         user.Password,
+		DisplayName:      user.Username,
+		InviterId:        inviterId,
+		Role:             common.RoleCommonUser, // 明确设置角色为普通用户
+	}
+	if common.EmailVerificationEnabled || proofErr == nil {
 		cleanUser.Email = user.Email
 	}
-	if err := cleanUser.Insert(inviterId); err != nil {
+	if err := model.DB.Transaction(func(tx *gorm.DB) error {
+		if err := cleanUser.InsertWithTx(tx, inviterId); err != nil {
+			return err
+		}
+		if err := model.CreateReferralReward(tx, inviterId, cleanUser.Id, now); err != nil {
+			return err
+		}
+		return model.RecordLegalConsentWithTx(tx, cleanUser.Id, request.LegalConsent)
+	}); err != nil {
+		reason = "registration_transaction_failed"
+		if errors.Is(err, model.ErrRegistrationVerificationRequired) {
+			reason = "registration_verification_required"
+			writeSecurityOperationError(c, err)
+			return
+		}
+		if errors.Is(err, model.ErrLegalConsentRequired) || errors.Is(err, model.ErrLegalVersionChanged) {
+			reason = "legal_consent_required"
+			if errors.Is(err, model.ErrLegalVersionChanged) {
+				reason = "legal_version_changed"
+			}
+			writeLegalError(c, err)
+			return
+		}
 		if errors.Is(err, model.ErrEmailAlreadyTaken) {
+			reason = "email_taken"
 			common.ApiErrorI18n(c, i18n.MsgUserEmailAlreadyTaken)
 			return
 		}
 		common.ApiError(c, err)
 		return
 	}
+	accountCreated = true
+	reason = "account_created"
+
+	clearRegistrationProof(c)
+	cleanUser.FinishInsert(inviterId)
+	if inviterId != 0 {
+		// Reward issuance is a separate transaction on purpose: a failure must
+		// not roll back the new account, and the recorded reward stays retryable.
+		if _, err := model.IssueReferralReward(cleanUser.Id, now); err != nil && !errors.Is(err, model.ErrReferralRewardNotFound) {
+			common.SysError(fmt.Sprintf("failed to issue the referral reward for invitee %d: %v", cleanUser.Id, err))
+		}
+	}
 
 	// 获取插入后的用户ID
 	var insertedUser model.User
 	if err := model.DB.Where("username = ?", cleanUser.Username).First(&insertedUser).Error; err != nil {
+		reason = "created_user_lookup_failed"
 		common.ApiErrorI18n(c, i18n.MsgUserRegisterFailed)
 		return
 	}
@@ -302,6 +402,7 @@ func Register(c *gin.Context) {
 	if constant.GenerateDefaultToken {
 		key, err := common.GenerateKey()
 		if err != nil {
+			reason = "default_token_generation_failed"
 			common.ApiErrorI18n(c, i18n.MsgUserDefaultTokenFailed)
 			common.SysLog("failed to generate token key: " + err.Error())
 			return
@@ -322,16 +423,57 @@ func Register(c *gin.Context) {
 			token.Group = "auto"
 		}
 		if err := token.Insert(); err != nil {
+			reason = "default_token_insert_failed"
 			common.ApiErrorI18n(c, i18n.MsgCreateDefaultTokenErr)
 			return
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "",
-	})
-	return
+	// 注册成功即登录：复用统一登录策略（默认令牌生成之后），
+	// 会话签发与二次验证判定都走 setupLogin 同一套代码。
+	c.Set("login_method", "register")
+	setupLogin(&insertedUser, nil, c)
+}
+
+// GetSelfUsageSource answers the lifetime funding split for the signed-in
+// account on demand: the figures aggregate several funding tables plus the log
+// database, so they are left out of the DTO that login and refresh return.
+func GetSelfUsageSource(c *gin.Context) {
+	id := c.GetInt("id")
+	sources, err := model.UserUsageSources([]int{id})
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, sources[id])
+}
+
+type userWithUsageLevel struct {
+	*model.User
+	UsageLevel  service.UsageLevel     `json:"usage_level"`
+	UsageSource *model.UserUsageSource `json:"usage_source,omitempty"`
+}
+
+func usersWithUsageLevels(users []*model.User) ([]userWithUsageLevel, error) {
+	thresholds := operation_setting.GetUsageLevelThresholds()
+	ids := make([]int, len(users))
+	for i, user := range users {
+		ids[i] = user.Id
+	}
+	sources, err := model.UserUsageSources(ids)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]userWithUsageLevel, len(users))
+	for i, user := range users {
+		source := sources[user.Id]
+		result[i] = userWithUsageLevel{
+			User:        user,
+			UsageLevel:  service.CalculateUsageLevel(user.LevelQuota, thresholds),
+			UsageSource: &source,
+		}
+	}
+	return result, nil
 }
 
 func GetAllUsers(c *gin.Context) {
@@ -343,8 +485,13 @@ func GetAllUsers(c *gin.Context) {
 		return
 	}
 
+	items, err := usersWithUsageLevels(users)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(users)
+	pageInfo.SetItems(items)
 
 	common.ApiSuccess(c, pageInfo)
 	return
@@ -373,8 +520,13 @@ func SearchUsers(c *gin.Context) {
 		return
 	}
 
+	items, err := usersWithUsageLevels(users)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(users)
+	pageInfo.SetItems(items)
 	common.ApiSuccess(c, pageInfo)
 	return
 }
@@ -399,11 +551,17 @@ func GetUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionSameLevel)
 		return
 	}
+	defaults, err := model.ReadModelDailyTokenLimits(c.Request.Context())
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	user.ModelDailyTokenDefaults = defaults
 	user.AdminPermissions = authz.Capabilities(user.Id, user.Role)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data":    user,
+		"data":    userWithUsageLevel{User: user, UsageLevel: service.CalculateUsageLevel(user.LevelQuota, operation_setting.GetUsageLevelThresholds())},
 	})
 	return
 }
@@ -463,19 +621,16 @@ func GetAffCode(c *gin.Context) {
 
 func GetSelf(c *gin.Context) {
 	id := c.GetInt("id")
-	userRole := c.GetInt("role")
 	user, err := model.GetSelfUserById(id)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	responseData := buildSelfUserData(user)
 	// The authenticated role is loaded from GetUserCache. It should equal the
-	// row role, but use it for capabilities so GetSelf and login/refresh remain
-	// consistent with the authorization decision made for this request.
-	permissions := calculateUserPermissions(userRole)
-	permissions["admin_permissions"] = authz.Capabilities(id, userRole)
-	responseData["permissions"] = permissions
+	// row role, but the context role carries the administrator's ordinary-user
+	// preview, so the rendered role and capabilities follow this request.
+	role := c.GetInt("role")
+	responseData := buildSelfUserData(user, role, middleware.PreviewModeActive(c))
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -486,18 +641,25 @@ func GetSelf(c *gin.Context) {
 }
 
 // buildSelfUserData is the single safe dashboard-user DTO used by GetSelf,
-// login and refresh. It intentionally excludes password, management PAT and
-// administrator-only remarks.
-func buildSelfUserData(user *model.User) map[string]any {
+// login and refresh. role is the effective role for the request: an
+// administrator previewing the ordinary-user view is rendered as a user with no
+// administrator capabilities. It intentionally excludes password, management
+// PAT and administrator-only remarks.
+func buildSelfUserData(user *model.User, role int, previewActive bool) map[string]any {
 	userSetting := user.GetSetting()
-	permissions := calculateUserPermissions(user.Role)
-	permissions["admin_permissions"] = authz.Capabilities(user.Id, user.Role)
+	permissions := calculateUserPermissions(role)
+	if previewActive {
+		permissions["admin_permissions"] = authz.PermissionsMap{}
+	} else {
+		permissions["admin_permissions"] = authz.Capabilities(user.Id, role)
+	}
 	return map[string]any{
 		"id":                user.Id,
 		"username":          user.Username,
 		"display_name":      user.DisplayName,
 		"has_password":      user.HasPassword,
-		"role":              user.Role,
+		"role":              role,
+		"preview_active":    previewActive,
 		"status":            user.Status,
 		"email":             user.Email,
 		"github_id":         user.GitHubId,
@@ -506,14 +668,17 @@ func buildSelfUserData(user *model.User) map[string]any {
 		"wechat_id":         user.WeChatId,
 		"telegram_id":       user.TelegramId,
 		"group":             user.Group,
-		"quota":             user.Quota,
+		"quota":             user.Quota + int(user.TokenPlanWalletHold),
 		"used_quota":        user.UsedQuota,
+		"level_quota":       user.LevelQuota,
+		"usage_level":       service.CalculateUsageLevel(user.LevelQuota, operation_setting.GetUsageLevelThresholds()),
 		"request_count":     user.RequestCount,
 		"aff_code":          user.AffCode,
 		"aff_count":         user.AffCount,
 		"aff_quota":         user.AffQuota,
 		"aff_history_quota": user.AffHistoryQuota,
 		"inviter_id":        user.InviterId,
+		"referral_banner":   model.ReferralBannerState(userSetting),
 		"linux_do_id":       user.LinuxDOId,
 		"setting":           user.Setting,
 		"stripe_customer":   user.StripeCustomer,
@@ -639,10 +804,33 @@ func GetUserModels(c *gin.Context) {
 			groupsToQuery = []string{group}
 		}
 	}
+	enabledModels := service.GetGroupsEnabledModels(groupsToQuery)
+	// The playground must send image models to /pg/images/generations instead of
+	// chat completions. The relay infers the image-generation endpoint from the
+	// model name, so the same rule decides it here and both stay in agreement.
+	// Models that only emit images through chat completions are listed in the
+	// catalogue's output_modalities; they stay on the chat path.
+	outputModalities, err := model.GetModelOutputModalities(enabledModels)
+	if err != nil {
+		common.SysLog("获取模型输出模态失败: " + err.Error())
+	}
+	imageModels := make([]string, 0, len(enabledModels))
+	imageOutputModels := make([]string, 0, len(enabledModels))
+	for _, name := range enabledModels {
+		directImage := common.IsImageGenerationModel(name)
+		if directImage {
+			imageModels = append(imageModels, name)
+		}
+		if directImage || slices.Contains(outputModalities[name], "image") {
+			imageOutputModels = append(imageOutputModels, name)
+		}
+	}
 	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "",
-		"data":    service.GetGroupsEnabledModels(groupsToQuery),
+		"success":                 true,
+		"message":                 "",
+		"data":                    enabledModels,
+		"image_generation_models": imageModels,
+		"image_output_models":     imageOutputModels,
 	})
 }
 
@@ -1047,6 +1235,11 @@ type ManageRequest struct {
 	Action string `json:"action"`
 	Value  int    `json:"value"`
 	Mode   string `json:"mode"`
+	// Reason, ReasonNote and PaidAmount describe a manual quota addition:
+	// why it was made and, for a paid reason, the money received for it.
+	Reason     string  `json:"reason"`
+	ReasonNote string  `json:"reason_note"`
+	PaidAmount float64 `json:"paid_amount"`
 }
 
 // ManageUser Only admin user can do this

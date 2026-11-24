@@ -374,12 +374,13 @@ func (a *Adaptor) resolve(c *gin.Context, info *relaycommon.RelayInfo) error {
 
 func incomingRequestPath(c *gin.Context, info *relaycommon.RelayInfo) string {
 	if c != nil && c.Request != nil && c.Request.URL != nil {
-		return c.Request.URL.Path
+		return relayconstant.CanonicalRequestPath(c.Request.URL.Path)
 	}
 	if info == nil {
 		return ""
 	}
-	return strings.Split(info.RequestURLPath, "?")[0]
+	path, _, _ := strings.Cut(info.RequestURLPath, "?")
+	return relayconstant.CanonicalRequestPath(path)
 }
 
 func (a *Adaptor) routeURL(info *relaycommon.RelayInfo) (string, error) {

@@ -16,11 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Route } from 'lucide-react'
 import { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { IconBadge } from '@/components/ui/icon-badge'
+import {
+  SectionPanel,
+  type SectionPanelStatus,
+} from '@/components/section-panel'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useApiInfo } from '@/features/dashboard/hooks/use-status-data'
 import {
@@ -29,7 +31,6 @@ import {
 } from '@/features/dashboard/lib/api-info'
 import type { PingStatusMap, ApiInfoItem } from '@/features/dashboard/types'
 
-import { PanelWrapper } from '../ui/panel-wrapper'
 import { ApiInfoItemComponent } from './api-info-item'
 
 export function ApiInfoPanel() {
@@ -47,22 +48,18 @@ export function ApiInfoPanel() {
     setPingStatus((prev) => ({ ...prev, [url]: result }))
   }, [])
 
+  let status: SectionPanelStatus = 'ready'
+  if (loading) status = 'loading'
+  else if (!list.length) status = 'empty'
+
   return (
-    <PanelWrapper
-      title={
-        <span className='flex items-center gap-2'>
-          <IconBadge tone='info' size='sm'>
-            <Route />
-          </IconBadge>
-          {t('API Info')}
-        </span>
-      }
+    <SectionPanel
+      title={t('API Info')}
+      level='card'
       description={t('Configured routes and latency checks')}
-      loading={loading}
-      empty={!list.length}
+      status={status}
       emptyMessage={t('No API routes configured')}
-      height='h-72'
-      contentClassName='p-0'
+      placeholderClassName='h-24'
     >
       <ScrollArea className='h-72'>
         <div>
@@ -82,6 +79,6 @@ export function ApiInfoPanel() {
           ))}
         </div>
       </ScrollArea>
-    </PanelWrapper>
+    </SectionPanel>
   )
 }

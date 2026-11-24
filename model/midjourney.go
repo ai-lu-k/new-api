@@ -1,5 +1,10 @@
 package model
 
+import (
+	"context"
+	"gorm.io/gorm"
+)
+
 type Midjourney struct {
 	Id          int    `json:"id"`
 	Code        int    `json:"code"`
@@ -24,8 +29,10 @@ type Midjourney struct {
 	Buttons     string `json:"buttons"`
 	Properties  string `json:"properties"`
 
-	TokenId          int `json:"-" gorm:"default:0"`
-	BillingChannelId int `json:"-" gorm:"default:0"`
+	TokenId                int `json:"-" gorm:"default:0"`
+	BillingChannelId       int `json:"-" gorm:"default:0"`
+	TokenPlanReservationId int `json:"-"`
+	TokenPlanWeekId        int `json:"-"`
 }
 
 // TaskQueryParams 用于包含所有搜索条件的结构体，可以根据需求添加更多字段
@@ -162,9 +169,14 @@ func UpdateProgress(id int, progress string) error {
 }
 
 func (midjourney *Midjourney) Insert() error {
-	var err error
-	err = DB.Create(midjourney).Error
-	return err
+	return midjourney.InsertWithContext(context.Background())
+}
+
+func (midjourney *Midjourney) InsertWithContext(ctx context.Context) error {
+	if lease := ChannelGenerationLeaseFromContext(ctx); lease != nil {
+		return lease.persistTask(ctx, midjourney.ChannelId, midjourney.UserId, (midjourney.Code == 1 || midjourney.Code == 21 || midjourney.Code == 22) && midjourney.Progress != "100%" && midjourney.Status != "SUCCESS" && midjourney.Status != "FAILURE", func(tx *gorm.DB) error { return tx.Create(midjourney).Error })
+	}
+	return DB.WithContext(ctx).Create(midjourney).Error
 }
 
 func (midjourney *Midjourney) Update() error {
@@ -175,7 +187,7 @@ func (midjourney *Midjourney) Update() error {
 
 func (midjourney *Midjourney) UpdateBillingState() error {
 	return DB.Model(midjourney).
-		Select("quota", "token_id", "billing_channel_id").
+		Select("quota", "token_id", "billing_channel_id", "token_plan_week_id", "token_plan_reservation_id").
 		Updates(midjourney).Error
 }
 

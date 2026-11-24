@@ -16,11 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Megaphone } from 'lucide-react'
 import { memo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { IconBadge } from '@/components/ui/icon-badge'
+import {
+  SectionPanel,
+  type SectionPanelStatus,
+} from '@/components/section-panel'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useAnnouncements } from '@/features/dashboard/hooks/use-status-data'
 import { getPreviewText } from '@/features/dashboard/lib'
@@ -29,7 +31,6 @@ import { getAnnouncementColorClass } from '@/lib/colors'
 import { formatDateTimeObject } from '@/lib/time'
 import { cn } from '@/lib/utils'
 
-import { PanelWrapper } from '../ui/panel-wrapper'
 import { AnnouncementDetailModal } from './announcement-detail-dialog'
 
 const AnnouncementStatusDot = memo(function AnnouncementStatusDot(props: {
@@ -57,24 +58,20 @@ export function AnnouncementsPanel() {
     setIsDialogOpen(true)
   }
 
+  let status: SectionPanelStatus = 'ready'
+  if (loading) status = 'loading'
+  else if (!list.length) status = 'empty'
+
   return (
-    <PanelWrapper
-      title={
-        <span className='flex items-center gap-2'>
-          <IconBadge tone='warning' size='sm'>
-            <Megaphone />
-          </IconBadge>
-          {t('Announcements')}
-        </span>
-      }
+    <SectionPanel
+      title={t('Announcements')}
+      level='section'
       description={t('Latest platform updates and notices')}
-      loading={loading}
-      empty={!list.length}
+      status={status}
       emptyMessage={t('No announcements at this time')}
-      height='h-72'
-      contentClassName='p-0'
+      placeholderClassName='h-24'
     >
-      <ScrollArea className='h-72'>
+      <ScrollArea className='h-36'>
         <div>
           {list.map((item: AnnouncementItem, idx: number) => {
             const key = item.id ?? `announcement-${idx}`
@@ -117,6 +114,6 @@ export function AnnouncementsPanel() {
         onOpenChange={setIsDialogOpen}
         announcement={selectedAnnouncement}
       />
-    </PanelWrapper>
+    </SectionPanel>
   )
 }

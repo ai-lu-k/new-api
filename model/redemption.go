@@ -175,7 +175,11 @@ func Redeem(key string, userId int) (quota int, err error) {
 		if result.RowsAffected == 0 {
 			return errors.New("该兑换码已被使用")
 		}
-		return creditTopUpQuota(tx, userId, redemption.Quota, nil)
+		// A redemption code is given away, not bought: the wallet grows and the
+		// gift ledger records that this money must not buy level progress.
+		return creditTopUpQuota(tx, userId, redemption.Quota, map[string]any{
+			"bonus_quota": gorm.Expr("bonus_quota + ?", redemption.Quota),
+		})
 	})
 	if err != nil {
 		common.SysError("redemption failed: " + err.Error())

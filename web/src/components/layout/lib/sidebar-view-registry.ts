@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type TFunction } from 'i18next'
+import type { TFunction } from 'i18next'
 
 import { SYSTEM_SETTINGS_VIEW } from '../config/system-settings.config'
 import type { NavGroup, SidebarView } from '../types'
@@ -56,4 +56,75 @@ export function getNavGroupsForPath(
 ): NavGroup[] | null {
   const view = resolveSidebarView(pathname)
   return view ? view.getNavGroups(t) : null
+}
+
+/** Rows that can be selected: Base UI maps `isActive` to `data-active`. */
+const SELECTED_ROW =
+  '[data-sidebar="menu-button"][data-active], [data-sidebar="menu-sub-button"][data-active]'
+
+/** A selected row, boxed in the coordinates of the nav it sits in. */
+export type SelectedRow = {
+  /** Link plus label, so two selections can be told apart. */
+  id: string
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/**
+ * Measure the selected row of a sidebar nav.
+ *
+ * The selection is read from the DOM because that is where `checkIsActive` has
+ * already decided it: the mark that travels between rows needs the same answer
+ * as the rows themselves, not a second copy of the matching rules.
+ *
+ * @returns The row's box relative to `container`, or `null` when nothing is
+ *          selected or the selected row is hidden inside a folded group.
+ */
+/**
+ * The row a reader would call "current" when no row matched exactly: the link
+ * whose href is the longest prefix of the path. A section page such as
+ * `/dashboard/flow` belongs to the `/dashboard/models` row even though the two
+ * share no prefix beyond the workspace root, so the row itself declares those
+ * siblings; this fallback only covers the cases nobody declared.
+ */
+function closestRow(
+  container: HTMLElement,
+  pathname: string
+): HTMLElement | null {
+  const rows = container.querySelectorAll<HTMLElement>(
+    '[data-sidebar="menu-button"][href], [data-sidebar="menu-sub-button"][href]'
+  )
+  let best: HTMLElement | null = null
+  let bestLength = -1
+  for (const row of rows) {
+    const href = row.getAttribute('href') ?? ''
+    if (!href || href === '/' || !pathname.startsWith(href)) continue
+    if (href.length > bestLength) {
+      best = row
+      bestLength = href.length
+    }
+  }
+  return best
+}
+
+export function measureSelectedRow(
+  container: HTMLElement,
+  pathname: string = window.location.pathname
+): SelectedRow | null {
+  const active = container.querySelector<HTMLElement>(SELECTED_ROW)
+  // A child page that no row claims would otherwise leave the mark nowhere.
+  const row = active ?? closestRow(container, pathname)
+  if (!row || row.offsetParent === null) return null
+
+  const box = row.getBoundingClientRect()
+  const origin = container.getBoundingClientRect()
+  return {
+    id: `${row.getAttribute('href') ?? ''}|${row.textContent ?? ''}`,
+    x: box.left - origin.left,
+    y: box.top - origin.top,
+    width: box.width,
+    height: box.height,
+  }
 }

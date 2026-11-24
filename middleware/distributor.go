@@ -20,6 +20,8 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/level_gate_setting"
+	"github.com/QuantumNous/new-api/setting/naming_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
@@ -50,6 +52,13 @@ func Distribute() func(c *gin.Context) {
 			abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
 			return
 		}
+		// A name the site keeps alive as an alias is served under its target
+		// from here on: routing, billing and logs all see the target.
+		requestedModel := modelRequest.Model
+		modelRequest.Model = naming_setting.ResolveAlias(requestedModel)
+		if modelRequest.Model != requestedModel {
+			common.SetContextKey(c, constant.ContextKeyRequestedModel, requestedModel)
+		}
 		_, pinned, _ := constraints.ResolvedPin()
 		if !pinned {
 			// Select a channel for the user
@@ -67,7 +76,7 @@ func Distribute() func(c *gin.Context) {
 				if !ok {
 					tokenModelLimit = map[string]bool{}
 				}
-				if !TokenModelLimitAllows(tokenModelLimit, modelRequest.Model) {
+				if !TokenModelLimitAllows(tokenModelLimit, modelRequest.Model) && !TokenModelLimitAllows(tokenModelLimit, requestedModel) {
 					abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorTokenModelForbidden, map[string]any{"Model": modelRequest.Model}))
 					return
 				}
@@ -78,8 +87,28 @@ func Distribute() func(c *gin.Context) {
 					abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorModelNameRequired))
 					return
 				}
-				// check path is /pg/chat/completions
-				if strings.HasPrefix(c.Request.URL.Path, "/pg/chat/completions") {
+				// 模型等级闸门：某个模型名可以要求最低使用等级。等级由累计净消耗
+				// 算出（model.CalculateUsageLevel），所以用户靠消费升级、自动解锁，
+				// 不需要人工维护分组。没配等级的模型连用户查询都不会发生。
+				//
+				// 两个名字都要比。别名解析在本函数第 58 行，到这里 modelRequest.Model
+				// 已经是解析后的名字；而运营通常把闸门配在带价格后缀的名字上
+				// （gpt-6-astra-x0.001），它会被解析成基础名（gpt-6-astra）—— 只看解析
+				// 后的名字，闸门就永远打不中。取两者里较高的要求：既不能靠换个名字绕过，
+				// 也不会误伤没被限制的基础模型。
+				minLevel := level_gate_setting.GetMinLevel(modelRequest.Model)
+				if byRequested := level_gate_setting.GetMinLevel(requestedModel); byRequested > minLevel {
+					minLevel = byRequested
+				}
+				if minLevel > 0 && !service.UserMeetsMinLevel(c.GetInt("id"), minLevel) {
+					abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorModelLevelTooLow, map[string]any{
+						"Model": requestedModel,
+						"Level": minLevel,
+					}))
+					return
+				}
+				// playground relays carry the site-side group in the body
+				if isPlaygroundRelayPath(c.Request.URL.Path) {
 					usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
 					playgroundRequest := &dto.PlayGroundRequest{}
 					err = common.UnmarshalBodyReusable(c, playgroundRequest)
@@ -122,6 +151,12 @@ func Distribute() func(c *gin.Context) {
 			}
 		}
 		common.SetContextKey(c, constant.ContextKeyRequestStartTime, time.Now())
+		if shouldSelectChannel && requestedModel != "" {
+			if apiErr := service.CheckModelDailyTokenBudget(c, requestedModel); apiErr != nil {
+				c.AbortWithStatusJSON(apiErr.StatusCode, gin.H{"error": apiErr.ToOpenAIError()})
+				return
+			}
+		}
 		SetupContextForSelectedChannel(c, channel, modelRequest.Model)
 		c.Next()
 		if channel != nil && c.Writer != nil && c.Writer.Status() < http.StatusBadRequest {
@@ -356,6 +391,13 @@ func getJSONStringValue(result gjson.Result, field string) (string, error) {
 	return result.String(), nil
 }
 
+// isPlaygroundRelayPath reports whether the request is served by a playground
+// relay entry point. Those entries carry the site-side group in the body and
+// use the session user instead of an API token.
+func isPlaygroundRelayPath(path string) bool {
+	return strings.HasPrefix(path, "/pg/chat/completions") || strings.HasPrefix(path, "/pg/images/generations")
+}
+
 func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 	var modelRequest ModelRequest
 	shouldSelectChannel := true
@@ -496,8 +538,8 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 		}
 		c.Set("relay_mode", relayMode)
 	}
-	if strings.HasPrefix(c.Request.URL.Path, "/pg/chat/completions") {
-		// playground chat completions
+	if isPlaygroundRelayPath(c.Request.URL.Path) {
+		// playground relays: chat completions and image generations
 		req, err := getModelFromRequest(c)
 		if err != nil {
 			return nil, false, err

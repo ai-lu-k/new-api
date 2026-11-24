@@ -38,6 +38,7 @@ Powered by [expr-lang/expr](https://github.com/expr-lang/expr). Expressions are 
 | `img` | 图片输入 token 数 |
 | `img_cr` | 图片缓存读取 token 数；只有表达式显式引用且上游提供有效缓存模态明细时才单独拆分 |
 | `ai` | 音频输入 token 数 |
+| `chars` | 语音合成的字符数（文本转语音请求的 input 字符数，非语音请求为 0）。与 `image_count` 一样是独立计费数量，只能与 `fixed()` 单价相乘，例如 `tier("char", fixed(0.000015)) * chars` 表示每字符 $0.000015；上限 `dto.MaxSpeechCharacters` |
 
 **输出侧变量：**
 
@@ -199,6 +200,9 @@ tier("base", p * 2 + c * 8 + img * 2.5)
 
 # Multimodal with audio
 tier("base", p * 0.43 + c * 3.06 + img * 0.78 + ai * 3.81 + ao * 15.11)
+
+# Text-to-speech priced per input character (chars is outside tier, like image_count)
+tier("char", fixed(0.000015)) * chars
 ```
 
 ### Fixed Request Prices

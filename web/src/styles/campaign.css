@@ -1,0 +1,173 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+/* The event keeps its grid and artwork while sharing the site's light and dark surfaces. */
+.campaign-shell {
+  --campaign-page: var(--background);
+  --campaign-fg-strong: var(--foreground);
+  --campaign-fg: var(--foreground);
+  --campaign-fg-accent: var(--destructive);
+  --campaign-fg-muted: var(--muted-foreground);
+  --campaign-fg-faint: var(--muted-foreground);
+  --campaign-line: var(--border);
+  --campaign-line-strong: var(--input);
+  --campaign-surface: var(--card);
+  --campaign-surface-solid: var(--background);
+  --campaign-chip: var(--muted);
+  --campaign-inset: var(--muted);
+  --campaign-grid-line: color-mix(in oklab, var(--foreground) 8%, transparent);
+  --campaign-scanline: color-mix(in oklab, var(--foreground) 5%, transparent);
+  --campaign-hero-veil-a: color-mix(
+    in oklab,
+    var(--background) 40%,
+    transparent
+  );
+  --campaign-hero-veil-b: color-mix(
+    in oklab,
+    var(--background) 90%,
+    transparent
+  );
+  --campaign-hero-glow-a: transparent;
+  --campaign-hero-glow-b: transparent;
+
+  color: var(--campaign-fg);
+  background: var(--campaign-page);
+}
+
+.campaign-grid {
+  background-image:
+    linear-gradient(to right, var(--campaign-grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--campaign-grid-line) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.campaign-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border: 1px solid var(--campaign-line-strong);
+  border-radius: 1rem;
+  background:
+    linear-gradient(
+      180deg,
+      var(--campaign-hero-veil-a),
+      var(--campaign-hero-veil-b)
+    ),
+    var(--campaign-surface-solid);
+}
+
+.campaign-hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(
+      circle at 12% 20%,
+      var(--campaign-hero-glow-a),
+      transparent 46%
+    ),
+    radial-gradient(
+      circle at 78% 8%,
+      var(--campaign-hero-glow-b),
+      transparent 40%
+    );
+  pointer-events: none;
+}
+
+.campaign-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 1rem;
+  text-align: start;
+  border: 1px solid var(--campaign-line);
+  border-radius: 0.75rem;
+  background: var(--campaign-surface);
+  transition:
+    border-color 160ms ease,
+    transform 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.campaign-tile:hover,
+.campaign-tile:focus-visible {
+  border-color: var(--campaign-line-strong);
+  box-shadow: 0 0 0 1px var(--campaign-line-strong);
+}
+
+.campaign-tile[data-solved='true'] {
+  border-color: var(--campaign-line-strong);
+  background: var(--campaign-chip);
+}
+
+.campaign-tile[data-locked='true'] {
+  opacity: 0.65;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .campaign-tile:hover,
+  .campaign-tile:focus-visible {
+    transform: translateY(-2px);
+  }
+}
+
+.campaign-scanline {
+  position: relative;
+  overflow: hidden;
+}
+
+.campaign-scanline::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    180deg,
+    var(--campaign-scanline) 0,
+    var(--campaign-scanline) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  pointer-events: none;
+}
+
+.campaign-cursor::after {
+  content: '_';
+  margin-inline-start: 0.08em;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .campaign-cursor::after {
+    animation: campaign-blink 1.2s steps(2, start) infinite;
+  }
+}
+
+@keyframes campaign-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.campaign-metric {
+  border: 1px solid var(--campaign-line);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--campaign-chip);
+}

@@ -82,6 +82,8 @@ function isOptionalProxyURL(value: string | undefined): boolean {
 export const HTTP_PROTOCOL_AUTO = 'auto'
 export const HTTP_PROTOCOL_HTTP1 = 'http1'
 export const MAX_HTTP2_CONNECTION_SHARDS = 8
+export const MAX_CHANNEL_CONCURRENCY_LIMIT = 10000
+export const MAX_CONCURRENCY_TOTAL_PER_ACCOUNT = 32
 
 export function normalizeHttpProtocol(
   value: string | undefined | null
@@ -108,6 +110,30 @@ export function normalizeHttp2ConnectionShards(
     return MAX_HTTP2_CONNECTION_SHARDS
   }
   return value
+}
+
+export function normalizeChannelConcurrencyLimit(
+  value: number | undefined | null
+): number {
+  if (value == null || !Number.isFinite(value) || value <= 0) {
+    return 0
+  }
+  if (value > MAX_CHANNEL_CONCURRENCY_LIMIT) {
+    return MAX_CHANNEL_CONCURRENCY_LIMIT
+  }
+  return Math.trunc(value)
+}
+
+export function normalizeChannelConcurrencyTotalPerAccount(
+  value: number | undefined | null
+): number {
+  if (value == null || !Number.isFinite(value) || value <= 0) {
+    return 0
+  }
+  if (value > MAX_CONCURRENCY_TOTAL_PER_ACCOUNT) {
+    return MAX_CONCURRENCY_TOTAL_PER_ACCOUNT
+  }
+  return Math.trunc(value)
 }
 
 function parseOptionalJson(value: string | undefined): unknown {
@@ -269,6 +295,25 @@ export const channelFormSchema = z
       .refine(isOptionalProxyURL, ERROR_MESSAGES.INVALID_PROXY),
     http_protocol: z.enum(['auto', 'http1']).optional(),
     http2_connection_shards: z.number().int().optional(),
+    concurrency_limit: z
+      .number()
+      .int(ERROR_MESSAGES.INVALID_CONCURRENCY_LIMIT)
+      .min(0, ERROR_MESSAGES.INVALID_CONCURRENCY_LIMIT)
+      .max(
+        MAX_CHANNEL_CONCURRENCY_LIMIT,
+        ERROR_MESSAGES.INVALID_CONCURRENCY_LIMIT
+      )
+      .optional(),
+    concurrency_total_url: z.string().optional(),
+    concurrency_total_per_account: z
+      .number()
+      .int(ERROR_MESSAGES.INVALID_CONCURRENCY_TOTAL_PER_ACCOUNT)
+      .min(0, ERROR_MESSAGES.INVALID_CONCURRENCY_TOTAL_PER_ACCOUNT)
+      .max(
+        MAX_CONCURRENCY_TOTAL_PER_ACCOUNT,
+        ERROR_MESSAGES.INVALID_CONCURRENCY_TOTAL_PER_ACCOUNT
+      )
+      .optional(),
     pass_through_body_enabled: z.boolean().optional(),
     responses_websocket_enabled: z.boolean().optional(),
     system_prompt: z.string().optional(),
@@ -460,6 +505,9 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   proxy: '',
   http_protocol: HTTP_PROTOCOL_AUTO,
   http2_connection_shards: 1,
+  concurrency_limit: 0,
+  concurrency_total_url: '',
+  concurrency_total_per_account: 0,
   pass_through_body_enabled: false,
   responses_websocket_enabled: false,
   system_prompt: '',
@@ -504,6 +552,9 @@ export function transformChannelToFormDefaults(
     proxy: '',
     http_protocol: HTTP_PROTOCOL_AUTO as 'auto' | 'http1',
     http2_connection_shards: 1,
+    concurrency_limit: 0,
+    concurrency_total_url: '',
+    concurrency_total_per_account: 0,
     pass_through_body_enabled: false,
     responses_websocket_enabled: false,
     system_prompt: '',
@@ -525,6 +576,14 @@ export function transformChannelToFormDefaults(
         proxy: parsed.proxy || '',
         http_protocol: protocol,
         http2_connection_shards: protocol === HTTP_PROTOCOL_HTTP1 ? 1 : shards,
+        concurrency_limit: normalizeChannelConcurrencyLimit(
+          parsed.concurrency_limit
+        ),
+        concurrency_total_url: parsed.concurrency_total_url || '',
+        concurrency_total_per_account:
+          normalizeChannelConcurrencyTotalPerAccount(
+            parsed.concurrency_total_per_account
+          ),
         pass_through_body_enabled: parsed.pass_through_body_enabled || false,
         responses_websocket_enabled:
           parsed.responses_websocket_enabled === true,
@@ -677,6 +736,24 @@ export function buildSettingJSON(formData: ChannelFormValues): string {
     settingObj.http_protocol = HTTP_PROTOCOL_HTTP1
   } else if (shards > 1) {
     settingObj.http2_connection_shards = shards
+  }
+
+  const concurrencyLimit = normalizeChannelConcurrencyLimit(
+    formData.concurrency_limit
+  )
+  if (concurrencyLimit > 0) {
+    settingObj.concurrency_limit = concurrencyLimit
+  }
+
+  const concurrencyTotalUrl = formData.concurrency_total_url?.trim() || ''
+  if (concurrencyTotalUrl) {
+    settingObj.concurrency_total_url = concurrencyTotalUrl
+  }
+  const concurrencyTotalPerAccount = normalizeChannelConcurrencyTotalPerAccount(
+    formData.concurrency_total_per_account
+  )
+  if (concurrencyTotalPerAccount > 0) {
+    settingObj.concurrency_total_per_account = concurrencyTotalPerAccount
   }
 
   return JSON.stringify(settingObj)

@@ -20,15 +20,12 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 interface NotificationState {
-  // Last read Notice content signature (full trimmed message)
-  lastReadNotice: string
   // Array of read announcement keys (id or content hash)
   readAnnouncementKeys: string[]
   // Timestamp of last "Close Today" action
   closedUntilDate: string | null
 
   // Actions
-  markNoticeRead: (noticeContent: string) => void
   markAnnouncementsRead: (keys: string[]) => void
   setClosedUntilDate: (date: string | null) => void
   isAnnouncementRead: (key: string) => boolean
@@ -36,21 +33,14 @@ interface NotificationState {
 }
 
 /**
- * Notification store for tracking read status of Notice and Announcements
+ * Notification store for tracking announcement read status
  * Persists to localStorage to maintain state across sessions
  */
 export const useNotificationStore = create<NotificationState>()(
   persist(
     (set, get) => ({
-      lastReadNotice: '',
       readAnnouncementKeys: [],
       closedUntilDate: null,
-
-      markNoticeRead: (noticeContent: string) => {
-        // Persist the full trimmed content so edits beyond 100 chars register
-        const normalizedContent = noticeContent.trim()
-        set({ lastReadNotice: normalizedContent })
-      },
 
       markAnnouncementsRead: (keys: string[]) => {
         set((state) => ({
@@ -79,7 +69,6 @@ export const useNotificationStore = create<NotificationState>()(
     {
       name: 'notification-storage',
       partialize: (state) => ({
-        lastReadNotice: state.lastReadNotice,
         readAnnouncementKeys: state.readAnnouncementKeys,
         closedUntilDate: state.closedUntilDate,
       }),

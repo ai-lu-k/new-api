@@ -47,6 +47,8 @@ const botProtectionSchema = z.object({
   TurnstileCheckEnabled: z.boolean(),
   TurnstileSiteKey: z.string().optional(),
   TurnstileSecretKey: z.string().optional(),
+  GeeTestCaptchaId: z.string().optional(),
+  GeeTestCaptchaKey: z.string().optional(),
 })
 
 type BotProtectionFormValues = z.infer<typeof botProtectionSchema>
@@ -140,6 +142,48 @@ export function BotProtectionSection({
                   <Input
                     type='password'
                     placeholder={t('Your Turnstile secret key')}
+                    autoComplete='new-password'
+                    {...field}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='GeeTestCaptchaId'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('GeeTest captcha id')}</FormLabel>
+                <FormControl>
+                  <Input
+                    placeholder={t('Your GeeTest captcha id')}
+                    autoComplete='off'
+                    {...field}
+                  />
+                </FormControl>
+                <FormDescription>
+                  {t(
+                    'Sign-up verification uses GeeTest CAPTCHA v4 when both fields are set'
+                  )}
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='GeeTestCaptchaKey'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('GeeTest captcha key')}</FormLabel>
+                <FormControl>
+                  <Input
+                    type='password'
+                    placeholder={t('Your GeeTest captcha key')}
                     autoComplete='new-password'
                     {...field}
                   />

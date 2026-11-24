@@ -14,8 +14,6 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 
-	"github.com/samber/lo"
-
 	"github.com/gin-gonic/gin"
 )
 
@@ -181,9 +179,9 @@ func handleLastResponse(lastStreamData string, responseId *string, createAt *int
 		*containStreamUsage = true
 		*usage = dto.MergeUsageNonZero(*usage, lastStreamResponse.Usage)
 		if !info.ShouldIncludeUsage {
-			*shouldSendLastResp = lo.SomeBy(lastStreamResponse.Choices, func(choice dto.ChatCompletionsStreamResponseChoice) bool {
-				return choice.Delta.GetContentString() != "" || choice.Delta.GetReasoningContent() != ""
-			})
+			// Only the usage-only chunk is optional. Terminal reasons (including
+			// failures), tool deltas and role data must still reach the client.
+			*shouldSendLastResp = len(lastStreamResponse.Choices) > 0
 		}
 	}
 

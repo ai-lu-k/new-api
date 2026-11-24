@@ -84,8 +84,72 @@ func ClaudeErrorWrapperLocal(err error, code string, statusCode int) *dto.Claude
 	return claudeErr
 }
 
+// payloadTooLargeWordings are how upstreams and relays word a request-body
+// rejection. An intermediate relay may report the same rejection as a 5xx with
+// a non-JSON body, so the wording, not the status, is the reliable signal.
+var payloadTooLargeWordings = []string{
+	"request entity too large",
+	"request body too large",
+	"request body is too large",
+	"payload too large",
+	"payload size exceeds",
+	"request_too_large",
+	"request exceeds the maximum allowed number of bytes",
+	"请求体过大",
+	"请求体太大",
+	"请求实体过大",
+}
+
+// payloadTooLargeResponseWordings reject a response-side payload ("response
+// payload too large"); shrinking the request would not help them, so they must
+// keep the upstream status and wording.
+var payloadTooLargeResponseWordings = []string{
+	"response payload too large",
+	"output payload too large",
+}
+
+// mentionsRejectedRequestBody reports whether a response body, as the provider
+// or relay wrote it, rejects the request because of its size.
+func mentionsRejectedRequestBody(body string) bool {
+	lowerBody := strings.ToLower(body)
+	for _, wording := range payloadTooLargeResponseWordings {
+		if strings.Contains(lowerBody, wording) {
+			return false
+		}
+	}
+	for _, wording := range payloadTooLargeWordings {
+		if strings.Contains(lowerBody, wording) {
+			return true
+		}
+	}
+	return false
+}
+
 func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFail bool) (newApiErr *types.NewAPIError) {
+	newApiErr, rejectedBody := relayErrorHandler(ctx, resp, showBodyWhenFail)
+	// 413 常被上游/中转层包进各自的错误文案里（甚至被脱敏成"暂时不可用，请稍后重试"），
+	// 有的中转层还会把上游的请求体超限改写成 5xx。客户端据此把它当偶发故障无限重试，
+	// 这里统一改写成可行动的说明并统一成 413，原始 body 已由下面的日志保留。
+	// 对外 JSON 序列化的是 RelayError 里的 OpenAIError，Message 两处都要换。
+	if newApiErr == nil || !rejectedBody {
+		return
+	}
+	message := "请求体过大（通常是历史消息或图片过多），请减少后重试 / request payload too large"
+	newApiErr.SetMessage(message)
+	if oaiErr, ok := newApiErr.RelayError.(types.OpenAIError); ok {
+		oaiErr.Message = message
+		newApiErr.RelayError = oaiErr
+	}
+	// 4xx keeps the channel out of the auto-ban path and tells the client to
+	// shrink the request instead of retrying it unchanged. The upstream's own
+	// status code survives in the log line written by relayErrorHandler.
+	newApiErr.StatusCode = http.StatusRequestEntityTooLarge
+	return
+}
+
+func relayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFail bool) (newApiErr *types.NewAPIError, rejectedBody bool) {
 	newApiErr = types.InitOpenAIError(types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
+	rejectedBody = resp.StatusCode == http.StatusRequestEntityTooLarge
 
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -95,6 +159,14 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 	var errResponse dto.GeneralErrorResponse
 	responseBodyText := string(responseBody)
 	responseBodyPreview := common.LocalLogPreview(responseBodyText)
+	// A request-body rejection is rewritten to an actionable client message
+	// further up, whatever status the relay chose; keep the original body here,
+	// this log line is the only place it survives.
+	rejectedBody = resp.StatusCode == http.StatusRequestEntityTooLarge ||
+		(resp.StatusCode >= 500 && mentionsRejectedRequestBody(responseBodyText))
+	if rejectedBody {
+		logger.LogError(ctx, fmt.Sprintf("upstream rejected request body as too large, status_code=%d, body: %s", resp.StatusCode, responseBodyPreview))
+	}
 	buildErrWithBody := func(message string) error {
 		if message == "" {
 			return fmt.Errorf("bad response status code %d, body: %s", resp.StatusCode, responseBodyText)

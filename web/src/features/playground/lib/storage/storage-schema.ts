@@ -34,6 +34,9 @@ export const playgroundConfigSchema = z.object({
   presence_penalty: z.number().optional(),
   seed: z.number().nullable().optional(),
   stream: z.boolean().optional(),
+  image_size: z.string().optional(),
+  image_quality: z.string().optional(),
+  image_n: z.number().optional(),
 })
 
 export const parameterEnabledSchema = z.object({
@@ -86,6 +89,9 @@ const messageSchema = z.object({
   isContentComplete: z.boolean().optional(),
   status: messageStatusSchema.optional(),
   errorCode: z.string().nullable().optional(),
+  // `images` is intentionally absent: image payloads can be megabytes and
+  // would push the whole stored history past the localStorage budget. A
+  // reloaded image message keeps only its summary in `versions[0].content`.
 })
 
 export const messagesSchema = z.array(messageSchema)

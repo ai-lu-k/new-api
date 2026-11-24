@@ -2,11 +2,12 @@ package openai
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
@@ -34,6 +35,22 @@ func OpenaiRealtimeHandler(c *gin.Context, info *relaycommon.RelayInfo) (*types.
 	usage := &dto.RealtimeUsage{}
 	localUsage := &dto.RealtimeUsage{}
 	sumUsage := &dto.RealtimeUsage{}
+
+	// Two readers can emit control events. Serialize each websocket's writes.
+	var targetWrite, clientWrite sync.Mutex
+	sendTarget := func(message []byte) error {
+		targetWrite.Lock()
+		defer targetWrite.Unlock()
+		return targetConn.WriteMessage(websocket.TextMessage, message)
+	}
+	sendClient := func(message []byte) error {
+		clientWrite.Lock()
+		defer clientWrite.Unlock()
+		return clientConn.WriteMessage(websocket.TextMessage, message)
+	}
+	abort := func() { _ = targetConn.Close(); _ = clientConn.Close() }
+	gate := service.NewRealtimeGenerationGate(c.Request.Context(), info.UserId, sendTarget, sendClient, service.ModelDailyRequestedName(c, info.OriginModelName))
+	defer func() { abort(); gate.Close() }()
 
 	gopool.Go(func() {
 		defer func() {
@@ -81,7 +98,7 @@ func OpenaiRealtimeHandler(c *gin.Context, info *relaycommon.RelayInfo) (*types.
 				localUsage.InputTokenDetails.TextTokens += textToken
 				localUsage.InputTokenDetails.AudioTokens += audioToken
 
-				err = helper.WssString(c, targetConn, string(message))
+				err = gate.SendClientMessage(message)
 				if err != nil {
 					errChan <- fmt.Errorf("error writing to target: %v", err)
 					return
@@ -112,6 +129,26 @@ func OpenaiRealtimeHandler(c *gin.Context, info *relaycommon.RelayInfo) (*types.
 						errChan <- fmt.Errorf("error reading from target: %v", err)
 					}
 					close(targetClosed)
+					return
+				}
+				// Missing upstream usage uses the same local estimate as billing.
+				var terminal struct {
+					Type     string                `json:"type"`
+					Response *dto.RealtimeResponse `json:"response"`
+				}
+				if err := common.Unmarshal(message, &terminal); err != nil {
+					errChan <- err
+					return
+				}
+				if terminal.Type == dto.RealtimeEventTypeResponseDone && terminal.Response != nil && terminal.Response.Usage == nil {
+					if err := gate.RecordUnfinishedDailyUsage(model.AddModelDailyTokens(int64(localUsage.InputTokens), int64(localUsage.OutputTokens))); err != nil {
+						errChan <- err
+						return
+					}
+				}
+				message, err = gate.ObserveServerMessage(message)
+				if err != nil {
+					errChan <- err
 					return
 				}
 				info.SetFirstResponseTime()
@@ -187,7 +224,7 @@ func OpenaiRealtimeHandler(c *gin.Context, info *relaycommon.RelayInfo) (*types.
 					localUsage.OutputTokenDetails.AudioTokens += audioToken
 				}
 
-				err = helper.WssString(c, clientConn, string(message))
+				err = sendClient(message)
 				if err != nil {
 					errChan <- fmt.Errorf("error writing to client: %v", err)
 					return
@@ -210,6 +247,9 @@ func OpenaiRealtimeHandler(c *gin.Context, info *relaycommon.RelayInfo) (*types.
 	case <-c.Done():
 	}
 
+	if err := gate.RecordUnfinishedDailyUsage(model.AddModelDailyTokens(int64(usage.InputTokens), int64(usage.OutputTokens), int64(localUsage.InputTokens), int64(localUsage.OutputTokens))); err != nil {
+		logger.LogError(c, "failed to persist interrupted realtime daily token usage: "+err.Error())
+	}
 	if usage.TotalTokens != 0 {
 		_ = preConsumeUsage(c, info, usage, sumUsage)
 	}

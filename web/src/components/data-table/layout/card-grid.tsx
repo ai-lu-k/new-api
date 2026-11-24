@@ -17,7 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { Row, Table } from '@tanstack/react-table'
-import { Database } from 'lucide-react'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -39,16 +38,11 @@ For commercial licensing, please contact support@quantumnous.com
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from '@/components/ui/empty'
+import { useListDiffTransition } from '@/components/motion/use-list-diff-transition'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
+import { getListEntranceSignature, getRowDiffKey } from '../core/list-signature'
 import { tableHasCompactMeta } from './card-cell-utils'
 import { CardRowContent } from './card-row-content'
 
@@ -146,6 +140,16 @@ export function DataTableCardGrid<TData>(props: DataTableCardGridProps<TData>) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [visibleColumns]
   )
+  const rows = props.table.getRowModel().rows
+  const listSignature = React.useMemo(
+    () => getListEntranceSignature(rows, props.table.getState()),
+    // The rows array identity changes exactly when the result set changes.
+    [props.table, rows]
+  )
+  const gridRef = React.useRef<HTMLDivElement>(null)
+  // Cards are keyed by `data-diff-key`, so a filter that keeps one of three
+  // cards moves that card and drops the other two (motion contract §10.1).
+  useListDiffTransition(gridRef, listSignature)
 
   if (props.isLoading) {
     return (
@@ -156,47 +160,72 @@ export function DataTableCardGrid<TData>(props: DataTableCardGridProps<TData>) {
     )
   }
 
-  const rows = props.table.getRowModel().rows
-
   if (!rows || rows.length === 0) {
+    // Same quiet treatment as the table body: one line of copy, no illustration
+    // and no frame, so an empty list never outweighs the records beside it.
     return (
-      <div className='rounded-lg border p-6'>
-        <Empty className='border-none p-0'>
-          <EmptyHeader>
-            <EmptyMedia variant='icon'>
-              {props.emptyIcon ?? <Database className='size-6' />}
-            </EmptyMedia>
-            <EmptyTitle>{resolvedEmptyTitle}</EmptyTitle>
-            <EmptyDescription>{resolvedEmptyDescription}</EmptyDescription>
-          </EmptyHeader>
-        </Empty>
+      <div className='flex flex-col gap-1 py-6'>
+        <p className='text-muted-foreground text-[13px] leading-snug'>
+          {resolvedEmptyTitle}
+        </p>
+        <p className='text-muted-foreground text-[13px] leading-snug'>
+          {resolvedEmptyDescription}
+        </p>
       </div>
     )
   }
 
   return (
-    <div className={props.gridClassName ?? DEFAULT_GRID_CLASSNAME}>
+    <div
+      ref={gridRef}
+      className={props.gridClassName ?? DEFAULT_GRID_CLASSNAME}
+    >
       {rows.map((row) => {
-        const key = props.getRowKey ? props.getRowKey(row) : row.id
+        const key = props.getRowKey
+          ? String(props.getRowKey(row))
+          : getRowDiffKey(row)
         const isSelected = row.getIsSelected()
         return (
-          <div
+          <CardGridItem
             key={key}
-            data-slot='data-table-card'
-            data-state={isSelected ? 'selected' : undefined}
-            className={cn(
-              'rounded-lg border bg-(--data-table-card-bg,var(--table-row)) px-3 py-2.5 transition-[background-color,border-color] duration-150 data-[state=selected]:[--data-table-card-bg:color-mix(in_oklch,var(--primary)_7%,var(--table-row))] data-[state=selected]:border-primary/40',
-              props.getRowClassName?.(row)
-            )}
+            diffKey={key}
+            isSelected={isSelected}
+            className={props.getRowClassName?.(row)}
           >
             {props.renderCard ? (
               props.renderCard(row, { compact, isSelected })
             ) : (
               <CardRowContent row={row} compact={compact} />
             )}
-          </div>
+          </CardGridItem>
         )
       })}
+    </div>
+  )
+}
+
+/**
+ * One card in the grid. Selection and hover are colour transitions on the fast
+ * token; whether the card travels or re-enters after a result change is decided
+ * by the grid's handoff, not here.
+ */
+function CardGridItem(props: {
+  isSelected: boolean
+  diffKey: string
+  className?: string
+  children: React.ReactNode
+}) {
+  return (
+    <div
+      data-diff-key={props.diffKey}
+      data-slot='data-table-card'
+      data-state={props.isSelected ? 'selected' : undefined}
+      className={cn(
+        'rounded-lg border bg-(--data-table-card-bg,var(--table-row)) px-3 py-2.5 transition-[background-color,border-color] duration-(--motion-fast) ease-(--ease-out) data-[state=selected]:[--data-table-card-bg:color-mix(in_oklch,var(--primary)_7%,var(--table-row))] data-[state=selected]:border-primary/40',
+        props.className
+      )}
+    >
+      {props.children}
     </div>
   )
 }

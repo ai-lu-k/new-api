@@ -23,6 +23,8 @@ import { ClaudeSettingsCard } from './claude-settings-card'
 import { GeminiSettingsCard } from './gemini-settings-card'
 import { GlobalSettingsCard } from './global-settings-card'
 import { GrokSettingsCard } from './grok-settings-card'
+import { ModelLevelGateSettingsCard } from './model-level-gate-settings-card'
+import { ModelNamingSettingsCard } from './model-naming-settings-card'
 
 function formatJsonForEditor(value: string, fallback: string) {
   const raw = (value ?? '').toString().trim()
@@ -64,6 +66,31 @@ const MODELS_SECTIONS = [
     ),
   },
 
+  {
+    id: 'naming',
+    titleKey: 'Model names and price tiers',
+    build: (settings: ModelSettings) => (
+      <ModelNamingSettingsCard
+        defaultValues={{
+          'model_naming.price_suffix_enabled':
+            settings['model_naming.price_suffix_enabled'],
+          'model_naming.aliases': settings['model_naming.aliases'],
+        }}
+      />
+    ),
+  },
+  {
+    id: 'level_gate',
+    titleKey: 'Model usage level requirement',
+    build: (settings: ModelSettings) => (
+      <ModelLevelGateSettingsCard
+        defaultValues={{
+          'model_level_gate.min_levels':
+            settings['model_level_gate.min_levels'],
+        }}
+      />
+    ),
+  },
   {
     id: 'gemini',
     titleKey: 'Gemini',

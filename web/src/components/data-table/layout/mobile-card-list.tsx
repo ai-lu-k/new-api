@@ -17,7 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { Row, Table } from '@tanstack/react-table'
-import { Database } from 'lucide-react'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -39,17 +38,12 @@ For commercial licensing, please contact support@quantumnous.com
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { useListDiffTransition } from '@/components/motion/use-list-diff-transition'
 import { Checkbox } from '@/components/ui/checkbox'
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
+import { getListEntranceSignature, getRowDiffKey } from '../core/list-signature'
 import { tableHasCompactMeta } from './card-cell-utils'
 import { CardRowContent } from './card-row-content'
 
@@ -136,31 +130,34 @@ export function MobileCardList<TData>(props: MobileCardListProps<TData>) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [visibleColumns]
   )
+  const rows = table.getRowModel().rows
+  const listSignature = React.useMemo(
+    () => getListEntranceSignature(rows, table.getState()),
+    // The rows array identity changes exactly when the result set changes.
+    [table, rows]
+  )
+  const listRef = React.useRef<HTMLDivElement>(null)
+  useListDiffTransition(listRef, listSignature)
 
   if (isLoading) {
     return hasCompactMeta ? <ListSkeleton /> : <FallbackListSkeleton />
   }
 
-  const rows = table.getRowModel().rows
-
   if (!rows || rows.length === 0) {
     return (
-      <div className='rounded-lg border p-6'>
-        <Empty className='border-none p-0'>
-          <EmptyHeader>
-            <EmptyMedia variant='icon'>
-              <Database className='size-6' />
-            </EmptyMedia>
-            <EmptyTitle>{resolvedEmptyTitle}</EmptyTitle>
-            <EmptyDescription>{resolvedEmptyDescription}</EmptyDescription>
-          </EmptyHeader>
-        </Empty>
+      <div className='flex flex-col gap-1 py-6'>
+        <p className='text-muted-foreground text-[13px] leading-snug'>
+          {resolvedEmptyTitle}
+        </p>
+        <p className='text-muted-foreground text-[13px] leading-snug'>
+          {resolvedEmptyDescription}
+        </p>
       </div>
     )
   }
 
   return (
-    <div className='divide-y overflow-hidden rounded-lg border'>
+    <div ref={listRef} className='divide-y overflow-hidden rounded-lg border'>
       {enableRowSelection && (
         <label className='flex items-center gap-2 px-3 py-2 text-xs'>
           <Checkbox
@@ -174,14 +171,12 @@ export function MobileCardList<TData>(props: MobileCardListProps<TData>) {
         </label>
       )}
       {rows.map((row) => {
-        const key = getRowKey ? getRowKey(row) : row.id
+        const key = getRowKey ? String(getRowKey(row)) : getRowDiffKey(row)
         return (
-          <div
+          <MobileCardItem
             key={key}
-            className={cn(
-              '[background-color:var(--data-table-card-bg,var(--table-row))] px-3 py-2.5',
-              getRowClassName?.(row)
-            )}
+            diffKey={key}
+            className={getRowClassName?.(row)}
           >
             <div className='flex min-w-0 items-start gap-2'>
               {enableRowSelection && (
@@ -200,9 +195,31 @@ export function MobileCardList<TData>(props: MobileCardListProps<TData>) {
                 <CardRowContent row={row} compact={hasCompactMeta} />
               </div>
             </div>
-          </div>
+          </MobileCardItem>
         )
       })}
+    </div>
+  )
+}
+
+/**
+ * One row of the mobile list. What it does when the result set changes is
+ * decided by the list handoff: a kept row travels, a lost one falls away.
+ */
+function MobileCardItem(props: {
+  diffKey: string
+  className?: string
+  children: React.ReactNode
+}) {
+  return (
+    <div
+      data-diff-key={props.diffKey}
+      className={cn(
+        '[background-color:var(--data-table-card-bg,var(--table-row))] px-3 py-2.5',
+        props.className
+      )}
+    >
+      {props.children}
     </div>
   )
 }

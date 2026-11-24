@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { BenchmarkMappingsDialog } from './dialogs/benchmark-mappings-dialog'
 import { DescriptionDialog } from './dialogs/description-dialog'
 import { MissingModelsDialog } from './dialogs/missing-models-dialog'
 import { PrefillGroupManagement } from './dialogs/prefill-group-management'
@@ -37,6 +38,12 @@ export function ModelsDialogs() {
 
   return (
     <>
+      {open === 'benchmark-mappings' && (
+        <BenchmarkMappingsDialog
+          modelName={currentRow?.model_name}
+          onClose={() => setOpen(null)}
+        />
+      )}
       <PriceSyncDialog
         open={open === 'price-sync'}
         onOpenChange={(value) => !value && setOpen(null)}

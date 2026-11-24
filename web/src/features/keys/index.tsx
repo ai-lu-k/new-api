@@ -29,8 +29,14 @@ export function ApiKeys() {
   const { t } = useTranslation()
   return (
     <ApiKeysProvider>
-      <SectionPageLayout fixedContent>
+      <SectionPageLayout
+        stackActionsOnMobile
+        pageIndex={<>{t('Personal workspace')} / 02</>}
+      >
         <SectionPageLayout.Title>{t('API Keys')}</SectionPageLayout.Title>
+        <SectionPageLayout.Description>
+          {t('Create, revoke, and audit API tokens.')}
+        </SectionPageLayout.Description>
         <SectionPageLayout.Actions>
           <ApiKeysPrimaryButtons />
         </SectionPageLayout.Actions>
